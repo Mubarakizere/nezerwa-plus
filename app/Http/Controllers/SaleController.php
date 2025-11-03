@@ -16,6 +16,9 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class SaleController extends Controller
 {
+    /** Allowed payment channels */
+    private const CHANNELS = ['cash', 'bank', 'momo'];
+
     /**
      * Display all sales.
      */
@@ -40,68 +43,64 @@ class SaleController extends Controller
         return view('sales.create', compact('customers', 'products'));
     }
 
-
+    /**
+     * Store a new sale.
+     */
     public function store(Request $request)
-{
+    {
+        // Clean empty product rows first
+        $cleanProducts = collect($request->input('products', []))
+            ->filter(fn ($p) => !empty($p['product_id']) && floatval($p['quantity']) > 0)
+            ->values()
+            ->toArray();
 
-    $cleanProducts = collect($request->input('products', []))
-        ->filter(fn($p) => !empty($p['product_id']) && floatval($p['quantity']) > 0)
-        ->values()
-        ->toArray();
+        $request->merge(['products' => $cleanProducts]);
 
+        $request->validate([
+            'customer_id'           => 'nullable|exists:customers,id',
+            'sale_date'             => 'required|date',
+            'products'              => 'required|array|min:1',
+            'products.*.product_id' => 'required|exists:products,id',
+            'products.*.quantity'   => 'required|numeric|min:0.01',
+            'products.*.unit_price' => 'required|numeric|min:0',
+            'amount_paid'           => 'nullable|numeric|min:0',
+            'payment_channel'       => 'nullable|in:cash,bank,momo', // new field
+            'method'                => 'nullable|string|max:50',     // optional detail (e.g., POS ref)
+            'notes'                 => 'nullable|string|max:500',
+        ]);
 
-    $request->merge(['products' => $cleanProducts]);
-
-    $request->validate([
-        'customer_id'           => 'nullable|exists:customers,id',
-        'sale_date'             => 'required|date',
-        'products'              => 'required|array|min:1',
-        'products.*.product_id' => 'required|exists:products,id',
-        'products.*.quantity'   => 'required|numeric|min:0.01',
-        'products.*.unit_price' => 'required|numeric|min:0',
-        'amount_paid'           => 'nullable|numeric|min:0',
-        'method'                => 'nullable|string|max:50',
-        'notes'                 => 'nullable|string|max:500',
-    ]);
-
-    if (empty($request->products)) {
-        return back()->withErrors(['products' => 'Please add at least one product.'])->withInput();
-    }
-
-
-        // Filter valid product rows
-        $products = collect($request->products)
-            ->filter(fn($p) => !empty($p['product_id']) && $p['quantity'] > 0)
-            ->values();
-
-        if ($products->isEmpty()) {
+        if (empty($request->products)) {
             return back()->withErrors(['products' => 'Please add at least one product.'])->withInput();
         }
+
+        // Prefer payment_channel; fall back to method if it matches a channel; default cash
+        $channel = $request->payment_channel
+            ?? (in_array(strtolower((string) $request->method), self::CHANNELS, true) ? strtolower($request->method) : 'cash');
 
         try {
             DB::beginTransaction();
 
-            // 1️⃣ Create Sale shell
+            // 1) Create Sale shell
             $sale = Sale::create([
-                'customer_id'  => $request->customer_id,
-                'user_id'      => Auth::id(),
-                'sale_date'    => $request->sale_date,
-                'method'       => $request->method ?? 'cash',
-                'amount_paid'  => $request->amount_paid ?? 0,
-                'total_amount' => 0,
-                'status'       => 'pending',
-                'notes'        => $request->notes,
+                'customer_id'     => $request->customer_id,
+                'user_id'         => Auth::id(),
+                'sale_date'       => $request->sale_date,
+                'payment_channel' => $channel,                      // << NEW
+                'method'          => $request->method ?? null,      // optional extra info
+                'amount_paid'     => $request->amount_paid ?? 0,
+                'total_amount'    => 0,
+                'status'          => 'pending',
+                'notes'           => $request->notes,
             ]);
 
             $totalAmount = 0;
             $totalProfit = 0;
 
-            // 2️⃣ Add Sale Items + Stock Movement
-            foreach ($products as $item) {
+            // 2) Add items + stock movements
+            foreach (collect($request->products) as $item) {
                 $product = Product::findOrFail($item['product_id']);
 
-                if (method_exists($product, 'currentStock') &&
-                    $product->currentStock() < $item['quantity']) {
+                if (method_exists($product, 'currentStock') && $product->currentStock() < $item['quantity']) {
                     throw new \Exception("Insufficient stock for {$product->name}");
                 }
 
@@ -136,19 +135,16 @@ class SaleController extends Controller
                 $totalProfit += $profit;
             }
 
-            // 3️⃣ Update totals and status
+            // 3) Totals + status
             $sale->update([
                 'total_amount' => $totalAmount,
-                'status'       => ($totalAmount <= ($sale->amount_paid ?? 0))
-                    ? 'completed'
-                    : 'pending',
+                'status'       => ($totalAmount <= ($sale->amount_paid ?? 0)) ? 'completed' : 'pending',
             ]);
 
             DB::commit();
-            Log::info('✅ Sale stored successfully', ['sale_id' => $sale->id]);
+            Log::info('✅ Sale stored successfully', ['sale_id' => $sale->id, 'channel' => $sale->payment_channel]);
 
-            return redirect()
-                ->route('sales.show', $sale->id)
+            return redirect()->route('sales.show', $sale->id)
                 ->with('success', 'Sale recorded successfully.');
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -185,8 +181,7 @@ class SaleController extends Controller
     }
 
     /**
-     * Update a sale.
-     * Loan + transaction sync handled automatically via Observer.
+     * Update a sale (Observers handle loan/transaction sync).
      */
     public function update(Request $request, Sale $sale)
     {
@@ -198,13 +193,18 @@ class SaleController extends Controller
             'products.*.quantity'   => 'required|numeric|min:0.01',
             'products.*.unit_price' => 'required|numeric|min:0',
             'amount_paid'           => 'nullable|numeric|min:0',
+            'payment_channel'       => 'nullable|in:cash,bank,momo', // new field
             'method'                => 'nullable|string|max:50',
             'notes'                 => 'nullable|string|max:500',
         ]);
 
         $products = collect($request->products)
-            ->filter(fn($p) => !empty($p['product_id']) && $p['quantity'] > 0)
+            ->filter(fn ($p) => !empty($p['product_id']) && $p['quantity'] > 0)
             ->values();
+
+        // Normalize channel
+        $channel = $request->payment_channel
+            ?? (in_array(strtolower((string) $request->method), self::CHANNELS, true) ? strtolower($request->method) : ($sale->payment_channel ?? 'cash'));
 
         try {
             DB::beginTransaction();
@@ -220,6 +220,7 @@ class SaleController extends Controller
 
             foreach ($products as $item) {
                 $product = Product::findOrFail($item['product_id']);
+
                 $qty       = (float) $item['quantity'];
                 $unitPrice = (float) $item['unit_price'];
                 $subtotal  = round($qty * $unitPrice, 2);
@@ -251,22 +252,21 @@ class SaleController extends Controller
                 $totalProfit += $profit;
             }
 
-            $status = ($totalAmount <= ($request->amount_paid ?? 0))
-                ? 'completed'
-                : 'pending';
+            $status = ($totalAmount <= ($request->amount_paid ?? 0)) ? 'completed' : 'pending';
 
             $sale->update([
-                'customer_id'  => $request->customer_id,
-                'sale_date'    => $request->sale_date,
-                'method'       => $request->method ?? 'cash',
-                'amount_paid'  => $request->amount_paid ?? 0,
-                'total_amount' => $totalAmount,
-                'status'       => $status,
-                'notes'        => $request->notes,
+                'customer_id'     => $request->customer_id,
+                'sale_date'       => $request->sale_date,
+                'payment_channel' => $channel,                     // << NEW
+                'method'          => $request->method ?? $sale->method,
+                'amount_paid'     => $request->amount_paid ?? 0,
+                'total_amount'    => $totalAmount,
+                'status'          => $status,
+                'notes'           => $request->notes,
             ]);
 
             DB::commit();
-            Log::info('✅ Sale updated successfully', ['sale_id' => $sale->id]);
+            Log::info('✅ Sale updated successfully', ['sale_id' => $sale->id, 'channel' => $sale->payment_channel]);
 
             return redirect()
                 ->route('sales.show', $sale->id)

@@ -32,9 +32,17 @@
     {{-- Search & Filter --}}
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-4">
         <form method="GET" action="{{ route('sales.index') }}" class="flex flex-col sm:flex-row flex-wrap gap-3">
-            <input type="text" name="search" placeholder="Search by customer, method or status..."
+            <input type="text" name="search" placeholder="Search by customer, channel or status..."
                    value="{{ request('search') }}"
                    class="flex-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
+
+            <select name="channel"
+                    class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
+                <option value="">All Channels</option>
+                <option value="cash" {{ request('channel')==='cash' ? 'selected' : '' }}>Cash</option>
+                <option value="bank" {{ request('channel')==='bank' ? 'selected' : '' }}>Bank</option>
+                <option value="momo" {{ request('channel')==='momo' ? 'selected' : '' }}>MoMo</option>
+            </select>
 
             <input type="date" name="from" value="{{ request('from') }}"
                    class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
@@ -50,7 +58,7 @@
 
     {{-- Sales Table --}}
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-x-auto">
-        <table class="w-full text-sm text-left min-w-[800px]">
+        <table class="w-full text-sm text-left min-w-[900px]">
             <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 uppercase text-xs font-medium">
                 <tr>
                     <th class="px-4 py-3">#</th>
@@ -60,7 +68,7 @@
                     <th class="px-4 py-3 text-right">Paid</th>
                     <th class="px-4 py-3 text-right">Balance</th>
                     <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Method</th>
+                    <th class="px-4 py-3">Channel</th> {{-- renamed --}}
                     <th class="px-4 py-3 text-right">Actions</th>
                 </tr>
             </thead>
@@ -69,7 +77,20 @@
                 @forelse ($sales as $sale)
                     @php
                         $balance = round(($sale->total_amount ?? 0) - ($sale->amount_paid ?? 0), 2);
-                        $date = \Carbon\Carbon::parse($sale->sale_date);
+                        $date    = \Carbon\Carbon::parse($sale->sale_date);
+                        $channel = strtolower($sale->payment_channel ?? 'cash');
+
+                        // badge classes & icon per channel
+                        $badge = match($channel) {
+                            'bank' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                            'momo' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+                            default => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300', // cash
+                        };
+                        $icon  = match($channel) {
+                            'bank' => 'credit-card',
+                            'momo' => 'smartphone',
+                            default => 'banknote',
+                        };
                     @endphp
 
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
@@ -114,8 +135,17 @@
                             @endif
                         </td>
 
-                        <td class="px-4 py-3 text-gray-700 dark:text-gray-300 uppercase">
-                            {{ strtoupper($sale->method ?? 'CASH') }}
+                        {{-- Channel / Method --}}
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium {{ $badge }}">
+                                <i data-lucide="{{ $icon }}" class="w-3.5 h-3.5"></i>
+                                {{ strtoupper($channel) }}
+                            </span>
+                            @if($sale->method)
+                                <div class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                    Ref: {{ $sale->method }}
+                                </div>
+                            @endif
                         </td>
 
                         {{-- ACTIONS --}}
@@ -137,7 +167,7 @@
                                 </a>
 
                                 <form action="{{ route('sales.destroy', $sale) }}" method="POST" class="inline"
-                                      onsubmit="return confirm('Delete this sale? This will revert stock movements.')">
+                                      onsubmit="return confirm('Delete this sale? This will revert stock movements.');">
                                     @csrf @method('DELETE')
                                     <button type="submit"
                                             class="btn btn-danger text-xs px-2.5 py-1.5 flex items-center gap-1">

@@ -4,181 +4,223 @@
 @section('content')
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-    {{-- 🔹 Page Header --}}
-    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <i data-lucide="shopping-cart" class="w-5 h-5 text-indigo-600 dark:text-indigo-400"></i>
-            <span>Purchase #{{ $purchase->id }}</span>
-        </h1>
+    {{-- HEADER --}}
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div class="space-y-1">
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <i data-lucide="shopping-cart" class="w-6 h-6 text-indigo-600 dark:text-indigo-400"></i>
+                <span>Purchase #{{ $purchase->id }}</span>
+            </h1>
+            <div class="flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                @php
+                    $date = $purchase->date ?? $purchase->purchased_at ?? $purchase->created_at;
+                    $status = $purchase->status ?? 'completed';
+                    $method = $purchase->method ?? 'cash';
+                    $statusColors = [
+                        'completed' => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+                        'partial'   => 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
+                        'draft'     => 'bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-300',
+                        'cancelled' => 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+                    ];
+                @endphp
+
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="user" class="w-4 h-4 text-indigo-500"></i>
+                    <span class="font-medium">{{ $purchase->supplier->name ?? '—' }}</span>
+                </span>
+
+                <span class="hidden md:inline text-gray-400">•</span>
+
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="calendar" class="w-4 h-4 text-indigo-500"></i>
+                    {{ \Carbon\Carbon::parse($date)->format('M j, Y g:i A') }}
+                </span>
+
+                <span class="hidden md:inline text-gray-400">•</span>
+
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="receipt" class="w-4 h-4 text-indigo-500"></i>
+                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold {{ $statusColors[$status] ?? $statusColors['completed'] }}">
+                        {{ ucfirst($status) }}
+                    </span>
+                </span>
+
+                <span class="hidden md:inline text-gray-400">•</span>
+
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="wallet" class="w-4 h-4 text-indigo-500"></i>
+                    <span class="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
+                        Method: {{ strtoupper($method) }}
+                    </span>
+                </span>
+            </div>
+        </div>
 
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('purchases.invoice', $purchase->id) }}" target="_blank"
-               class="btn btn-primary flex items-center gap-1 text-sm">
-                <i data-lucide="file-down" class="w-4 h-4"></i> Download PDF
-            </a>
-            <a href="{{ route('purchases.edit', $purchase->id) }}"
-               class="btn btn-outline flex items-center gap-1 text-sm">
-                <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
-            </a>
-            <a href="{{ route('purchases.index') }}"
-               class="btn btn-secondary flex items-center gap-1 text-sm">
+            <a href="{{ route('purchases.index') }}" class="btn btn-secondary flex items-center gap-1">
                 <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
             </a>
+            <a href="{{ route('purchases.edit', $purchase) }}" class="btn btn-outline flex items-center gap-1">
+                <i data-lucide="file-edit" class="w-4 h-4"></i> Edit
+            </a>
+            <a href="{{ route('purchases.invoice', $purchase) }}" class="btn btn-success flex items-center gap-1">
+                <i data-lucide="printer" class="w-4 h-4"></i> Invoice (PDF)
+            </a>
         </div>
     </div>
 
-    {{-- 🔹 Purchase Info --}}
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 grid md:grid-cols-2 gap-6">
-        <div class="space-y-2 text-sm">
-            <p><strong class="text-gray-600 dark:text-gray-400">Supplier:</strong>
-                {{ $purchase->supplier->name ?? 'Unknown Supplier' }}</p>
-            <p><strong class="text-gray-600 dark:text-gray-400">Date:</strong>
-                {{ \Carbon\Carbon::parse($purchase->purchase_date)->format('Y-m-d') }}</p>
-            <p><strong class="text-gray-600 dark:text-gray-400">Status:</strong>
-                @if ($purchase->status === 'completed')
-                    <span class="px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs font-semibold">Paid</span>
-                @elseif ($purchase->status === 'pending')
-                    <span class="px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs font-semibold">Pending</span>
-                @else
-                    <span class="px-2 py-1 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 text-xs font-semibold">Cancelled</span>
-                @endif
+    {{-- KPI CARDS --}}
+    @php
+        $computedSubtotal = $purchase->subtotal ?? $purchase->items->sum(fn($i) => (float)$i->quantity * (float)$i->unit_cost);
+        $tax      = $purchase->tax ?? $purchase->tax_amount ?? 0;
+        $discount = $purchase->discount ?? $purchase->discount_amount ?? 0;
+        $total    = $purchase->total ?? $purchase->total_amount ?? ($computedSubtotal + $tax - $discount);
+        $paid     = $purchase->paid ?? $purchase->amount_paid ?? 0;
+        $balance  = max(0, $total - $paid);
+        $fmt = fn($n) => number_format((float)$n, 2);
+    @endphp
+
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-4">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Subtotal</p>
+            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">RWF {{ $fmt($computedSubtotal) }}</p>
+        </div>
+        <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-4">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Tax</p>
+            <p class="mt-1 text-lg font-semibold text-blue-700 dark:text-blue-300">+ RWF {{ $fmt($tax) }}</p>
+        </div>
+        <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-4">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Discount</p>
+            <p class="mt-1 text-lg font-semibold text-amber-700 dark:text-amber-300">– RWF {{ $fmt($discount) }}</p>
+        </div>
+        <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-4">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Total</p>
+            <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">RWF {{ $fmt($total) }}</p>
+        </div>
+        <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-4">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Paid</p>
+            <p class="mt-1 text-lg font-semibold text-emerald-700 dark:text-emerald-300">RWF {{ $fmt($paid) }}</p>
+        </div>
+        <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-4">
+            <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Balance</p>
+            <p class="mt-1 text-lg font-semibold {{ $balance > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300' }}">
+                RWF {{ $fmt($balance) }}
             </p>
-            <p><strong class="text-gray-600 dark:text-gray-400">Recorded By:</strong>
-                {{ $purchase->user->name ?? 'N/A' }}</p>
-        </div>
-
-        <div class="space-y-2 text-sm">
-            <p><strong class="text-gray-600 dark:text-gray-400">Subtotal:</strong> {{ number_format($purchase->subtotal, 2) }}</p>
-            <p><strong class="text-gray-600 dark:text-gray-400">Tax:</strong> {{ number_format($purchase->tax, 2) }}</p>
-            <p><strong class="text-gray-600 dark:text-gray-400">Discount:</strong> {{ number_format($purchase->discount, 2) }}</p>
         </div>
     </div>
 
-    {{-- 🔹 Purchased Items --}}
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm rounded-xl overflow-hidden">
-        <h3 class="px-6 py-3 text-lg font-semibold border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <i data-lucide="clipboard-list" class="w-5 h-5 text-indigo-600 dark:text-indigo-400"></i> Purchased Items
-        </h3>
-
+    {{-- ITEMS TABLE --}}
+    <div class="rounded-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
+        <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2">
+            <i data-lucide="list" class="w-4 h-4 text-indigo-500"></i>
+            <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-200">Items</h2>
+        </div>
         <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
-                <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 uppercase text-xs">
-                    <tr>
-                        <th class="px-4 py-2 text-left">Product</th>
-                        <th class="px-4 py-2 text-center">Qty</th>
-                        <th class="px-4 py-2 text-right">Unit Cost</th>
-                        <th class="px-4 py-2 text-right">Total</th>
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead class="bg-gray-50 dark:bg-gray-800/50">
+                    <tr class="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        <th class="px-5 py-3">Product</th>
+                        <th class="px-5 py-3">Qty</th>
+                        <th class="px-5 py-3">Unit Cost</th>
+                        <th class="px-5 py-3">Line Total</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                    @foreach ($purchase->items as $item)
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/40 transition">
-                            <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $item->product->name }}</td>
-                            <td class="px-4 py-2 text-center text-gray-700 dark:text-gray-300">{{ $item->quantity }}</td>
-                            <td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">{{ number_format($item->unit_cost, 2) }}</td>
-                            <td class="px-4 py-2 text-right text-gray-800 dark:text-gray-100 font-medium">
-                                {{ number_format($item->total_cost, 2) }}
-                            </td>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-800">
+                    @foreach($purchase->items as $item)
+                        @php
+                            $qty = (float)$item->quantity;
+                            $uc  = (float)$item->unit_cost;
+                            $lt  = $item->total_cost ?? $qty * $uc;
+                        @endphp
+                        <tr class="text-sm">
+                            <td class="px-5 py-3 text-gray-900 dark:text-gray-100">{{ $item->product->name ?? ('#'.$item->product_id) }}</td>
+                            <td class="px-5 py-3 text-gray-700 dark:text-gray-300">{{ $qty }}</td>
+                            <td class="px-5 py-3 text-gray-700 dark:text-gray-300">RWF {{ $fmt($uc) }}</td>
+                            <td class="px-5 py-3 font-medium text-gray-900 dark:text-gray-100">RWF {{ $fmt($lt) }}</td>
                         </tr>
                     @endforeach
                 </tbody>
+                <tfoot class="bg-gray-50/70 dark:bg-gray-800/50 text-sm">
+                    <tr>
+                        <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Subtotal</td>
+                        <td class="px-5 py-3 font-medium text-gray-900 dark:text-gray-100">RWF {{ $fmt($computedSubtotal) }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Tax</td>
+                        <td class="px-5 py-3 font-medium text-blue-700 dark:text-blue-300">+ RWF {{ $fmt($tax) }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Discount</td>
+                        <td class="px-5 py-3 font-medium text-amber-700 dark:text-amber-300">– RWF {{ $fmt($discount) }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="px-5 py-3 text-right text-gray-800 dark:text-gray-100">Total</td>
+                        <td class="px-5 py-3 font-semibold text-gray-900 dark:text-gray-100">RWF {{ $fmt($total) }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Paid</td>
+                        <td class="px-5 py-3 font-medium text-emerald-700 dark:text-emerald-300">RWF {{ $fmt($paid) }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Balance</td>
+                        <td class="px-5 py-3 font-semibold {{ $balance>0?'text-rose-700 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">RWF {{ $fmt($balance) }}</td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
 
-    {{-- 🔹 Summary & Payment --}}
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 space-y-4">
-        <div class="flex justify-between items-center">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                <i data-lucide="wallet" class="w-5 h-5 text-green-600 dark:text-green-400"></i> Purchase Summary
-            </h3>
-            <span class="text-2xl font-bold text-green-700 dark:text-green-400">
-                RWF {{ number_format($purchase->total_amount, 2) }}
-            </span>
-        </div>
-
-        <div class="grid md:grid-cols-2 gap-4 text-sm">
-            <div class="space-y-1">
-                <p><strong class="text-gray-600 dark:text-gray-400">Paid:</strong>
-                    <span class="text-gray-800 dark:text-gray-100">{{ number_format($purchase->amount_paid, 2) }}</span>
-                </p>
-                <p><strong class="text-gray-600 dark:text-gray-400">Balance:</strong>
-                    <span class="{{ $purchase->balance_due > 0 ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-green-600 dark:text-green-400 font-semibold' }}">
-                        {{ number_format($purchase->balance_due, 2) }}
-                    </span>
-                </p>
-                <p><strong class="text-gray-600 dark:text-gray-400">Payment Method:</strong> {{ strtoupper($purchase->method ?? 'CASH') }}</p>
-            </div>
-
-            <div class="space-y-1">
-                <p><strong class="text-gray-600 dark:text-gray-400">Transaction:</strong>
-                    @if ($purchase->transaction)
-                        {{ ucfirst($purchase->transaction->type) }} • {{ $purchase->transaction->user->name ?? 'N/A' }}
-                    @else
-                        <em class="text-gray-500 dark:text-gray-400">No transaction recorded</em>
-                    @endif
-                </p>
-            </div>
-        </div>
-
-        {{-- Progress Bar --}}
+    {{-- LOAN CARD (if any, type=taken) --}}
+    @if(optional($purchase->loan)->type === 'taken')
         @php
-            $progress = $purchase->total_amount > 0
-                ? round(($purchase->amount_paid / $purchase->total_amount) * 100)
-                : 0;
+            $loan = $purchase->loan;
+            $lTotal   = (float)($loan->amount ?? $loan->total ?? 0);
+            $lPaid    = (float)($loan->paid ?? $loan->amount_paid ?? 0);
+            $lBalance = max(0, $lTotal - $lPaid);
+            $lStatus  = $loan->status ?? ($lBalance>0 ? 'active' : 'cleared');
         @endphp
-        <div class="mt-4">
-            <div class="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                <div class="bg-green-500 h-2 rounded-full transition-all duration-500"
-                     style="width: {{ $progress }}%"></div>
+        <div class="rounded-2xl ring-1 ring-indigo-200 dark:ring-indigo-900/40 bg-indigo-50 dark:bg-indigo-950/40 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="landmark" class="w-5 h-5 text-indigo-600 dark:text-indigo-300"></i>
+                    <h3 class="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Linked Loan (Taken)</h3>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold
+                    {{ $lStatus==='active' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
+                                           : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' }}">
+                    {{ ucfirst($lStatus) }}
+                </span>
             </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Payment Progress: {{ $progress }}%</p>
-        </div>
-    </div>
-
-    {{-- 🔹 Linked Loan --}}
-    @php
-        $loan = \App\Models\Loan::where('purchase_id', $purchase->id)->first();
-    @endphp
-
-    @if ($loan)
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
-            <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2 mb-2">
-                <i data-lucide="banknote" class="w-5 h-5 text-yellow-500"></i> Linked Loan
-            </h4>
-            <div class="grid md:grid-cols-2 gap-2 text-sm">
-                <p><strong>Loan Type:</strong> {{ ucfirst($loan->type) }}</p>
-                <p><strong>Loan Amount:</strong> {{ number_format($loan->amount, 2) }}</p>
-                <p><strong>Status:</strong>
-                    <span class="px-2 py-1 rounded-full text-xs font-medium
-                        {{ $loan->status === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
-                        {{ ucfirst($loan->status) }}
-                    </span>
-                </p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div class="rounded-lg bg-white/60 dark:bg-gray-900/40 ring-1 ring-white/50 dark:ring-white/10 p-3">
+                    <p class="text-gray-500 dark:text-gray-400">Loan Amount</p>
+                    <p class="text-indigo-900 dark:text-indigo-200 font-semibold">RWF {{ $fmt($lTotal) }}</p>
+                </div>
+                <div class="rounded-lg bg-white/60 dark:bg-gray-900/40 ring-1 ring-white/50 dark:ring-white/10 p-3">
+                    <p class="text-gray-500 dark:text-gray-400">Paid</p>
+                    <p class="text-emerald-700 dark:text-emerald-300 font-semibold">RWF {{ $fmt($lPaid) }}</p>
+                </div>
+                <div class="rounded-lg bg-white/60 dark:bg-gray-900/40 ring-1 ring-white/50 dark:ring-white/10 p-3">
+                    <p class="text-gray-500 dark:text-gray-400">Balance</p>
+                    <p class="font-semibold {{ $lBalance>0?'text-rose-700 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
+                        RWF {{ $fmt($lBalance) }}
+                    </p>
+                </div>
             </div>
-            @if ($loan->status === 'pending')
-                <div class="mt-3">
-                    <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-success text-xs flex items-center gap-1">
+            <div class="flex flex-wrap gap-2">
+                @if(Route::has('loans.show'))
+                    <a href="{{ route('loans.show', $loan) }}" class="btn btn-outline flex items-center gap-1">
+                        <i data-lucide="eye" class="w-4 h-4"></i> View Loan
+                    </a>
+                @endif
+                @if(Route::has('loan-payments.create'))
+                    <a href="{{ route('loan-payments.create', ['loan' => $loan->id]) }}" class="btn btn-primary flex items-center gap-1">
                         <i data-lucide="plus" class="w-4 h-4"></i> Add Payment
                     </a>
-                </div>
-            @endif
+                @endif
+            </div>
         </div>
     @endif
 
-    {{-- 🔹 Notes --}}
-    @if ($purchase->notes)
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
-            <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2 mb-2">
-                <i data-lucide="sticky-note" class="w-5 h-5 text-indigo-500"></i> Notes
-            </h4>
-            <p class="text-gray-700 dark:text-gray-300 whitespace-pre-line">{{ $purchase->notes }}</p>
-        </div>
-    @endif
 </div>
-
-@push('scripts')
-<script src="https://unpkg.com/lucide@latest"></script>
-<script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
-@endpush
 @endsection

@@ -7,27 +7,48 @@ use Illuminate\Support\Facades\{Auth, DB, Log};
 
 class SaleObserver
 {
+    /** Normalize channel from sale; fallback to 'cash'. */
+    protected function channel(Sale $sale): string
+    {
+        $ch = strtolower((string)($sale->payment_channel ?? ''));
+        return in_array($ch, ['cash', 'bank', 'momo'], true) ? $ch : 'cash';
+    }
+
+    /** Optional external reference (POS ref / MoMo Txn / Cheque). */
+    protected function reference(Sale $sale): ?string
+    {
+        $ref = trim((string)($sale->method ?? ''));
+        return $ref !== '' ? $ref : null;
+    }
+
     /**
-     * 🔹 When a Sale is created
-     * Automatically creates related financial and loan records.
+     * When a Sale is created
+     * - create Transaction + DebitCredit if amount_paid > 0
+     * - create Loan if there is an unpaid balance
      */
-    public function created(Sale $sale)
+    public function created(Sale $sale): void
     {
         DB::afterCommit(function () use ($sale) {
             try {
-                Log::info('🧾 SaleObserver: created()', ['sale_id' => $sale->id]);
+                Log::info('🧾 SaleObserver.created', ['sale_id' => $sale->id]);
 
-                // 1️⃣ Record financials only if something was paid
-                if ($sale->amount_paid > 0) {
-                    $transaction = Transaction::create([
+                // 1) Financial record only if paid something
+                if (($sale->amount_paid ?? 0) > 0) {
+                    $notes = "Auto-generated from Sale #{$sale->id} (channel: " . strtoupper($this->channel($sale)) . ")";
+                    if ($ref = $this->reference($sale)) {
+                        $notes .= " • Ref: {$ref}";
+                    }
+
+                    $txn = Transaction::create([
                         'type'             => 'credit',
                         'user_id'          => $sale->user_id ?? Auth::id(),
                         'customer_id'      => $sale->customer_id,
                         'sale_id'          => $sale->id,
                         'amount'           => $sale->amount_paid,
                         'transaction_date' => $sale->sale_date,
-                        'method'           => $sale->method ?? 'cash',
-                        'notes'            => "Auto-generated from Sale #{$sale->id}",
+                        // Store payment channel here:
+                        'method'           => $this->channel($sale),
+                        'notes'            => $notes,
                     ]);
 
                     DebitCredit::create([
@@ -37,11 +58,11 @@ class SaleObserver
                         'date'           => now()->toDateString(),
                         'user_id'        => $sale->user_id ?? Auth::id(),
                         'customer_id'    => $sale->customer_id,
-                        'transaction_id' => $transaction->id,
+                        'transaction_id' => $txn->id,
                     ]);
                 }
 
-                // 2️⃣ Auto-create Loan if there’s an unpaid balance
+                // 2) Loan if there’s an unpaid balance
                 $unpaid = ($sale->total_amount ?? 0) - ($sale->amount_paid ?? 0);
                 if ($unpaid > 0.009) {
                     Loan::firstOrCreate(
@@ -56,44 +77,37 @@ class SaleObserver
                             'notes'       => "Auto-created from Sale #{$sale->id}",
                         ]
                     );
-                    Log::info('💰 SaleObserver: auto-loan created', ['sale_id' => $sale->id, 'unpaid' => $unpaid]);
+                    Log::info('💰 SaleObserver: loan created', ['sale_id' => $sale->id, 'unpaid' => $unpaid]);
                 } else {
                     $sale->updateQuietly(['status' => 'completed']);
                 }
-
             } catch (\Throwable $e) {
-                Log::error('❌ SaleObserver: creation failed', [
-                    'sale_id' => $sale->id,
-                    'error'   => $e->getMessage(),
-                ]);
+                Log::error('❌ SaleObserver.created failed', ['sale_id' => $sale->id, 'error' => $e->getMessage()]);
             }
         });
     }
 
     /**
-     * 🔹 When a Sale is updated
-     * Keeps financial + loan records in sync.
+     * When a Sale is updated
+     * - sync Loan status/amount
+     * - sync Transaction + DebitCredit
      */
-    public function updated(Sale $sale)
+    public function updated(Sale $sale): void
     {
         DB::afterCommit(function () use ($sale) {
             try {
-                Log::info('♻️ SaleObserver: updated()', ['sale_id' => $sale->id]);
+                Log::info('♻️ SaleObserver.updated', ['sale_id' => $sale->id]);
 
                 $unpaid = ($sale->total_amount ?? 0) - ($sale->amount_paid ?? 0);
                 $loan   = Loan::where('sale_id', $sale->id)->first();
 
-                // ✅ Fully paid
+                // Loan + Sale state
                 if ($unpaid <= 0.009) {
                     if ($loan && $loan->status !== 'paid') {
                         $loan->update(['status' => 'paid']);
                     }
                     $sale->updateQuietly(['status' => 'completed']);
-                    Log::info('✅ Sale + Loan marked as paid', ['sale_id' => $sale->id]);
-                }
-
-                // ✅ Still owes
-                elseif ($unpaid > 0.009) {
+                } else {
                     Loan::updateOrCreate(
                         ['sale_id' => $sale->id],
                         [
@@ -107,45 +121,102 @@ class SaleObserver
                         ]
                     );
                     $sale->updateQuietly(['status' => 'pending']);
-                    Log::info('💸 SaleObserver: loan pending', ['sale_id' => $sale->id, 'unpaid' => $unpaid]);
                 }
 
-                // ✅ Sync transaction (only if exists)
-                if ($sale->transaction) {
-                    $sale->transaction->update([
-                        'amount' => $sale->amount_paid ?? 0,
-                        'notes'  => "Updated from Sale #{$sale->id}",
+                // Transaction + DebitCredit sync
+                $txn = $sale->transaction; // may be null
+                $paidIsZero = (float)($sale->amount_paid ?? 0) <= 0.009;
+
+                if ($paidIsZero) {
+                    if ($txn) {
+                        DebitCredit::where('transaction_id', $txn->id)->delete();
+                        $txn->delete();
+                        Log::info('🗑️ Removed txn (amount_paid=0)', ['sale_id' => $sale->id]);
+                    }
+                    return;
+                }
+
+                $notes = "Updated from Sale #{$sale->id} (channel: " . strtoupper($this->channel($sale)) . ")";
+                if ($ref = $this->reference($sale)) {
+                    $notes .= " • Ref: {$ref}";
+                }
+
+                if ($txn) {
+                    $txn->update([
+                        'amount'           => $sale->amount_paid,
+                        'transaction_date' => $sale->sale_date,
+                        'method'           => $this->channel($sale),
+                        'notes'            => $notes,
+                    ]);
+
+                    $dc = DebitCredit::where('transaction_id', $txn->id)->first();
+                    if ($dc) {
+                        $dc->update([
+                            'amount'      => $sale->amount_paid,
+                            'description' => "Sale updated – Invoice #{$sale->id}",
+                            'date'        => now()->toDateString(),
+                            'user_id'     => $sale->user_id ?? Auth::id(),
+                            'customer_id' => $sale->customer_id,
+                        ]);
+                    } else {
+                        DebitCredit::create([
+                            'type'           => 'credit',
+                            'amount'         => $sale->amount_paid,
+                            'description'    => "Sale updated – Invoice #{$sale->id}",
+                            'date'           => now()->toDateString(),
+                            'user_id'        => $sale->user_id ?? Auth::id(),
+                            'customer_id'    => $sale->customer_id,
+                            'transaction_id' => $txn->id,
+                        ]);
+                    }
+                } else {
+                    // Create missing txn (paid > 0)
+                    $txn = Transaction::create([
+                        'type'             => 'credit',
+                        'user_id'          => $sale->user_id ?? Auth::id(),
+                        'customer_id'      => $sale->customer_id,
+                        'sale_id'          => $sale->id,
+                        'amount'           => $sale->amount_paid,
+                        'transaction_date' => $sale->sale_date,
+                        'method'           => $this->channel($sale),
+                        'notes'            => $notes,
+                    ]);
+
+                    DebitCredit::create([
+                        'type'           => 'credit',
+                        'amount'         => $sale->amount_paid,
+                        'description'    => "Sale recorded – Invoice #{$sale->id}",
+                        'date'           => now()->toDateString(),
+                        'user_id'        => $sale->user_id ?? Auth::id(),
+                        'customer_id'    => $sale->customer_id,
+                        'transaction_id' => $txn->id,
                     ]);
                 }
-
             } catch (\Throwable $e) {
-                Log::error('❌ SaleObserver: update failed', [
-                    'sale_id' => $sale->id,
-                    'error'   => $e->getMessage(),
-                ]);
+                Log::error('❌ SaleObserver.updated failed', ['sale_id' => $sale->id, 'error' => $e->getMessage()]);
             }
         });
     }
 
     /**
-     * 🔹 When a Sale is deleted
+     * When a Sale is deleted
+     * - remove linked Loan, DebitCredit(s), and Transaction
      */
-    public function deleted(Sale $sale)
+    public function deleted(Sale $sale): void
     {
         DB::afterCommit(function () use ($sale) {
             try {
                 Loan::where('sale_id', $sale->id)->delete();
-                DebitCredit::whereHas('transaction', fn($q) =>
+
+                DebitCredit::whereHas('transaction', fn ($q) =>
                     $q->where('sale_id', $sale->id)
                 )->delete();
+
                 $sale->transaction?->delete();
 
-                Log::info('🗑️ SaleObserver: cleaned up', ['sale_id' => $sale->id]);
+                Log::info('🗑️ SaleObserver.cleaned', ['sale_id' => $sale->id]);
             } catch (\Throwable $e) {
-                Log::error('❌ SaleObserver: delete failed', [
-                    'sale_id' => $sale->id,
-                    'error'   => $e->getMessage(),
-                ]);
+                Log::error('❌ SaleObserver.deleted failed', ['sale_id' => $sale->id, 'error' => $e->getMessage()]);
             }
         });
     }

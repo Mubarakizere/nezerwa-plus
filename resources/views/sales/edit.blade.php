@@ -33,19 +33,19 @@
     @endif
 
     {{-- Form --}}
-    <form action="{{ route('sales.update', $sale) }}" method="POST" x-data="saleForm()" x-init="init()">
+    <form action="{{ route('sales.update', $sale) }}" method="POST" x-data="saleEditForm()" x-init="init()">
         @csrf
         @method('PUT')
 
         {{-- Customer & Info --}}
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 grid grid-cols-1 md:grid-cols-4 gap-5">
             <div>
                 <x-label value="Customer" />
                 <select name="customer_id"
                         class="w-full mt-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                     <option value="">Walk-in</option>
                     @foreach ($customers as $c)
-                        <option value="{{ $c->id }}" @selected($sale->customer_id == $c->id)>{{ $c->name }}</option>
+                        <option value="{{ $c->id }}" @selected(old('customer_id', $sale->customer_id) == $c->id)>{{ $c->name }}</option>
                     @endforeach
                 </select>
             </div>
@@ -53,16 +53,31 @@
             <div>
                 <x-label value="Sale Date" />
                 <input type="date" name="sale_date"
-                       value="{{ $sale->sale_date->format('Y-m-d') }}"
+                       value="{{ old('sale_date', \Illuminate\Support\Carbon::parse($sale->sale_date)->format('Y-m-d')) }}"
                        class="w-full mt-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm"
                        required>
             </div>
 
             <div>
-                <x-label value="Payment Method" />
+                <x-label value="Payment Channel" />
+                <select name="payment_channel" x-model="channel"
+                        class="w-full mt-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                    <option value="cash" @selected(old('payment_channel', $sale->payment_channel ?? 'cash')==='cash')>Cash</option>
+                    <option value="bank" @selected(old('payment_channel', $sale->payment_channel ?? 'cash')==='bank')>Bank</option>
+                    <option value="momo" @selected(old('payment_channel', $sale->payment_channel ?? 'cash')==='momo')>MoMo</option>
+                </select>
+                <div class="flex gap-2 mt-2">
+                    <button type="button" @click="setChannel('cash')" class="px-2 py-1 rounded-md text-[11px] border hover:bg-gray-50 dark:hover:bg-gray-700" :class="badgeClass('cash')">Cash</button>
+                    <button type="button" @click="setChannel('bank')" class="px-2 py-1 rounded-md text-[11px] border hover:bg-gray-50 dark:hover:bg-gray-700" :class="badgeClass('bank')">Bank</button>
+                    <button type="button" @click="setChannel('momo')" class="px-2 py-1 rounded-md text-[11px] border hover:bg-gray-50 dark:hover:bg-gray-700" :class="badgeClass('momo')">MoMo</button>
+                </div>
+            </div>
+
+            <div>
+                <x-label value="Reference (optional)" />
                 <input type="text" name="method"
                        value="{{ old('method', $sale->method) }}"
-                       placeholder="cash / momo / bank"
+                       placeholder="POS ref / Txn ID / Cheque no."
                        class="w-full mt-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
             </div>
         </div>
@@ -74,9 +89,12 @@
                     <i data-lucide="package" class="w-4 h-4 text-indigo-600 dark:text-indigo-400"></i>
                     Products
                 </h3>
-                <button type="button" class="btn btn-outline text-xs sm:text-sm flex items-center gap-1" @click="addLine()">
-                    <i data-lucide="plus" class="w-4 h-4"></i> Add Item
-                </button>
+                <div class="flex gap-2">
+                    <button type="button" class="btn btn-outline text-xs sm:text-sm flex items-center gap-1" @click="addLine()">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Add Item
+                    </button>
+                    <button type="button" class="btn btn-outline text-xs sm:text-sm" @click="clearLines()">Clear All</button>
+                </div>
             </div>
 
             <div class="overflow-x-auto">
@@ -131,6 +149,9 @@
                                 </td>
                             </tr>
                         </template>
+                        <tr x-show="!lines.length">
+                            <td colspan="5" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">No items yet. Add your first product.</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -152,12 +173,20 @@
                 </div>
 
                 <div class="flex justify-between text-sm items-center">
-                    <x-label for="amount_paid" value="Amount Paid" class="text-gray-700 dark:text-gray-300 font-medium" />
-                    <input type="number" step="0.01" min="0" id="amount_paid"
-                           name="amount_paid"
-                           value="{{ old('amount_paid', $sale->amount_paid) }}"
-                           class="w-36 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-right text-sm focus:border-indigo-500 focus:ring-indigo-500"
-                           x-model.number="paid" @input="recalc()">
+                    <label for="amount_paid" class="text-gray-700 dark:text-gray-300 font-medium">Amount Paid</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" step="0.01" min="0" id="amount_paid"
+                               name="amount_paid"
+                               value="{{ old('amount_paid', $sale->amount_paid ?? 0) }}"
+                               class="w-36 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-right text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                               x-model.number="paid" @input="recalc()">
+                        <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="payFull()">Full</button>
+                    </div>
+                </div>
+
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600 dark:text-gray-400">Channel</span>
+                    <span class="font-medium" x-text="channel.toUpperCase()"></span>
                 </div>
 
                 <div class="flex justify-between font-semibold text-gray-800 dark:text-gray-100 border-t border-gray-100 dark:border-gray-700 pt-2">
@@ -180,51 +209,59 @@
 
 {{-- Alpine + Lucide --}}
 @php
-    $mappedItems = $sale->items->map(function($i){
-        return [
-            'key' => uniqid(),
+    $mappedItems = old('products')
+        ? collect(old('products'))->map(fn($p) => [
+            'key'        => uniqid(),
+            'product_id' => (int)($p['product_id'] ?? 0),
+            'quantity'   => (float)($p['quantity'] ?? 1),
+            'unit_price' => (float)($p['unit_price'] ?? 0),
+        ])->values()
+        : $sale->items->map(fn($i) => [
+            'key'        => uniqid(),
             'product_id' => (int) $i->product_id,
-            'quantity' => (float) $i->quantity,
+            'quantity'   => (float) $i->quantity,
             'unit_price' => (float) $i->unit_price,
-        ];
-    });
+        ])->values();
 @endphp
 
 @push('scripts')
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
-function saleForm(){
-    return {
-        lines: [],
-        total: 0,
-        paid: Number('{{ $sale->amount_paid }}'),
 
-        init(){
-            this.lines = @json($mappedItems);
-            if(this.lines.length === 0){
-                this.addLine();
-            }
-            this.recalc();
+function saleEditForm(){
+    return {
+        channel: '{{ old('payment_channel', $sale->payment_channel ?? 'cash') }}',
+        lines: @json($mappedItems),
+        total: 0,
+        paid: Number('{{ old('amount_paid', $sale->amount_paid ?? 0) }}'),
+
+        init(){ if(!this.lines.length){ this.addLine(); } this.recalc(); },
+        setChannel(c){ this.channel = c; },
+        badgeClass(c){
+            const active = this.channel===c;
+            const base = 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200';
+            const on   = {
+                cash: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 border-green-300 dark:border-green-700',
+                bank: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-700',
+                momo: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700',
+            }[c];
+            return active ? on : base;
         },
 
         addLine(){
             this.lines.push({
-                key: crypto.randomUUID?.() || (Date.now() + Math.random()),
+                key: crypto.randomUUID?.() || (Date.now()+Math.random()),
                 product_id: '',
                 quantity: 1,
                 unit_price: 0
             });
         },
-
-        removeLine(i){
-            this.lines.splice(i, 1);
-            this.recalc();
-        },
+        clearLines(){ this.lines = []; this.recalc(); },
+        removeLine(i){ this.lines.splice(i, 1); this.recalc(); },
 
         onProductChange(row, event){
-            const select = event.target;
-            const price = Number(select.options[select.selectedIndex]?.dataset?.price || 0);
+            const price = Number(event.target.options[event.target.selectedIndex]?.dataset?.price || 0);
             if (price > 0 && (!row.unit_price || row.unit_price === 0)) {
                 row.unit_price = price;
             }
@@ -233,12 +270,11 @@ function saleForm(){
 
         recalc(){
             this.total = this.lines.reduce((sum, r) =>
-                sum + (Number(r.quantity) * Number(r.unit_price)), 0);
+                sum + (Number(r.quantity||0) * Number(r.unit_price||0)), 0);
         },
 
-        formatMoney(v){
-            return Number(v || 0).toFixed(2);
-        }
+        payFull(){ this.paid = this.total; },
+        formatMoney(v){ return Number(v || 0).toFixed(2); }
     }
 }
 </script>

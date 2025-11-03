@@ -1,217 +1,123 @@
+@php
+    $supplier = $purchase->supplier ?? null;
+    $date = $purchase->date ?? $purchase->purchased_at ?? $purchase->created_at;
+    $computedSubtotal = $purchase->subtotal ?? $purchase->items->sum(fn($i) => (float)$i->quantity * (float)$i->unit_cost);
+    $tax      = $purchase->tax ?? $purchase->tax_amount ?? 0;
+    $discount = $purchase->discount ?? $purchase->discount_amount ?? 0;
+    $total    = $purchase->total ?? $purchase->total_amount ?? ($computedSubtotal + $tax - $discount);
+    $paid     = $purchase->paid ?? $purchase->amount_paid ?? 0;
+    $balance  = max(0, $total - $paid);
+    $fmt = fn($n) => number_format((float)$n, 2);
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <title>Purchase Invoice #{{ $purchase->id }}</title>
     <style>
-        /* ===============================
-           PAGE & TYPOGRAPHY
-        =============================== */
-        @page { margin: 30px 40px; }
-        body {
-            font-family: 'DejaVu Sans', sans-serif;
-            font-size: 13px;
-            color: #111827;
-            background: #fff;
-            margin: 0;
-        }
-        h1, h2, h3, h4 { margin: 0; color: #1e293b; }
-        p { margin: 2px 0; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td {
-            border: 1px solid #e5e7eb;
-            padding: 8px 10px;
-            vertical-align: top;
-        }
-        th {
-            background: #f9fafb;
-            color: #111827;
-            text-align: left;
-            font-weight: 600;
-        }
-        td { color: #374151; }
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
-
-        /* ===============================
-           HEADER
-        =============================== */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            border-bottom: 2px solid #1e40af;
-            padding-bottom: 8px;
-            margin-bottom: 20px;
-        }
-        .company h2 {
-            font-size: 22px;
-            color: #1e40af;
-            font-weight: 700;
-        }
-        .company small { color: #6b7280; }
-        .invoice-meta { text-align: right; font-size: 13px; }
-
-        /* ===============================
-           BADGES
-        =============================== */
-        .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .badge-green { background: #dcfce7; color: #166534; }
-        .badge-yellow { background: #fef9c3; color: #854d0e; }
-        .badge-red { background: #fee2e2; color: #991b1b; }
-
-        /* ===============================
-           TOTALS TABLE
-        =============================== */
-        .total-row td { font-weight: bold; background: #f9fafb; }
+        @page { margin: 28mm 18mm; }
+        body { font-family: DejaVu Sans, sans-serif; color: #111827; font-size: 12px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 18px; }
+        .h1 { font-size: 22px; font-weight: 700; margin: 0; }
         .muted { color: #6b7280; }
-
-        /* ===============================
-           FOOTER
-        =============================== */
-        .footer {
-            margin-top: 40px;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 10px;
-            text-align: center;
-            font-size: 12px;
-            color: #6b7280;
-        }
-
-        /* ===============================
-           RESPONSIVE / PRINT
-        =============================== */
-        @media print {
-            body { -webkit-print-color-adjust: exact; }
-            .no-print { display: none; }
-        }
+        .block { margin-bottom: 14px; }
+        .chip { display:inline-block; padding:3px 8px; border:1px solid #e5e7eb; border-radius: 6px; font-size: 11px; color:#374151; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 8px; }
+        thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color:#6b7280; border-bottom:1px solid #e5e7eb; text-align:left; }
+        tbody td { border-bottom:1px solid #f3f4f6; }
+        tfoot td { padding: 6px 8px; }
+        .right { text-align: right; }
+        .totals { width: 320px; margin-left: auto; }
+        .brand { font-weight: 700; letter-spacing: .01em; }
+        .small { font-size: 11px; }
     </style>
 </head>
 <body>
-<div class="wrap" style="max-width:900px; margin:0 auto; padding:20px;">
 
-    {{-- 🔹 HEADER --}}
     <div class="header">
-        <div class="company">
-            <h2>{{ config('company.name', config('app.name', 'Your Company')) }}</h2>
-            @if(config('company.address_line1'))<div>{{ config('company.address_line1') }}</div>@endif
-            @if(config('company.address_line2'))<div>{{ config('company.address_line2') }}</div>@endif
-            @if(config('company.phone'))<div>Phone: {{ config('company.phone') }}</div>@endif
-            @if(config('company.email'))<div>Email: {{ config('company.email') }}</div>@endif
-            @if(config('company.tax_id'))<div>{{ config('company.tax_id') }}</div>@endif
-        </div>
-
-        <div class="invoice-meta">
-            <h3 style="margin-bottom:4px;">Purchase Invoice</h3>
-            <p><strong>Invoice #:</strong> {{ $purchase->id }}</p>
-            <p><strong>Date:</strong> {{ \Carbon\Carbon::parse($purchase->purchase_date)->format('Y-m-d') }}</p>
-            <p><strong>Recorded by:</strong> {{ $purchase->user->name ?? 'System' }}</p>
-            @php
-                $status = $purchase->status ?? 'completed';
-                $badge = $status === 'completed' ? 'badge-green' : ($status === 'pending' ? 'badge-yellow' : 'badge-red');
-            @endphp
-            <p><strong>Status:</strong> <span class="badge {{ $badge }}">{{ ucfirst($status) }}</span></p>
-        </div>
-    </div>
-
-    {{-- 🔹 SUPPLIER INFO --}}
-    <div style="margin-bottom:16px; display:flex; justify-content:space-between;">
         <div>
-            <strong>Supplier:</strong><br>
-            {{ $purchase->supplier->name ?? 'Unknown Supplier' }}<br>
-            @if($purchase->supplier->phone)<span>Phone: {{ $purchase->supplier->phone }}</span><br>@endif
-            @if($purchase->supplier->email)<span>Email: {{ $purchase->supplier->email }}</span><br>@endif
+            <div class="brand">{{ config('app.name', 'Stock Manager') }}</div>
+            <div class="muted small">Purchase Invoice</div>
         </div>
-        <div style="text-align:right;">
-            @if($purchase->invoice_number)
-                <div>Supplier Invoice: <strong>{{ $purchase->invoice_number }}</strong></div>
-            @endif
-            @if($purchase->method)
-                <div>Payment Method: <strong>{{ ucfirst($purchase->method) }}</strong></div>
-            @endif
+        <div class="right">
+            <div class="h1">#{{ $purchase->id }}</div>
+            <div class="muted small">{{ \Carbon\Carbon::parse($date)->format('M j, Y g:i A') }}</div>
+            <div class="chip" style="margin-top:6px;">Method: {{ strtoupper($purchase->method ?? 'cash') }}</div>
         </div>
     </div>
 
-    {{-- 🔹 ITEMS TABLE --}}
-    <table>
+    <div class="block" style="display:flex; gap:24px;">
+        <div style="flex:1;">
+            <div class="muted small" style="margin-bottom:4px;">Supplier</div>
+            <div><strong>{{ $supplier->name ?? '—' }}</strong></div>
+            @if(!empty($supplier?->email))<div class="small muted">{{ $supplier->email }}</div>@endif
+            @if(!empty($supplier?->phone))<div class="small muted">{{ $supplier->phone }}</div>@endif
+            @if(!empty($supplier?->address))<div class="small muted">{{ $supplier->address }}</div>@endif
+        </div>
+        <div style="flex:1;">
+            <div class="muted small" style="margin-bottom:4px;">Purchase</div>
+            <div><strong>Status:</strong> {{ ucfirst($purchase->status ?? 'completed') }}</div>
+            <div><strong>Reference:</strong> #{{ $purchase->id }}</div>
+        </div>
+    </div>
+
+    <table style="margin-top:10px;">
         <thead>
             <tr>
                 <th>Product</th>
-                <th class="text-center">Qty</th>
-                <th class="text-right">Unit Cost</th>
-                <th class="text-right">Subtotal</th>
+                <th class="right">Qty</th>
+                <th class="right">Unit Cost</th>
+                <th class="right">Line Total</th>
             </tr>
         </thead>
         <tbody>
             @foreach($purchase->items as $item)
+                @php
+                    $qty = (float)$item->quantity;
+                    $uc  = (float)$item->unit_cost;
+                    $lt  = $item->total_cost ?? $qty * $uc;
+                @endphp
                 <tr>
-                    <td>{{ $item->product->name ?? 'N/A' }}</td>
-                    <td class="text-center">{{ number_format($item->quantity, 2) }}</td>
-                    <td class="text-right">{{ number_format($item->unit_cost, 2) }}</td>
-                    <td class="text-right">{{ number_format($item->total_cost, 2) }}</td>
+                    <td>{{ $item->product->name ?? ('#'.$item->product_id) }}</td>
+                    <td class="right">{{ number_format($qty, 2) }}</td>
+                    <td class="right">RWF {{ $fmt($uc) }}</td>
+                    <td class="right">RWF {{ $fmt($lt) }}</td>
                 </tr>
             @endforeach
         </tbody>
-
-        @php
-            $subtotal = $purchase->subtotal ?? $purchase->items->sum('total_cost');
-            $tax = $purchase->tax ?? 0;
-            $discount = $purchase->discount ?? 0;
-            $total = $purchase->total_amount ?? (($subtotal + $tax) - $discount);
-            $paid = $purchase->amount_paid ?? 0;
-            $balance = $total - $paid;
-        @endphp
-
-        <tfoot>
-            <tr>
-                <td colspan="3" class="text-right muted">Subtotal</td>
-                <td class="text-right">{{ number_format($subtotal, 2) }}</td>
-            </tr>
-            <tr>
-                <td colspan="3" class="text-right muted">Tax</td>
-                <td class="text-right">{{ number_format($tax, 2) }}</td>
-            </tr>
-            <tr>
-                <td colspan="3" class="text-right muted">Discount</td>
-                <td class="text-right">-{{ number_format($discount, 2) }}</td>
-            </tr>
-            <tr class="total-row">
-                <td colspan="3" class="text-right">Total Amount</td>
-                <td class="text-right">{{ number_format($total, 2) }}</td>
-            </tr>
-            <tr>
-                <td colspan="3" class="text-right muted">Amount Paid</td>
-                <td class="text-right">{{ number_format($paid, 2) }}</td>
-            </tr>
-            <tr>
-                <td colspan="3" class="text-right muted">Balance Due</td>
-                <td class="text-right" style="color: {{ $balance > 0 ? '#dc2626' : '#16a34a' }}">
-                    {{ number_format($balance, 2) }}
-                </td>
-            </tr>
-        </tfoot>
     </table>
 
-    {{-- 🔹 NOTES --}}
-    @if($purchase->notes)
-        <div style="margin-top:16px;">
-            <strong>Notes:</strong>
-            <p class="muted" style="white-space: pre-line;">{{ $purchase->notes }}</p>
-        </div>
-    @endif
+    <table class="totals" style="margin-top:14px;">
+        <tr>
+            <td class="right muted">Subtotal</td>
+            <td class="right"><strong>RWF {{ $fmt($computedSubtotal) }}</strong></td>
+        </tr>
+        <tr>
+            <td class="right muted">Tax</td>
+            <td class="right">+ RWF {{ $fmt($tax) }}</td>
+        </tr>
+        <tr>
+            <td class="right muted">Discount</td>
+            <td class="right">– RWF {{ $fmt($discount) }}</td>
+        </tr>
+        <tr>
+            <td class="right">Total</td>
+            <td class="right"><strong>RWF {{ $fmt($total) }}</strong></td>
+        </tr>
+        <tr>
+            <td class="right muted">Paid</td>
+            <td class="right">RWF {{ $fmt($paid) }}</td>
+        </tr>
+        <tr>
+            <td class="right">Balance</td>
+            <td class="right"><strong>RWF {{ $fmt($balance) }}</strong></td>
+        </tr>
+    </table>
 
-    {{-- 🔹 FOOTER --}}
-    <div class="footer">
-        <p>Thank you for your business!</p>
-        <p>Generated on {{ now()->format('d M Y, H:i') }}</p>
-        <p>{{ config('company.name', config('app.name')) }} • {{ config('company.email', 'info@example.com') }}</p>
+    <div style="margin-top:32px; border-top:1px solid #e5e7eb; padding-top:8px;" class="small muted">
+        Generated by {{ config('app.name', 'Stock Manager') }} – {{ now()->format('M j, Y g:i A') }}
     </div>
-</div>
+
 </body>
 </html>
