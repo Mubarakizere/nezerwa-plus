@@ -59,4 +59,14 @@ class Sale extends Model
     {
         return $this->items->sum('profit');
     }
+    public function returns()
+{
+    return $this->hasMany(\App\Models\SaleReturn::class);
+}
+public function getNetTotalAttribute(): float
+{
+    $returns = (float)($this->returns_total ?? $this->returns()->sum('amount'));
+    return max(0, (float)$this->total_amount - $returns);
+}
+
 }

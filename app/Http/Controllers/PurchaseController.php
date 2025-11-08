@@ -18,16 +18,40 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class PurchaseController extends Controller
 {
-    /** Normalize channel; fallback to 'cash'. */
+    /** Normalize channel; fallback to 'cash'. Accepts minor aliases & trims. */
     protected function channel(?string $ch): string
     {
-        $c = strtolower((string)$ch);
-        return in_array($c, ['cash', 'bank', 'momo'], true) ? $c : 'cash';
+        $c = strtolower(trim((string)$ch));
+        $map = [
+            'mo-mo'    => 'momo',
+            'mtn'      => 'momo',
+            'mtn momo' => 'momo',
+        ];
+        if (isset($map[$c])) $c = $map[$c];
+        return in_array($c, ['cash','bank','momo'], true) ? $c : 'cash';
     }
 
-    /**
-     * List all purchases.
-     */
+    /** Read channel from request. Handles legacy forms that sent channel in "method". */
+    protected function readChannel(Request $request): string
+    {
+        $in = $request->input('payment_channel');
+        if (!$in) {
+            $maybe = strtolower(trim((string)$request->input('method')));
+            if (in_array($maybe, ['cash','bank','momo'], true)) {
+                $in = $maybe;
+            }
+        }
+        return $this->channel($in);
+    }
+
+    /** Derive status from payment vs total. */
+    private function statusFromPayment(float $total, float $paid): string
+    {
+        if ($paid <= 0.0)             return 'pending';
+        if ($paid + 0.009 >= $total)  return 'completed';
+        return 'partial';
+    }
+
     public function index()
     {
         $purchases = Purchase::with(['supplier', 'user'])
@@ -38,9 +62,6 @@ class PurchaseController extends Controller
         return view('purchases.index', compact('purchases'));
     }
 
-    /**
-     * Show form to create a new purchase.
-     */
     public function create()
     {
         $suppliers = Supplier::orderBy('name')->get(['id','name']);
@@ -48,12 +69,6 @@ class PurchaseController extends Controller
         return view('purchases.create', compact('suppliers', 'products'));
     }
 
-    /**
-     * Store a new purchase.
-     * - Creates stock movements (in)
-     * - Creates Transaction (debit) if amount_paid > 0
-     * - Creates Loan (taken) if balance remains
-     */
     public function store(Request $request)
     {
         // Clean empty rows first
@@ -66,13 +81,12 @@ class PurchaseController extends Controller
         $request->validate([
             'supplier_id'             => 'required|exists:suppliers,id',
             'purchase_date'           => 'required|date',
-            'payment_channel'         => 'nullable|in:cash,bank,momo',
-            'method'                  => 'nullable|string|max:80',   // human ref (POS/Txn/Cheque)
+            'payment_channel'         => 'nullable|in:cash,bank,momo|required_with:amount_paid',
+            'method'                  => 'nullable|string|max:120',
             'notes'                   => 'nullable|string|max:500',
             'tax'                     => 'nullable|numeric|min:0|max:100',
             'discount'                => 'nullable|numeric|min:0|max:100',
             'amount_paid'             => 'nullable|numeric|min:0',
-
             'products'                => 'required|array|min:1',
             'products.*.product_id'   => 'required|exists:products,id',
             'products.*.quantity'     => 'required|numeric|min:0.01',
@@ -85,34 +99,50 @@ class PurchaseController extends Controller
 
         try {
             DB::beginTransaction();
-            Log::info('🧾 Creating Purchase...', ['user' => Auth::id()]);
 
-            // 1) Create shell
+            // 1) Totals
+            $subtotal = 0.0;
+            foreach ($request->products as $row) {
+                $subtotal += round(((float)$row['quantity']) * ((float)$row['unit_cost']), 2);
+            }
+
+            $taxPct        = (float)($request->tax ?? 0);
+            $discountPct   = (float)($request->discount ?? 0);
+            $taxValue      = round($subtotal * ($taxPct / 100), 2);
+            $discountValue = round($subtotal * ($discountPct / 100), 2);
+            $totalAmount   = round(($subtotal + $taxValue) - $discountValue, 2);
+
+            $amountPaidInput = round((float)($request->amount_paid ?? 0), 2);
+            $amountPaid      = min($amountPaidInput, $totalAmount);
+            $balanceDue      = max(round($totalAmount - $amountPaid, 2), 0);
+            $status          = $this->statusFromPayment($totalAmount, $amountPaid);
+
+            $channel = $this->readChannel($request);
+
+            // 2) Header
             $purchase = Purchase::create([
                 'supplier_id'     => $request->supplier_id,
                 'user_id'         => Auth::id(),
                 'purchase_date'   => $request->purchase_date,
-                'payment_channel' => $this->channel($request->payment_channel), // new
-                'method'          => $request->method,                          // human ref
+                'payment_channel' => $channel,
+                'method'          => $request->method,
                 'notes'           => $request->notes,
-
-                'subtotal'        => 0,
-                'tax'             => $request->tax ?? 0,
-                'discount'        => $request->discount ?? 0,
-                'total_amount'    => 0,
-                'amount_paid'     => $request->amount_paid ?? 0,
-                'balance_due'     => 0,
+                'subtotal'        => $subtotal,
+                'tax'             => $taxValue,
+                'discount'        => $discountValue,
+                'total_amount'    => $totalAmount,
+                'amount_paid'     => $amountPaid,
+                'balance_due'     => $balanceDue,
+                'status'          => $status,
             ]);
 
-            // 2) Items + stock movements (in) + compute subtotal
-            $subtotal = 0.0;
-
+            // 3) Items + movements (track affected products)
+            $affectedIds = [];
             foreach ($request->products as $row) {
                 $pid       = (int)$row['product_id'];
                 $qty       = (float)$row['quantity'];
                 $unitCost  = (float)$row['unit_cost'];
                 $lineTotal = round($qty * $unitCost, 2);
-                $subtotal += $lineTotal;
 
                 PurchaseItem::create([
                     'purchase_id' => $purchase->id,
@@ -121,6 +151,11 @@ class PurchaseController extends Controller
                     'unit_cost'   => $unitCost,
                     'total_cost'  => $lineTotal,
                 ]);
+
+                if ($product = Product::find($pid)) {
+                    // Incremental WAC (fast path)
+                    $this->updateWeightedAverageCost($product, $qty, $unitCost);
+                }
 
                 StockMovement::create([
                     'product_id'  => $pid,
@@ -133,42 +168,24 @@ class PurchaseController extends Controller
                     'user_id'     => Auth::id(),
                 ]);
 
-                // Update Weighted Average Cost after inbound
-                if ($product = Product::find($pid)) {
-                    $this->updateWeightedAverageCost($product, $qty, $unitCost);
-                }
+                $affectedIds[] = $pid;
             }
 
-            // 3) Totals
-            $taxValue      = round($subtotal * (($purchase->tax ?? 0) / 100), 2);
-            $discountValue = round($subtotal * (($purchase->discount ?? 0) / 100), 2);
-            $totalAmount   = round(($subtotal + $taxValue) - $discountValue, 2);
-            $amountPaid    = round($purchase->amount_paid ?? 0, 2);
-            $balanceDue    = round($totalAmount - $amountPaid, 2);
-
-            $purchase->update([
-                'subtotal'      => $subtotal,
-                'tax'           => $taxValue,
-                'discount'      => $discountValue,
-                'total_amount'  => $totalAmount,
-                'balance_due'   => $balanceDue,
-            ]);
-
-            // 4) Financials: Transaction (debit) + DebitCredit (debit)
+            // 4) Financials
             if ($amountPaid > 0.009) {
-                $notes = "Auto-generated from Purchase #{$purchase->id} (channel: " . strtoupper($purchase->payment_channel ?? 'CASH') . ")";
+                $notes = "Auto-generated from Purchase #{$purchase->id} (channel: " . strtoupper($channel) . ")";
                 if ($purchase->method) {
                     $notes .= " • Ref: {$purchase->method}";
                 }
 
                 $txn = Transaction::create([
-                    'type'             => 'debit', // cash out
+                    'type'             => 'debit',
                     'user_id'          => $purchase->user_id,
-                    'supplier_id'      => $purchase->supplier_id ?? null, // if your schema has it
+                    'supplier_id'      => $purchase->supplier_id ?? null,
                     'purchase_id'      => $purchase->id,
                     'amount'           => $amountPaid,
                     'transaction_date' => $purchase->purchase_date,
-                    'method'           => $purchase->payment_channel ?? 'cash', // channel stored here
+                    'method'           => $channel,
                     'notes'            => $notes,
                 ]);
 
@@ -178,18 +195,18 @@ class PurchaseController extends Controller
                     'description'    => "Supplier payment – Purchase #{$purchase->id}",
                     'date'           => now()->toDateString(),
                     'user_id'        => $purchase->user_id,
-                    'supplier_id'    => $purchase->supplier_id ?? null, // if schema supports it
+                    'supplier_id'    => $purchase->supplier_id ?? null,
                     'transaction_id' => $txn->id,
                 ]);
             }
 
-            // 5) Loan (taken) if not fully paid
+            // 5) Loan when not fully paid
             if ($balanceDue > 0.009) {
                 Loan::updateOrCreate(
                     ['purchase_id' => $purchase->id],
                     [
                         'user_id'     => $purchase->user_id,
-                        'supplier_id' => $purchase->supplier_id ?? null, // ok if column exists; otherwise omit in schema
+                        'supplier_id' => $purchase->supplier_id ?? null,
                         'type'        => 'taken',
                         'amount'      => $balanceDue,
                         'loan_date'   => $purchase->purchase_date,
@@ -199,47 +216,28 @@ class PurchaseController extends Controller
                 );
             }
 
-            DB::commit();
-            Log::info('✅ Purchase stored', ['purchase_id' => $purchase->id]);
+            // 6) Recalc WAC from ledger for accuracy
+            $this->recalcWacForProducts($affectedIds);
 
+            DB::commit();
             return redirect()->route('purchases.show', $purchase)->with('success', 'Purchase recorded successfully.');
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('❌ Purchase store failed', ['error' => $e->getMessage()]);
+            Log::error('Purchase store failed', [
+                'error' => $e->getMessage(),
+                'payment_channel_input' => $request->input('payment_channel'),
+                'method_input' => $request->input('method'),
+            ]);
             return back()->withErrors(['error' => 'Purchase failed: ' . $e->getMessage()])->withInput();
         }
     }
 
-    /**
-     * Weighted Average Cost Calculation (called after each inbound).
-     */
-    private function updateWeightedAverageCost(Product $product, float $qtyIn, float $costIn): void
-    {
-        $currentStock = (float)$product->currentStock();
-        $oldCost      = (float)($product->cost_price ?? 0);
-
-        $oldValue = $currentStock * $oldCost;
-        $newValue = $qtyIn * $costIn;
-        $newQty   = $currentStock + $qtyIn;
-
-        if ($newQty > 0) {
-            $product->cost_price = round(($oldValue + $newValue) / $newQty, 2);
-            $product->save();
-        }
-    }
-
-    /**
-     * Show purchase details.
-     */
     public function show(Purchase $purchase)
     {
-        $purchase->load(['supplier', 'items.product', 'transaction', 'user', 'loan']);
+        $purchase->load(['supplier', 'items.product','items.returnItems', 'transaction', 'user', 'loan']);
         return view('purchases.show', compact('purchase'));
     }
 
-    /**
-     * Edit purchase.
-     */
     public function edit(Purchase $purchase)
     {
         $suppliers = Supplier::orderBy('name')->get(['id','name']);
@@ -248,9 +246,6 @@ class PurchaseController extends Controller
         return view('purchases.edit', compact('purchase', 'suppliers', 'products'));
     }
 
-    /**
-     * Update purchase (rebuild items + movements; resync financials/loan).
-     */
     public function update(Request $request, Purchase $purchase)
     {
         // Clean rows then validate
@@ -263,13 +258,12 @@ class PurchaseController extends Controller
         $request->validate([
             'supplier_id'             => 'required|exists:suppliers,id',
             'purchase_date'           => 'required|date',
-            'payment_channel'         => 'nullable|in:cash,bank,momo',
-            'method'                  => 'nullable|string|max:80',
+            'payment_channel'         => 'nullable|in:cash,bank,momo|required_with:amount_paid',
+            'method'                  => 'nullable|string|max:120',
             'notes'                   => 'nullable|string|max:500',
             'tax'                     => 'nullable|numeric|min:0|max:100',
             'discount'                => 'nullable|numeric|min:0|max:100',
             'amount_paid'             => 'nullable|numeric|min:0',
-
             'products'                => 'required|array|min:1',
             'products.*.product_id'   => 'required|exists:products,id',
             'products.*.quantity'     => 'required|numeric|min:0.01',
@@ -282,22 +276,42 @@ class PurchaseController extends Controller
 
         try {
             DB::beginTransaction();
-            Log::info('♻️ Updating Purchase...', ['purchase_id' => $purchase->id]);
 
-            // 1) Clear old stock + items
+            // Capture affected product ids BEFORE removing old lines
+            $prevIds = $purchase->items()->pluck('product_id')->all();
+
+            // 1) Remove old movements/items
             StockMovement::where('source_type', Purchase::class)
                 ->where('source_id', $purchase->id)
                 ->delete();
             $purchase->items()->delete();
 
-            // 2) Rebuild items + movements
+            // 2) Totals
             $subtotal = 0.0;
+            foreach ($request->products as $row) {
+                $subtotal += round(((float)$row['quantity']) * ((float)$row['unit_cost']), 2);
+            }
+
+            $taxPct        = (float)($request->tax ?? 0);
+            $discountPct   = (float)($request->discount ?? 0);
+            $taxValue      = round($subtotal * ($taxPct / 100), 2);
+            $discountValue = round($subtotal * ($discountPct / 100), 2);
+            $totalAmount   = round(($subtotal + $taxValue) - $discountValue, 2);
+
+            $amountPaidInput = round((float)($request->amount_paid ?? 0), 2);
+            $amountPaid      = min($amountPaidInput, $totalAmount);
+            $balanceDue      = max(round($totalAmount - $amountPaid, 2), 0);
+            $status          = $this->statusFromPayment($totalAmount, $amountPaid);
+
+            $channel = $this->readChannel($request);
+
+            // 3) Recreate items + movements
+            $newIds = [];
             foreach ($request->products as $row) {
                 $pid       = (int)$row['product_id'];
                 $qty       = (float)$row['quantity'];
                 $unitCost  = (float)$row['unit_cost'];
                 $lineTotal = round($qty * $unitCost, 2);
-                $subtotal += $lineTotal;
 
                 PurchaseItem::create([
                     'purchase_id' => $purchase->id,
@@ -306,6 +320,11 @@ class PurchaseController extends Controller
                     'unit_cost'   => $unitCost,
                     'total_cost'  => $lineTotal,
                 ]);
+
+                if ($product = Product::find($pid)) {
+                    // Incremental WAC (fast path)
+                    $this->updateWeightedAverageCost($product, $qty, $unitCost);
+                }
 
                 StockMovement::create([
                     'product_id'  => $pid,
@@ -318,42 +337,34 @@ class PurchaseController extends Controller
                     'user_id'     => Auth::id(),
                 ]);
 
-                if ($product = Product::find($pid)) {
-                    $this->updateWeightedAverageCost($product, $qty, $unitCost);
-                }
+                $newIds[] = $pid;
             }
 
-            // 3) Totals + header
-            $taxValue      = round($subtotal * ((float)($request->tax ?? 0) / 100), 2);
-            $discountValue = round($subtotal * ((float)($request->discount ?? 0) / 100), 2);
-            $totalAmount   = round(($subtotal + $taxValue) - $discountValue, 2);
-            $amountPaid    = round((float)($request->amount_paid ?? 0), 2);
-            $balanceDue    = round($totalAmount - $amountPaid, 2);
-
+            // 4) Update header
             $purchase->update([
                 'supplier_id'     => $request->supplier_id,
                 'purchase_date'   => $request->purchase_date,
-                'payment_channel' => $this->channel($request->payment_channel),
+                'payment_channel' => $channel,
                 'method'          => $request->method,
                 'notes'           => $request->notes,
-
-                'subtotal'      => $subtotal,
-                'tax'           => $taxValue,
-                'discount'      => $discountValue,
-                'total_amount'  => $totalAmount,
-                'amount_paid'   => $amountPaid,
-                'balance_due'   => $balanceDue,
+                'subtotal'        => $subtotal,
+                'tax'             => $taxValue,
+                'discount'        => $discountValue,
+                'total_amount'    => $totalAmount,
+                'amount_paid'     => $amountPaid,
+                'balance_due'     => $balanceDue,
+                'status'          => $status,
             ]);
 
-            // 4) Sync Transaction (debit)
-            $txn = $purchase->transaction; // may be null
+            // 5) Sync Transaction
+            $txn = $purchase->transaction;
             if ($amountPaid <= 0.009) {
                 if ($txn) {
                     DebitCredit::where('transaction_id', $txn->id)->delete();
                     $txn->delete();
                 }
             } else {
-                $notes = "Updated from Purchase #{$purchase->id} (channel: " . strtoupper($purchase->payment_channel ?? 'CASH') . ")";
+                $notes = "Updated from Purchase #{$purchase->id} (channel: " . strtoupper($channel) . ")";
                 if ($purchase->method) {
                     $notes .= " • Ref: {$purchase->method}";
                 }
@@ -362,7 +373,7 @@ class PurchaseController extends Controller
                     $txn->update([
                         'amount'           => $amountPaid,
                         'transaction_date' => $purchase->purchase_date,
-                        'method'           => $purchase->payment_channel ?? 'cash',
+                        'method'           => $channel,
                         'notes'            => $notes,
                     ]);
 
@@ -394,7 +405,7 @@ class PurchaseController extends Controller
                         'purchase_id'      => $purchase->id,
                         'amount'           => $amountPaid,
                         'transaction_date' => $purchase->purchase_date,
-                        'method'           => $purchase->payment_channel ?? 'cash',
+                        'method'           => $channel,
                         'notes'            => $notes,
                     ]);
 
@@ -410,7 +421,7 @@ class PurchaseController extends Controller
                 }
             }
 
-            // 5) Loan (taken) sync
+            // 6) Loan sync
             if ($balanceDue <= 0.009) {
                 Loan::where('purchase_id', $purchase->id)->update(['status' => 'paid']);
             } else {
@@ -428,33 +439,37 @@ class PurchaseController extends Controller
                 );
             }
 
-            DB::commit();
-            Log::info('✅ Purchase updated', ['purchase_id' => $purchase->id]);
+            // 7) Recalc WAC from ledger for all impacted products
+            $this->recalcWacForProducts(array_merge($prevIds, $newIds));
 
+            DB::commit();
             return redirect()->route('purchases.show', $purchase)->with('success', 'Purchase updated successfully.');
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('❌ Purchase update failed', ['purchase_id' => $purchase->id, 'error' => $e->getMessage()]);
+            Log::error('Purchase update failed', [
+                'purchase_id' => $purchase->id,
+                'error' => $e->getMessage(),
+                'payment_channel_input' => $request->input('payment_channel'),
+                'method_input' => $request->input('method'),
+            ]);
             return back()->withErrors(['error' => 'Update failed: ' . $e->getMessage()])->withInput();
         }
     }
 
-    /**
-     * Delete purchase (and related stock, txn, debitcredit, loan).
-     */
     public function destroy(Purchase $purchase)
     {
         try {
             DB::beginTransaction();
 
-            // Delete financials first
+            // Capture product ids first
+            $affectedIds = $purchase->items()->pluck('product_id')->all();
+
             if ($purchase->transaction) {
                 DebitCredit::where('transaction_id', $purchase->transaction->id)->delete();
                 $purchase->transaction->delete();
             }
             Loan::where('purchase_id', $purchase->id)->delete();
 
-            // Delete stock + items + header
             StockMovement::where('source_type', Purchase::class)
                 ->where('source_id', $purchase->id)
                 ->delete();
@@ -462,20 +477,51 @@ class PurchaseController extends Controller
             $purchase->items()->delete();
             $purchase->delete();
 
-            DB::commit();
-            Log::info('🗑️ Purchase deleted', ['purchase_id' => $purchase->id]);
+            // Recalc WAC after removal
+            $this->recalcWacForProducts($affectedIds);
 
+            DB::commit();
             return redirect()->route('purchases.index')->with('success', 'Purchase deleted successfully.');
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('❌ Purchase delete failed', ['purchase_id' => $purchase->id, 'error' => $e->getMessage()]);
             return back()->withErrors(['error' => 'Delete failed: ' . $e->getMessage()]);
         }
     }
 
+    /** Weighted Average Cost using pre-inbound stock (fast path for create/update). */
+    private function updateWeightedAverageCost(Product $product, float $qtyIn, float $costIn): void
+    {
+        $currentStock = (float)$product->currentStock();
+        $oldCost      = (float)($product->cost_price ?? 0);
+
+        $oldValue = $currentStock * $oldCost;
+        $newValue = $qtyIn * $costIn;
+        $newQty   = $currentStock + $qtyIn;
+
+        if ($newQty > 0) {
+            $product->cost_price = round(($oldValue + $newValue) / $newQty, 2);
+            $product->save();
+        }
+    }
+
     /**
-     * Generate PDF Invoice.
+     * Authoritative WAC recompute from movement ledger.
+     * Call after edits/deletes to eliminate drift.
      */
+    private function recalcWacForProducts(array $productIds): void
+    {
+        $ids = array_values(array_unique(array_filter($productIds)));
+        if (empty($ids)) return;
+
+        foreach ($ids as $pid) {
+            $p = Product::find($pid);
+            if (!$p) continue;
+            $wac = (float) $p->weightedAverageCost(); // relies on movements
+            $p->cost_price = round($wac, 2);
+            $p->save();
+        }
+    }
+
     public function invoice(Purchase $purchase)
     {
         $purchase->load(['supplier', 'items.product', 'transaction', 'user', 'loan']);

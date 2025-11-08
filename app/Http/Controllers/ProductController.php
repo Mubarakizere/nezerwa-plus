@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\StockMovement;
+use App\Models\PurchaseReturn;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,16 +16,68 @@ class ProductController extends Controller
     /**
      * Display list of products with category and stock summary.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::with(['category'])
-            ->withCount([
-                'stockMovements as total_in' => fn($q) => $q->where('type', 'in'),
-                'stockMovements as total_out' => fn($q) => $q->where('type', 'out'),
-            ])
-            ->get();
+        $threshold = 5;
+        $perPage   = (int) $request->input('per_page', 20);
 
-        return view('products.index', compact('products'));
+        $categories = Category::orderBy('name')->get();
+
+        $query = Product::query()
+            ->with('category')
+            ->withSum(['stockMovements as qty_in' => fn($q) => $q->where('type', 'in')], 'quantity')
+            ->withSum(['stockMovements as qty_out' => fn($q) => $q->where('type', 'out')], 'quantity')
+            ->withSum(['stockMovements as qty_returned' => function ($q) {
+                $q->where('type', 'out')->where('source_type', PurchaseReturn::class);
+            }], 'quantity')
+            ->withMax('stockMovements as last_moved_at', 'created_at');
+
+        //  Search (name / SKU)
+        if ($s = trim((string) $request->input('search'))) {
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                    ->orWhere('sku', 'like', "%{$s}%");
+            });
+        }
+
+        //  Category filter
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
+
+        //  Stock status filter (Postgres-safe: use correlated subquery in WHERE)
+        if ($status = $request->input('stock_status')) {
+            $stockExpr = "
+                (
+                    SELECT
+                        COALESCE(SUM(CASE WHEN type = 'in'  THEN quantity ELSE 0 END), 0)
+                      - COALESCE(SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END), 0)
+                    FROM stock_movements sm
+                    WHERE sm.product_id = products.id
+                )
+            ";
+
+            // Expose computed_stock for display/sorting if needed
+            $query->select('products.*')->selectRaw("$stockExpr AS computed_stock");
+
+            if ($status === 'out') {
+                $query->whereRaw("$stockExpr <= 0");
+            } elseif ($status === 'low') {
+                $query->whereRaw("$stockExpr > 0 AND $stockExpr <= ?", [$threshold]);
+            } elseif ($status === 'in') {
+                $query->whereRaw("$stockExpr > ?", [$threshold]);
+            }
+        }
+
+        $query->orderBy('name');
+
+        $products = $query->paginate($perPage);
+
+        return view('products.index', [
+            'products'   => $products,
+            'categories' => $categories,
+            'threshold'  => $threshold,
+        ]);
     }
 
     /**
@@ -58,14 +111,15 @@ class ProductController extends Controller
                 'stock'       => $request->stock,
             ]);
 
-            // ✅ Record initial stock as StockMovement (type: in)
+            // Record initial stock as StockMovement (type: in)
             if ($request->stock > 0) {
+                $uc = $product->cost_price ?? $product->price ?? 0;
                 StockMovement::create([
                     'product_id'  => $product->id,
                     'type'        => 'in',
                     'quantity'    => $request->stock,
-                    'unit_cost'   => $product->cost_price ?? $product->price,
-                    'total_cost'  => ($product->cost_price ?? $product->price) * $request->stock,
+                    'unit_cost'   => $uc,
+                    'total_cost'  => $uc * $request->stock,
                     'source_type' => Product::class,
                     'source_id'   => $product->id,
                     'user_id'     => Auth::id(),
@@ -73,7 +127,7 @@ class ProductController extends Controller
             }
 
             DB::commit();
-            Log::info('✅ Product created successfully', ['product_id' => $product->id]);
+            Log::info(' Product created', ['product_id' => $product->id]);
 
             return redirect()
                 ->route('products.index')
@@ -81,7 +135,7 @@ class ProductController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('❌ Product creation failed', ['error' => $e->getMessage()]);
+            Log::error(' Product create failed', ['error' => $e->getMessage()]);
             return back()->withErrors(['error' => 'Failed to create product: ' . $e->getMessage()]);
         }
     }
@@ -135,17 +189,18 @@ class ProductController extends Controller
                 'stock'       => $request->stock,
             ]);
 
-            $newStock = $request->stock;
-            $difference = $newStock - $oldStock;
+            $newStock   = (float) $request->stock;
+            $difference = $newStock - (float) $oldStock;
 
-            // ✅ Record stock adjustment movement
+            // Record stock adjustment
             if ($difference != 0) {
+                $uc = $product->cost_price ?? $product->price ?? 0;
                 StockMovement::create([
                     'product_id'  => $product->id,
                     'type'        => $difference > 0 ? 'in' : 'out',
                     'quantity'    => abs($difference),
-                    'unit_cost'   => $product->cost_price ?? $product->price,
-                    'total_cost'  => abs($difference) * ($product->cost_price ?? $product->price),
+                    'unit_cost'   => $uc,
+                    'total_cost'  => abs($difference) * $uc,
                     'source_type' => Product::class,
                     'source_id'   => $product->id,
                     'user_id'     => Auth::id(),
@@ -153,7 +208,7 @@ class ProductController extends Controller
             }
 
             DB::commit();
-            Log::info('♻️ Product updated successfully', ['product_id' => $product->id]);
+            Log::info(' Product updated', ['product_id' => $product->id]);
 
             return redirect()
                 ->route('products.index')
@@ -161,7 +216,7 @@ class ProductController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('❌ Product update failed', ['error' => $e->getMessage()]);
+            Log::error(' Product update failed', ['error' => $e->getMessage()]);
             return back()->withErrors(['error' => 'Failed to update product: ' . $e->getMessage()]);
         }
     }
@@ -174,13 +229,13 @@ class ProductController extends Controller
         try {
             $product->delete();
 
-            Log::info('🗑️ Product deleted', ['product_id' => $product->id]);
+            Log::info(' Product deleted', ['product_id' => $product->id]);
 
             return redirect()
                 ->route('products.index')
                 ->with('success', 'Product deleted successfully.');
         } catch (\Throwable $e) {
-            Log::error('❌ Product delete failed', ['error' => $e->getMessage()]);
+            Log::error(' Product delete failed', ['error' => $e->getMessage()]);
             return back()->withErrors(['error' => 'Failed to delete product: ' . $e->getMessage()]);
         }
     }

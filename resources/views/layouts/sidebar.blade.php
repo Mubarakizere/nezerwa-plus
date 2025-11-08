@@ -41,6 +41,7 @@
                 <x-sidebar-link href="{{ route('suppliers.index') }}" :active="request()->routeIs('suppliers.*')">Suppliers</x-sidebar-link>
                 <x-sidebar-link href="{{ route('purchases.index') }}" :active="request()->routeIs('purchases.*')">Purchases</x-sidebar-link>
                 <x-sidebar-link href="{{ route('sales.index') }}" :active="request()->routeIs('sales.*')">Sales</x-sidebar-link>
+                <x-sidebar-link href="{{ route('expenses.index') }}" :active="request()->routeIs('expenses.*')">Expenses</x-sidebar-link>
                 <x-sidebar-link href="{{ route('transactions.index') }}" :active="request()->routeIs('transactions.*')">Transactions</x-sidebar-link>
                 <x-sidebar-link href="{{ route('customers.index') }}" :active="request()->routeIs('customers.*')">Customers</x-sidebar-link>
                 <x-sidebar-link href="{{ route('loans.index') }}" :active="request()->routeIs('loans.*')">Loans</x-sidebar-link>
@@ -54,6 +55,7 @@
                 <x-sidebar-link href="{{ route('sales.index') }}" :active="request()->routeIs('sales.*')">Sales</x-sidebar-link>
                 <x-sidebar-link href="{{ route('products.index') }}" :active="request()->routeIs('products.*')">Products</x-sidebar-link>
                 <x-sidebar-link href="{{ route('suppliers.index') }}" :active="request()->routeIs('suppliers.*')">Suppliers</x-sidebar-link>
+                 <x-sidebar-link href="{{ route('expenses.index') }}" :active="request()->routeIs('expenses.*')">Expenses</x-sidebar-link>
                 <x-sidebar-link href="{{ route('transactions.index') }}" :active="request()->routeIs('transactions.*')">Transactions</x-sidebar-link>
                 <x-sidebar-link href="{{ route('customers.index') }}" :active="request()->routeIs('customers.*')">Customers</x-sidebar-link>
                 <x-sidebar-link href="{{ route('stock.history') }}" :active="request()->routeIs('stock.history*')">Stock Movements</x-sidebar-link>

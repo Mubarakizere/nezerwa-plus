@@ -9,6 +9,10 @@ class Purchase extends Model
 {
     use HasFactory;
 
+    /* ───────────── Constants ───────────── */
+    public const STATUSES = ['pending','partial','completed','cancelled'];
+    public const CHANNELS = ['cash','bank','momo'];
+
     /* ───────────── Fillable ───────────── */
     protected $fillable = [
         'supplier_id',
@@ -23,17 +27,19 @@ class Purchase extends Model
         'amount_paid',
         'balance_due',
         'notes',
+        'payment_channel',
+        'method',
     ];
 
     /* ───────────── Casts ───────────── */
     protected $casts = [
         'purchase_date' => 'date',
-        'subtotal'      => 'float',
-        'tax'           => 'float',
-        'discount'      => 'float',
-        'total_amount'  => 'float',
-        'amount_paid'   => 'float',
-        'balance_due'   => 'float',
+        'subtotal'      => 'decimal:2',
+        'tax'           => 'decimal:2',
+        'discount'      => 'decimal:2',
+        'total_amount'  => 'decimal:2',
+        'amount_paid'   => 'decimal:2',
+        'balance_due'   => 'decimal:2',
     ];
 
     /* ───────────── Relationships ───────────── */
@@ -63,25 +69,64 @@ class Purchase extends Model
         return $this->hasOne(Loan::class);
     }
 
-    /* ───────────── Helpers ───────────── */
+    /* ───────────── Scopes (optional helpers) ───────────── */
 
-    /**
-     * Recalculate subtotal, total, and balance fields.
-     */
-    public function updateTotals(): void
+    public function scopeChannel($q, ?string $channel)
     {
-        $subtotal = $this->items->sum('total_cost');
-        $this->subtotal = $subtotal;
-        $this->total_amount = ($subtotal + ($this->tax ?? 0)) - ($this->discount ?? 0);
-        $this->balance_due = ($this->total_amount ?? 0) - ($this->amount_paid ?? 0);
-        $this->save();
+        if (!$channel) return $q;
+        return $q->where('payment_channel', strtolower(trim($channel)));
     }
 
-    /**
-     * Quick check: is this purchase fully paid?
-     */
+    public function scopeStatus($q, ?string $status)
+    {
+        if (!$status) return $q;
+        return $q->where('status', strtolower(trim($status)));
+    }
+
+    /* ───────────── Mutators / Accessors ───────────── */
+
+    /** Normalize channel on assignment (prevents stray values and fixes legacy forms). */
+    public function setPaymentChannelAttribute($value): void
+    {
+        $v = strtolower(trim((string)$value));
+        // small alias map
+        $map = ['mo-mo' => 'momo', 'mtn' => 'momo', 'mtn momo' => 'momo'];
+        if (isset($map[$v])) $v = $map[$v];
+
+        $this->attributes['payment_channel'] = in_array($v, self::CHANNELS, true) ? $v : 'cash';
+    }
+
+    /** Quick check: fully paid? */
     public function getIsPaidAttribute(): bool
     {
-        return $this->status === 'completed' && ($this->balance_due ?? 0) <= 0.009;
+        return ($this->status === 'completed') && ((float)$this->balance_due <= 0.009);
+    }
+public function returns()
+{
+    return $this->hasMany(\App\Models\PurchaseReturn::class);
+}
+
+public function returnItems()
+{
+    return $this->hasManyThrough(
+        \App\Models\PurchaseReturnItem::class,
+        \App\Models\PurchaseReturn::class,
+        'purchase_id', 'purchase_return_id'
+    );
+}
+    /* ───────────── Helpers ───────────── */
+
+    /** Recalculate subtotal, total, and balance fields from items + existing tax/discount (currency values). */
+    public function updateTotals(): void
+    {
+        $subtotal = (float) $this->items()->sum('total_cost');
+        $tax      = (float) ($this->tax ?? 0);
+        $discount = (float) ($this->discount ?? 0);
+
+        $this->subtotal     = round($subtotal, 2);
+        $this->total_amount = round(($subtotal + $tax) - $discount, 2);
+        $this->balance_due  = round(($this->total_amount ?? 0) - (float)($this->amount_paid ?? 0), 2);
+
+        $this->save();
     }
 }

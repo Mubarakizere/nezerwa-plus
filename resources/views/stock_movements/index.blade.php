@@ -1,10 +1,19 @@
+{{-- resources/views/stock_movements/index.blade.php --}}
 @extends('layouts.app')
 @section('title', 'Stock Movements')
 
 @section('content')
+@php
+    use App\Models\Purchase;
+    use App\Models\Sale;
+    use App\Models\PurchaseReturn;
+
+    $fmt = fn($n) => number_format((float)$n, 2);
+@endphp
+
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-    {{-- 🔹 Header --}}
+    {{-- Header --}}
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <i data-lucide="package" class="w-6 h-6 text-indigo-600 dark:text-indigo-400"></i>
@@ -24,16 +33,45 @@
         </div>
     </div>
 
-    {{-- 🔸 Summary Cards --}}
+    {{-- Summary Cards --}}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <x-stat-card title="Total In" value="{{ number_format($totals['in'], 2) }}" color="green" />
-        <x-stat-card title="Total Out" value="{{ number_format($totals['out'], 2) }}" color="red" />
-        <x-stat-card title="Net Movement" value="{{ number_format($totals['net'], 2) }}" color="{{ $totals['net'] >= 0 ? 'blue' : 'red' }}" />
+        <x-stat-card title="Total In"  value="{{ $fmt($totals['in'])  }}" color="green" />
+        <x-stat-card title="Total Out" value="{{ $fmt($totals['out']) }}" color="red" />
+        <x-stat-card title="Net Movement" value="{{ $fmt($totals['net']) }}" color="{{ $totals['net'] >= 0 ? 'blue' : 'red' }}" />
     </div>
 
-    {{-- 🔸 Filters --}}
+    {{-- Out/In breakdown --}}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="rounded-xl p-4 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Out Breakdown</div>
+            <div class="flex flex-wrap gap-1.5 text-[11px]">
+                <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                    <i data-lucide="shopping-bag" class="w-3 h-3"></i> Sales OUT: {{ $fmt($breakdown['out_sales']) }}
+                </span>
+                <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    <i data-lucide="u-turn-left" class="w-3 h-3"></i> Returns to Supplier: {{ $fmt($breakdown['out_returns']) }}
+                </span>
+            </div>
+        </div>
+        <div class="rounded-xl p-4 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">In Breakdown</div>
+            <div class="flex flex-wrap gap-1.5 text-[11px]">
+                <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    <i data-lucide="truck" class="w-3 h-3"></i> Purchases IN: {{ $fmt($breakdown['in_purchases']) }}
+                </span>
+            </div>
+        </div>
+        <div class="rounded-xl p-4 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">Records</div>
+            <div class="text-sm text-gray-700 dark:text-gray-300">
+                Showing <span class="font-medium">{{ $movements->total() }}</span> movements
+            </div>
+        </div>
+    </div>
+
+    {{-- Filters --}}
     <form method="GET" action="{{ route('stock.history') }}"
-          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4">
 
         <div class="md:col-span-2">
             <label class="form-label text-xs">Product</label>
@@ -57,6 +95,16 @@
         </div>
 
         <div>
+            <label class="form-label text-xs">Origin</label>
+            <select name="origin" class="form-select">
+                <option value="">Any</option>
+                <option value="purchase"        @selected(request('origin')==='purchase')>Purchase (IN)</option>
+                <option value="sale"            @selected(request('origin')==='sale')>Sale (OUT)</option>
+                <option value="purchase_return" @selected(request('origin')==='purchase_return')>Return to Supplier (OUT)</option>
+            </select>
+        </div>
+
+        <div>
             <label class="form-label text-xs">From</label>
             <input type="date" name="from_date" value="{{ request('from_date') }}" class="form-input">
         </div>
@@ -66,23 +114,23 @@
             <input type="date" name="to_date" value="{{ request('to_date') }}" class="form-input">
         </div>
 
-        <div class="md:col-span-5 flex justify-end mt-2">
+        <div class="md:col-span-6 flex justify-end mt-1">
             <button type="submit" class="btn btn-secondary flex items-center gap-1">
                 <i data-lucide="filter" class="w-4 h-4"></i> Filter
             </button>
         </div>
     </form>
 
-    {{-- 🔸 Table --}}
+    {{-- Table --}}
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="min-w-full text-sm divide-y divide-gray-200 dark:divide-gray-700">
+            <table class="min-w-[1150px] w-full text-sm divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-800/70 text-gray-700 dark:text-gray-300 uppercase text-xs font-semibold">
                     <tr>
                         <th class="px-4 py-3 text-left">Date</th>
                         <th class="px-4 py-3 text-left">Product</th>
                         <th class="px-4 py-3 text-left">Type</th>
-                        <th class="px-4 py-3 text-right">Quantity</th>
+                        <th class="px-4 py-3 text-right">Qty</th>
                         <th class="px-4 py-3 text-right">Unit Cost</th>
                         <th class="px-4 py-3 text-right">Total Cost</th>
                         <th class="px-4 py-3 text-left">Recorded By</th>
@@ -92,45 +140,79 @@
 
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     @forelse($movements as $m)
+                        @php
+                            $isIn  = $m->type === 'in';
+                            $isOut = $m->type === 'out';
+
+                            $badge = $isIn
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300';
+
+                            $sourceLabel = '';
+                            $sourceLink  = null;
+                            $sourceChip  = 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+                            $icon        = 'circle';
+
+                            if ($m->source_type === Purchase::class) {
+                                $sourceLabel = "Purchase #{$m->source_id}";
+                                $sourceLink  = route('purchases.show', $m->source_id);
+                                $sourceChip  = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300';
+                                $icon        = 'truck';
+                            } elseif ($m->source_type === Sale::class) {
+                                $sourceLabel = "Sale #{$m->source_id}";
+                                $sourceLink  = route('sales.show', $m->source_id);
+                                $sourceChip  = 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300';
+                                $icon        = 'shopping-bag';
+                            } elseif ($m->source_type === PurchaseReturn::class) {
+                                // If the morph is eager loaded we can deep-link to the related Purchase
+                                $purchaseId = optional($m->source)->purchase_id ?? null;
+                                $sourceLabel = "Return #{$m->source_id}";
+                                $sourceLink  = $purchaseId ? route('purchases.show', $purchaseId) . '#returns' : null;
+                                $sourceChip  = 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+                                $icon        = 'u-turn-left';
+                            }
+                        @endphp
+
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-all">
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                 {{ $m->created_at->format('d M Y, H:i') }}
                             </td>
-                            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ $m->product->name }}</td>
+
+                            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">
+                                {{ $m->product->name }}
+                            </td>
+
                             <td class="px-4 py-3">
-                                <span class="px-2 py-1 rounded-full text-xs font-semibold
-                                    {{ $m->type === 'in'
-                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-                                        : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' }}">
+                                <span class="px-2 py-1 rounded-full text-xs font-semibold {{ $badge }}">
                                     {{ strtoupper($m->type) }}
                                 </span>
                             </td>
+
                             <td class="px-4 py-3 text-right text-gray-900 dark:text-gray-100 font-semibold">
-                                {{ number_format($m->quantity, 2) }}
+                                {{ $fmt($m->quantity) }}
                             </td>
+
                             <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
-                                {{ number_format($m->unit_cost ?? 0, 2) }}
+                                {{ $fmt($m->unit_cost ?? 0) }}
                             </td>
+
                             <td class="px-4 py-3 text-right text-gray-900 dark:text-gray-100 font-semibold">
-                                {{ number_format($m->total_cost ?? 0, 2) }}
+                                {{ $fmt($m->total_cost ?? 0) }}
                             </td>
+
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 {{ $m->user->name ?? 'System' }}
                             </td>
+
                             <td class="px-4 py-3">
-                                @if($m->source_type === App\Models\Purchase::class)
-                                    <a href="{{ route('purchases.show', $m->source_id) }}"
-                                       class="text-indigo-600 dark:text-indigo-400 hover:underline">
-                                        Purchase #{{ $m->source_id }}
-                                    </a>
-                                @elseif($m->source_type === App\Models\Sale::class)
-                                    <a href="{{ route('sales.show', $m->source_id) }}"
-                                       class="text-green-600 dark:text-green-400 hover:underline">
-                                        Sale #{{ $m->source_id }}
-                                    </a>
-                                @else
-                                    <span class="text-gray-400 dark:text-gray-500">N/A</span>
-                                @endif
+                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold {{ $sourceChip }}">
+                                    <i data-lucide="{{ $icon }}" class="w-3.5 h-3.5"></i>
+                                    @if($sourceLink)
+                                        <a href="{{ $sourceLink }}" class="hover:underline">{{ $sourceLabel }}</a>
+                                    @else
+                                        {{ $sourceLabel ?: 'N/A' }}
+                                    @endif
+                                </span>
                             </td>
                         </tr>
                     @empty

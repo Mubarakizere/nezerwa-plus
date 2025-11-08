@@ -5,40 +5,73 @@
 @php
     use Carbon\Carbon;
 
-    $balance  = round(($sale->total_amount ?? 0) - ($sale->amount_paid ?? 0), 2);
-    $progress = $sale->total_amount > 0 ? round((($sale->amount_paid ?? 0) / $sale->total_amount) * 100) : 0;
-    $date     = Carbon::parse($sale->sale_date);
-    $qtyTotal = $sale->items->sum('quantity');
-    $profitTotal = $sale->items->sum('profit');
-    $channel  = strtolower($sale->payment_channel ?? ($sale->method ? 'cash' : 'cash'));
+    // Ensure relations exist
+    try { $sale->loadMissing(['items.product','returns.items.product','customer','user','loan']); } catch (\Throwable $e) {}
+
+    $date      = $sale->sale_date ? Carbon::parse($sale->sale_date) : ($sale->created_at ?? now());
+    $status    = $sale->status ?? 'completed';
+    $channel   = strtolower($sale->payment_channel ?? 'cash');
+
+    // Totals (return-aware)
+    $returnsTotal = (float) ($sale->returns_total ?? $sale->returns()->sum('amount'));
+    $grossTotal   = (float) ($sale->total_amount ?? 0);
+    $netAfter     = max(0, $grossTotal - $returnsTotal);
+    $paid         = (float) ($sale->amount_paid ?? 0);
+    $balance      = max(0, round($netAfter - $paid, 2));
+    $progress     = $netAfter > 0 ? min(100, (int) round(($paid / $netAfter) * 100)) : 0;
+
+    $qtyTotal     = (float) $sale->items->sum('quantity');
+    $profitTotal  = (float) $sale->items->sum('profit');
+
+    $channelClasses = [
+        'cash' => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+        'bank' => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+        'momo' => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+    ][$channel] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-200';
+
+    $statusClasses = match ($status) {
+        'completed' => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+        'pending'   => 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+        default     => 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    };
+
+    // Build item options for itemized modal, respecting already-returned quantities
+    $alreadyByItem = $sale->returns
+        ->flatMap(fn($r) => $r->items ?? collect())
+        ->groupBy('sale_item_id')
+        ->map(fn($g) => (float) $g->sum('quantity'));
+
+    $saleRows = $sale->items->map(function ($si) use ($alreadyByItem) {
+        $returned = (float)($alreadyByItem[$si->id] ?? 0);
+        $max      = max(0, (float)$si->quantity - $returned);
+
+        return [
+            'sale_item_id' => (int) $si->id,
+            'product_id'   => (int) $si->product_id,
+            'product_name' => $si->product->name ?? "#{$si->product_id}",
+            'unit_price'   => (float) $si->unit_price,
+            'max'          => (float) $max,
+        ];
+    })->values();
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
     {{-- Header --}}
     <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-            <i data-lucide="receipt" class="w-5 h-5 text-indigo-600 dark:text-indigo-400"></i>
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('sales.index') }}" class="btn btn-outline text-sm">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+            </a>
             <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Sale #{{ $sale->id }}</h1>
-            {{-- Status chip --}}
-            @php
-                $statusClasses = match ($sale->status) {
-                    'completed' => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-                    'pending'   => 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
-                    default     => 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-                };
-                $channelClasses = [
-                    'cash' => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-                    'bank' => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-                    'momo' => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
-                ][$channel] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-200';
-            @endphp
+
             <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold {{ $statusClasses }}">
-                {{ ucfirst($sale->status) }}
+                {{ ucfirst($status) }}
             </span>
             <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold {{ $channelClasses }}">
                 {{ strtoupper($channel) }}
             </span>
+
             @if($sale->loan)
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold
                     {{ $sale->loan->status === 'paid'
@@ -50,22 +83,19 @@
         </div>
 
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('sales.invoice', $sale) }}" target="_blank" class="btn btn-primary flex items-center gap-1 text-sm">
-                <i data-lucide="file-down" class="w-4 h-4"></i> Invoice
+            <a href="{{ route('sales.invoice', $sale) }}" target="_blank" class="btn btn-outline text-sm">
+                <i data-lucide="file-text" class="w-4 h-4"></i> Invoice
             </a>
-            <button type="button" onclick="window.print()" class="btn btn-outline flex items-center gap-1 text-sm">
+            <button type="button" onclick="window.print()" class="btn btn-outline text-sm">
                 <i data-lucide="printer" class="w-4 h-4"></i> Print
             </button>
-            <a href="{{ route('sales.edit', $sale) }}" class="btn btn-outline flex items-center gap-1 text-sm">
-                <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
-            </a>
-            <a href="{{ route('sales.index') }}" class="btn btn-secondary flex items-center gap-1 text-sm">
-                <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+            <a href="{{ route('sales.edit', $sale) }}" class="btn btn-outline text-sm">
+                <i data-lucide="edit" class="w-4 h-4"></i> Edit
             </a>
         </div>
     </div>
 
-    {{-- Summary cards --}}
+    {{-- Quick stats --}}
     <div class="grid md:grid-cols-4 gap-4">
         <x-stat-card title="Customer" icon="user" :value="$sale->customer->name ?? 'Walk-in'" />
         <x-stat-card title="Date" icon="calendar" :value="$date->format('Y-m-d')" />
@@ -73,7 +103,7 @@
         <x-stat-card title="Recorded By" icon="shield-check" :value="$sale->user->name ?? 'N/A'" />
     </div>
 
-    {{-- Totals & Payment --}}
+    {{-- Totals and payment strip (return-aware) --}}
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
         <div class="grid md:grid-cols-2 gap-6">
             <div class="space-y-2 text-sm">
@@ -84,30 +114,31 @@
                     <span class="ml-1 text-gray-800 dark:text-gray-200">{{ $sale->method ?: '-' }}</span>
                 </p>
                 <p><strong class="text-gray-600 dark:text-gray-400">Sale Status:</strong>
-                    <span class="ml-1 font-semibold">{{ ucfirst($sale->status) }}</span>
+                    <span class="ml-1 font-semibold">{{ ucfirst($status) }}</span>
                 </p>
             </div>
 
             <div class="space-y-2 text-sm">
-                <p><strong class="text-gray-600 dark:text-gray-400">Total:</strong>
-                    <span class="font-semibold text-indigo-600 dark:text-indigo-400">
-                        RWF {{ number_format($sale->total_amount, 2) }}
-                    </span>
+                <p><strong class="text-gray-600 dark:text-gray-400">Gross Total:</strong>
+                    <span class="font-semibold text-gray-900 dark:text-gray-100">{{ number_format($grossTotal, 2) }}</span>
+                </p>
+                <p><strong class="text-gray-600 dark:text-gray-400">Returns:</strong>
+                    <span class="font-semibold text-rose-600 dark:text-rose-400">- {{ number_format($returnsTotal, 2) }}</span>
+                </p>
+                <p><strong class="text-gray-600 dark:text-gray-400">Net After Returns:</strong>
+                    <span class="font-semibold text-gray-900 dark:text-gray-100">{{ number_format($netAfter, 2) }}</span>
                 </p>
                 <p><strong class="text-gray-600 dark:text-gray-400">Paid:</strong>
-                    <span class="font-semibold text-green-600 dark:text-green-400">
-                        RWF {{ number_format($sale->amount_paid ?? 0, 2) }}
-                    </span>
+                    <span class="font-semibold text-green-600 dark:text-green-400">{{ number_format($paid, 2) }}</span>
                 </p>
                 <p><strong class="text-gray-600 dark:text-gray-400">Balance:</strong>
                     <span class="font-semibold {{ $balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400' }}">
-                        RWF {{ number_format($balance, 2) }}
+                        {{ number_format($balance, 2) }}
                     </span>
                 </p>
             </div>
         </div>
 
-        {{-- Progress --}}
         <div class="mt-5">
             <div class="flex justify-between items-center mb-1 text-sm">
                 <span class="text-gray-600 dark:text-gray-400 font-medium flex items-center gap-1">
@@ -118,6 +149,116 @@
             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
                 <div class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width: {{ $progress }}%"></div>
             </div>
+        </div>
+    </div>
+
+    {{-- Returns --}}
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="rotate-ccw" class="w-5 h-5 text-rose-500"></i>
+                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Returns & Allowances</h4>
+                <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">Total: {{ number_format($returnsTotal, 2) }}</span>
+            </div>
+            @role('admin|manager|accountant')
+                <button type="button" @click="$store.returns.open = true" class="btn btn-primary text-xs">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Add Return
+                </button>
+            @endrole
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 uppercase text-xs">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Date</th>
+                        <th class="px-4 py-2 text-right">Amount</th>
+                        <th class="px-4 py-2 text-left">Method</th>
+                        <th class="px-4 py-2 text-left">Reference</th>
+                        <th class="px-4 py-2 text-left">Reason</th>
+                        <th class="px-4 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    @forelse($sale->returns as $ret)
+                        @php
+                            $retDate = $ret->date ? Carbon::parse($ret->date)->format('Y-m-d') : '';
+                            $retItems = $ret->items ?? collect();
+                            $hasItems = $retItems->isNotEmpty();
+                        @endphp
+                        <tr x-data="{open:false}" class="hover:bg-gray-50 dark:hover:bg-gray-900/40 transition">
+                            <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $retDate }}</td>
+                            <td class="px-4 py-2 text-right font-medium text-rose-600 dark:text-rose-400">- {{ number_format($ret->amount, 2) }}</td>
+                            <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ strtoupper($ret->method ?? '—') }}</td>
+                            <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $ret->reference ?? '—' }}</td>
+                            <td class="px-4 py-2 text-gray-700 dark:text-gray-300">
+                                <span class="line-clamp-2">{{ $ret->reason ?? '—' }}</span>
+                            </td>
+                            <td class="px-4 py-2">
+                                <div class="flex items-center justify-end gap-2">
+                                    @if($hasItems)
+                                        <button type="button" @click="open=!open" class="btn btn-outline btn-sm text-xs">
+                                            <i data-lucide="chevron-down" class="w-4 h-4 transition-transform" :class="open && 'rotate-180'"></i>
+                                            Items
+                                        </button>
+                                    @endif
+
+                                    @role('admin|manager|accountant')
+                                        <form method="POST" action="{{ route('sales.returns.destroy', $ret) }}"
+                                              onsubmit="return confirm('Delete this return?');">
+                                            @csrf @method('DELETE')
+                                            <button class="btn btn-danger btn-sm text-xs">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+                                            </button>
+                                        </form>
+                                    @endrole
+                                </div>
+
+                                @if($hasItems)
+                                    <div x-show="open" x-transition class="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                                        <table class="min-w-full text-xs">
+                                            <thead class="bg-gray-100 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 uppercase">
+                                                <tr>
+                                                    <th class="px-3 py-2 text-left">Product</th>
+                                                    <th class="px-3 py-2 text-left">Disposition</th>
+                                                    <th class="px-3 py-2 text-center">Qty</th>
+                                                    <th class="px-3 py-2 text-right">Unit Price</th>
+                                                    <th class="px-3 py-2 text-right">Line Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                                @foreach($retItems as $ri)
+                                                    <tr>
+                                                        <td class="px-3 py-2 text-gray-800 dark:text-gray-200">{{ $ri->product->name ?? ('#'.$ri->product_id) }}</td>
+                                                        <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ strtoupper($ri->disposition ?? 'restock') }}</td>
+                                                        <td class="px-3 py-2 text-center text-gray-700 dark:text-gray-300">{{ number_format($ri->quantity, 2) }}</td>
+                                                        <td class="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{{ number_format($ri->unit_price, 2) }}</td>
+                                                        <td class="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{{ number_format($ri->line_total, 2) }}</td>
+                                                    </tr>
+                                                @endforeach
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="px-4 py-4 text-center text-gray-500 dark:text-gray-400">No returns recorded.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+
+                @if($returnsTotal > 0)
+                    <tfoot class="bg-gray-50 dark:bg-gray-900/30 text-xs">
+                        <tr>
+                            <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Totals</td>
+                            <td class="px-4 py-2 text-right font-semibold text-rose-600 dark:text-rose-400">- {{ number_format($returnsTotal, 2) }}</td>
+                            <td colspan="4"></td>
+                        </tr>
+                    </tfoot>
+                @endif
+            </table>
         </div>
     </div>
 
@@ -135,7 +276,7 @@
             </div>
 
             <div class="grid md:grid-cols-2 gap-2 text-sm">
-                <p><strong>Loan Amount:</strong> RWF {{ number_format($sale->loan->amount, 2) }}</p>
+                <p><strong>Loan Amount:</strong> {{ number_format($sale->loan->amount, 2) }}</p>
                 <p><strong>Type:</strong> {{ ucfirst($sale->loan->type) }}</p>
                 <p><strong>Loan Date:</strong> {{ Carbon::parse($sale->loan->loan_date)->format('Y-m-d') }}</p>
                 @if($sale->loan->due_date)
@@ -149,8 +290,7 @@
 
             @if($sale->loan->status === 'pending')
                 <div class="mt-4">
-                    {{-- adjust route name if yours differs --}}
-                    <a href="{{ route('loan-payments.create', $sale->loan) }}" class="btn btn-success text-xs">
+                    <a href="{{ route('loan-payments.create', $sale->loan) }}" class="btn btn-primary btn-sm">
                         <i data-lucide="plus" class="w-4 h-4"></i> Add Payment
                     </a>
                 </div>
@@ -179,7 +319,7 @@
                     @forelse($sale->items as $item)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/40 transition">
                             <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $item->product->name ?? 'Unknown Product' }}</td>
-                            <td class="px-4 py-2 text-center text-gray-700 dark:text-gray-300">{{ $item->quantity }}</td>
+                            <td class="px-4 py-2 text-center text-gray-700 dark:text-gray-300">{{ number_format($item->quantity, 2) }}</td>
                             <td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">{{ number_format($item->unit_price, 2) }}</td>
                             <td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">{{ number_format($item->subtotal, 2) }}</td>
                             <td class="px-4 py-2 text-right text-green-700 dark:text-green-400">{{ number_format($item->profit ?? 0, 2) }}</td>
@@ -193,57 +333,272 @@
                 <tfoot class="bg-gray-50 dark:bg-gray-900/30 text-xs">
                     <tr>
                         <td class="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Totals</td>
-                        <td class="px-4 py-2 text-center font-semibold text-gray-800 dark:text-gray-200">{{ $qtyTotal }}</td>
+                        <td class="px-4 py-2 text-center font-semibold text-gray-800 dark:text-gray-200">{{ number_format($qtyTotal, 2) }}</td>
                         <td></td>
-                        <td class="px-4 py-2 text-right font-semibold text-gray-800 dark:text-gray-200">{{ number_format($sale->total_amount, 2) }}</td>
+                        <td class="px-4 py-2 text-right font-semibold text-gray-800 dark:text-gray-200">{{ number_format($grossTotal, 2) }}</td>
                         <td class="px-4 py-2 text-right font-semibold text-green-700 dark:text-green-400">{{ number_format($profitTotal ?? 0, 2) }}</td>
                     </tr>
                 </tfoot>
             </table>
         </div>
     </div>
-
-    {{-- Transaction --}}
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
-        <h4 class="text-lg font-semibold mb-3 text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <i data-lucide="activity" class="w-5 h-5 text-sky-500"></i> Transaction Details
-        </h4>
-        @if($sale->transaction)
-            <div class="grid md:grid-cols-2 gap-3 text-sm">
-                <p><strong class="text-gray-600 dark:text-gray-400">Type:</strong> {{ ucfirst($sale->transaction->type) }}</p>
-                <p><strong class="text-gray-600 dark:text-gray-400">Method:</strong> {{ strtoupper($channel) }}</p>
-                <p><strong class="text-gray-600 dark:text-gray-400">Recorded By:</strong> {{ $sale->transaction->user->name ?? $sale->user->name ?? 'N/A' }}</p>
-                <p><strong class="text-gray-600 dark:text-gray-400">Date:</strong>
-                    @php
-                        $txnDate = $sale->transaction->transaction_date ?? null;
-                        $txnOut  = $txnDate ? Carbon::parse($txnDate)->format('Y-m-d H:i') : '-';
-                    @endphp
-                    {{ $txnOut }}
-                </p>
-            </div>
-            @if($sale->transaction->notes)
-                <p class="mt-2 text-gray-600 dark:text-gray-400 text-sm italic">{{ $sale->transaction->notes }}</p>
-            @endif
-        @else
-            <p class="text-gray-500 dark:text-gray-400 italic">No transaction recorded for this sale.</p>
-        @endif
-    </div>
-
-    {{-- Notes --}}
-    @if($sale->notes)
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
-            <h4 class="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                <i data-lucide="sticky-note" class="w-5 h-5 text-indigo-500"></i> Notes
-            </h4>
-            <p class="text-gray-700 dark:text-gray-300 whitespace-pre-line">{{ $sale->notes }}</p>
-        </div>
-    @endif
 </div>
 
+{{-- Add Return Modal --}}
+@role('admin|manager|accountant')
+<div x-data
+     x-cloak
+     x-show="$store.returns.open"
+     x-transition.opacity
+     class="fixed inset-0 z-[9999]">
+
+    <div class="absolute inset-0 bg-black/40"
+         @click="$store.returns.open=false"
+         @keydown.escape.window="$store.returns.open=false"></div>
+
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+        <div class="w-full max-w-2xl rounded-xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 shadow-xl"
+             x-data="saleReturnModal({ items: @js($saleRows) })">
+
+            <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Add Sale Return</h3>
+                <button type="button" @click="$store.returns.open=false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="px-5 pt-4">
+                <div class="inline-flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <button type="button" class="px-3 py-1.5 text-xs"
+                            :class="tab==='amount' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'"
+                            @click="tab='amount'">Quick amount</button>
+                    <button type="button" class="px-3 py-1.5 text-xs"
+                            :class="tab==='itemized' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'"
+                            @click="tab='itemized'">Itemized</button>
+                </div>
+            </div>
+
+            {{-- Amount form --}}
+            <form x-show="tab==='amount'" x-transition
+                  action="{{ route('sales.returns.store', $sale) }}" method="POST" class="p-5 space-y-4">
+                @csrf
+                <input type="hidden" name="mode" value="amount">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Date</label>
+                        <input type="date" name="date" value="{{ now()->toDateString() }}"
+                               class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Amount</label>
+                        <input type="number" step="0.01" min="0.01" name="amount"
+                               class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Method</label>
+                        <select name="method" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                            <option value="">—</option>
+                            <option value="cash">CASH</option>
+                            <option value="bank">BANK</option>
+                            <option value="momo">MOMO</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Reference</label>
+                        <input type="text" name="reference" placeholder="Receipt / Txn ID"
+                               class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Reason</label>
+                    <textarea name="reason" rows="3" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" placeholder="Optional"></textarea>
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" @click="$store.returns.open=false" class="btn btn-outline">Cancel</button>
+                    <button class="btn btn-primary">Save</button>
+                </div>
+            </form>
+
+            {{-- Itemized form --}}
+            <form x-show="tab==='itemized'" x-transition
+                  action="{{ route('sales.returns.store', $sale) }}" method="POST" class="p-5 space-y-4">
+                @csrf
+                <input type="hidden" name="mode" value="itemized">
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-300">Date</label>
+                        <input type="date" name="date" value="{{ now()->toDateString() }}"
+                               class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-300">Method</label>
+                        <select name="method" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                            <option value="">—</option>
+                            <option value="cash">CASH</option>
+                            <option value="bank">BANK</option>
+                            <option value="momo">MOMO</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-300">Reference</label>
+                        <input type="text" name="reference" placeholder="Receipt / Txn ID"
+                               class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="min-w-full text-xs">
+                        <thead class="bg-gray-100 dark:bg-gray-800/50 text-gray-600 dark:text-gray-300 uppercase">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Item</th>
+                                <th class="px-3 py-2 text-right">Max</th>
+                                <th class="px-3 py-2 text-right">Qty</th>
+                                <th class="px-3 py-2 text-right">Unit</th>
+                                <th class="px-3 py-2 text-left">Disposition</th>
+                                <th class="px-3 py-2 text-right">Line</th>
+                                <th class="px-3 py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-700" x-data
+                               x-init="if(lines.length===0) add()">
+                            <template x-for="(row, i) in lines" :key="row.key">
+                                <tr>
+                                    <td class="px-3 py-2">
+                                        <select class="w-56 rounded border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                                                :name="`items[${i}][sale_item_id]`"
+                                                @change="onSelect(i, $event)">
+                                            <option value="">Select item…</option>
+                                            <template x-for="opt in options" :key="opt.sale_item_id">
+                                                <option :value="opt.sale_item_id" x-text="opt.product_name + ' — sold @ ' + money(opt.unit_price)"></option>
+                                            </template>
+                                        </select>
+                                        <input type="hidden" :name="`items[${i}][product_id]`" :value="row.product_id">
+                                    </td>
+
+                                    <td class="px-3 py-2 text-right" x-text="money(row.max)"></td>
+
+                                    <td class="px-3 py-2 text-right">
+                                        <input type="number" step="0.01" min="0.01"
+                                               class="w-24 text-right rounded border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                                               :name="`items[${i}][quantity]`"
+                                               x-model.number="row.quantity"
+                                               @input="clamp(i)">
+                                    </td>
+
+                                    <td class="px-3 py-2 text-right">
+                                        <input type="number" step="0.01" min="0"
+                                               class="w-28 text-right rounded border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                                               :name="`items[${i}][unit_price]`"
+                                               x-model.number="row.unit_price"
+                                               @input="recalc()">
+                                    </td>
+
+                                    <td class="px-3 py-2">
+                                        <select class="w-36 rounded border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                                                :name="`items[${i}][disposition]`"
+                                                x-model="row.disposition">
+                                            <option value="restock">Restock</option>
+                                            <option value="writeoff">Write-off</option>
+                                        </select>
+                                    </td>
+
+                                    <td class="px-3 py-2 text-right font-medium" x-text="money(row.quantity * row.unit_price)"></td>
+
+                                    <td class="px-3 py-2">
+                                        <button type="button" class="btn btn-danger btn-sm" @click="remove(i)">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+
+                            <tr x-show="lines.length===0">
+                                <td colspan="7" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">No items. Add one.</td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="bg-gray-50 dark:bg-gray-800/50">
+                            <tr>
+                                <td colspan="7" class="px-3 py-2">
+                                    <div class="flex items-center justify-between">
+                                        <button type="button" class="btn btn-outline btn-sm" @click="add()">Add Line</button>
+                                        <div class="text-sm">
+                                            <span class="text-gray-600 dark:text-gray-300">Total:</span>
+                                            <span class="ml-1 font-semibold" x-text="money(total)"></span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-300">Reason</label>
+                    <textarea name="reason" rows="3" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" placeholder="Optional"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" @click="$store.returns.open=false" class="btn btn-outline">Cancel</button>
+                    <button class="btn btn-primary" :disabled="lines.length===0 || total<=0">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+@endrole
+@endsection
+
 @push('scripts')
-<script src="https://unpkg.com/lucide@latest"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+document.addEventListener('alpine:init', () => {
+    if (!Alpine.store('returns')) Alpine.store('returns', { open:false });
+
+    // Open the returns modal when ?open=returns is present
+    const params = new URLSearchParams(location.search);
+    if (params.get('open') === 'returns') {
+        Alpine.store('returns').open = true;
+    }
+});
+
+function saleReturnModal({ items }) {
+    const uid = () => (crypto?.randomUUID?.() ?? String(Date.now() + Math.random()));
+    return {
+        tab: 'amount',
+        options: items,
+        lines: [],
+        total: 0,
+        add(){
+            this.lines.push({ key: uid(), sale_item_id: null, product_id: null, unit_price: 0, max: 0, quantity: 1, disposition: 'restock' });
+        },
+        remove(i){
+            this.lines.splice(i,1);
+            this.recalc();
+        },
+        onSelect(i, ev){
+            const id = Number(ev.target.value || 0);
+            const opt = this.options.find(o => o.sale_item_id === id);
+            if (!opt) return;
+            const row = this.lines[i];
+            row.sale_item_id = opt.sale_item_id;
+            row.product_id   = opt.product_id;
+            row.unit_price   = Number(opt.unit_price || 0);
+            row.max          = Number(opt.max || 0);
+            if (!row.quantity || row.quantity <= 0) row.quantity = Math.min(1, row.max);
+            this.clamp(i);
+        },
+        clamp(i){
+            const r = this.lines[i];
+            if (!r) return;
+            if (r.quantity > r.max) r.quantity = r.max;
+            if (r.quantity < 0.01) r.quantity = 0.01;
+            this.recalc();
+        },
+        recalc(){
+            this.total = this.lines.reduce((s, r) => s + (Number(r.quantity||0) * Number(r.unit_price||0)), 0);
+        },
+        money(v){ return Number(v||0).toFixed(2); }
+    }
+}
 </script>
 @endpush
-@endsection

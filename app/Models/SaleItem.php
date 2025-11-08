@@ -29,6 +29,10 @@ class SaleItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
+    public function returns()
+{
+    return $this->hasMany(\App\Models\SaleReturnItem::class);
+}
 
     // 📈 Compute profit (helpful for reports)
     public function calculateProfit(): float
