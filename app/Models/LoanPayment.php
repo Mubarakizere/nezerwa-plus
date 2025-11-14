@@ -9,17 +9,16 @@ class LoanPayment extends Model
 {
     use HasFactory;
 
+    public const METHODS = ['cash','momo','bank'];
+
     protected $fillable = [
         'loan_id', 'user_id', 'amount', 'payment_date', 'method', 'notes'
     ];
 
-    public function loan()
-    {
-        return $this->belongsTo(Loan::class);
-    }
+    protected $casts = [
+        'payment_date' => 'date',
+    ];
 
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
+    public function loan() { return $this->belongsTo(Loan::class); }
+    public function user() { return $this->belongsTo(User::class); }
 }

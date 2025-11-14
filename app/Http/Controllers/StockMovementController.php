@@ -7,9 +7,11 @@ use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\PurchaseReturn;
+use App\Models\SaleReturn;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class StockMovementController extends Controller
 {
@@ -20,24 +22,27 @@ class StockMovementController extends Controller
     {
         $products = Product::orderBy('name')->get();
 
-        // Build the filtered query
+        // Build the filtered query (+ eager loads)
         $query = $this->buildQuery($request);
 
         // Paginate results
         $movements = $query->paginate(20);
 
         // Totals for current filter
+        $inTotal  = (clone $query)->where('type', 'in')->sum('quantity');
+        $outTotal = (clone $query)->where('type', 'out')->sum('quantity');
         $totals = [
-            'in'  => (clone $query)->where('type', 'in')->sum('quantity'),
-            'out' => (clone $query)->where('type', 'out')->sum('quantity'),
+            'in'  => $inTotal,
+            'out' => $outTotal,
+            'net' => $inTotal - $outTotal,
         ];
-        $totals['net'] = $totals['in'] - $totals['out'];
 
         // OUT/IN breakdown by origin for current filter
         $breakdown = [
-            'out_sales'     => (clone $query)->where('type','out')->where('source_type', Sale::class)->sum('quantity'),
-            'out_returns'   => (clone $query)->where('type','out')->where('source_type', PurchaseReturn::class)->sum('quantity'),
-            'in_purchases'  => (clone $query)->where('type','in')->where('source_type', Purchase::class)->sum('quantity'),
+            'out_sales'       => (clone $query)->where('type','out')->where('source_type', Sale::class)->sum('quantity'),
+            'out_returns'     => (clone $query)->where('type','out')->where('source_type', PurchaseReturn::class)->sum('quantity'),
+            'in_purchases'    => (clone $query)->where('type','in')->where('source_type', Purchase::class)->sum('quantity'),
+            'in_sale_returns' => (clone $query)->where('type','in')->where('source_type', SaleReturn::class)->sum('quantity'), // NEW
         ];
 
         return view('stock_movements.index', compact('movements', 'products', 'totals', 'breakdown'));
@@ -48,9 +53,21 @@ class StockMovementController extends Controller
      */
     private function buildQuery(Request $request)
     {
-        // If your StockMovement model defines: public function source() { return $this->morphTo(); }
-        // this will eager-load the morph so we can deep-link (e.g., a PurchaseReturn knows its purchase_id).
-        $query = StockMovement::with(['product', 'user', 'source'])
+        // Eager-load morph source safely. If your PurchaseReturn has `purchase()`
+        // or SaleReturn has `sale()`, morphWith will try to preload them; if not, it’s still safe.
+        $query = StockMovement::query()
+            ->with([
+                'product:id,name',
+                'user:id,name',
+                'source' => function (MorphTo $m) {
+                    // These nested eager-loads are best-effort; adjust to match your actual relation names.
+                    $m->morphWith([
+                        PurchaseReturn::class => ['purchase:id'],
+                        SaleReturn::class     => ['sale:id'],
+                        // Purchase::class, Sale::class typically don't need nested loads here.
+                    ]);
+                },
+            ])
             ->latest();
 
         // Filters
@@ -59,7 +76,10 @@ class StockMovementController extends Controller
         }
 
         if ($request->filled('type')) {
-            $query->where('type', $request->type);
+            $type = strtolower($request->type);
+            if (in_array($type, ['in', 'out'], true)) {
+                $query->where('type', $type);
+            }
         }
 
         if ($request->filled('from_date')) {
@@ -70,12 +90,13 @@ class StockMovementController extends Controller
             $query->whereDate('created_at', '<=', $request->to_date);
         }
 
-        // Origin filter: purchase / sale / purchase_return
+        // Origin filter: purchase / sale / purchase_return / sale_return
         if ($request->filled('origin')) {
             $map = [
                 'purchase'        => Purchase::class,
                 'sale'            => Sale::class,
                 'purchase_return' => PurchaseReturn::class,
+                'sale_return'     => SaleReturn::class, // NEW
             ];
             $val = $request->origin;
             if (isset($map[$val])) {
@@ -83,10 +104,10 @@ class StockMovementController extends Controller
             }
         }
 
-        // Role-based visibility (optional; keep your logic)
+        // Role-based visibility (optional; adapt to your Spatie setup)
         $user = auth()->user();
-        if ($user && property_exists($user, 'role')) {
-            if ($user->role === 'cashier') {
+        if ($user) {
+            if (method_exists($user, 'hasRole') && $user->hasRole('cashier')) {
                 $query->where('user_id', $user->id);
             }
             // manager/admin see all (add branch filters later if needed)
@@ -100,19 +121,23 @@ class StockMovementController extends Controller
      */
     public function exportCsv(Request $request)
     {
-        $filename = 'stock_history_' . now()->format('Ymd_His') . '.csv';
+        $filename  = 'stock_history_' . now()->format('Ymd_His') . '.csv';
         $movements = $this->buildQuery($request)->get();
 
         $headers = [
-            'Content-Type' => 'text/csv',
+            'Content-Type'        => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ];
 
         $callback = function () use ($movements) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Date', 'Product', 'Type', 'Quantity', 'Unit Cost', 'Total Cost', 'Recorded By', 'Source']);
+            fputcsv($handle, [
+                'Date', 'Product', 'Type', 'Quantity', 'Unit Cost', 'Total Cost',
+                'Reference / Note', 'Recorded By', 'Source'
+            ]);
 
             foreach ($movements as $m) {
+                // Compose "Source" label (now includes SaleReturn)
                 $source = 'N/A';
                 if ($m->source_type === Purchase::class) {
                     $source = 'Purchase #' . $m->source_id;
@@ -120,16 +145,29 @@ class StockMovementController extends Controller
                     $source = 'Sale #' . $m->source_id;
                 } elseif ($m->source_type === PurchaseReturn::class) {
                     $purchaseId = optional($m->source)->purchase_id ?? null;
-                    $source = 'Purchase Return #' . $m->source_id . ($purchaseId ? " (Purchase #$purchaseId)" : '');
+                    $source = 'Return to Supplier #' . $m->source_id . ($purchaseId ? " (Purchase #$purchaseId)" : '');
+                } elseif ($m->source_type === SaleReturn::class) {
+                    $saleId = optional($m->source)->sale_id ?? null;
+                    $source = 'Customer Return #' . $m->source_id . ($saleId ? " (Sale #$saleId)" : '');
                 }
 
+                // Reference / Note: prefer movement fields, then source fallbacks
+                $reference = $m->reference
+                    ?? $m->note
+                    ?? optional($m->source)->reference
+                    ?? optional($m->source)->note
+                    ?? optional($m->source)->remarks
+                    ?? optional($m->source)->return_reason
+                    ?? null;
+
                 fputcsv($handle, [
-                    $m->created_at->format('Y-m-d H:i'),
+                    optional($m->created_at)->format('Y-m-d H:i'),
                     optional($m->product)->name,
                     strtoupper($m->type),
                     $m->quantity,
                     $m->unit_cost,
                     $m->total_cost,
+                    $reference,
                     optional($m->user)->name ?: 'System',
                     $source,
                 ]);
@@ -143,11 +181,25 @@ class StockMovementController extends Controller
 
     /**
      * Export filtered data to PDF.
+     * (If you want Reference/Note in the PDF too, update the Blade at: resources/views/stock_movements/report.blade.php)
      */
     public function exportPdf(Request $request)
     {
         $movements = $this->buildQuery($request)->get();
-        $pdf = Pdf::loadView('stock_movements.report', compact('movements'))
+
+        // Optional: pass totals/breakdown to the report view if needed
+        $inTotal  = (clone $this->buildQuery($request))->where('type', 'in')->sum('quantity');
+        $outTotal = (clone $this->buildQuery($request))->where('type', 'out')->sum('quantity');
+        $totals = ['in' => $inTotal, 'out' => $outTotal, 'net' => $inTotal - $outTotal];
+
+        $breakdown = [
+            'out_sales'       => (clone $this->buildQuery($request))->where('type','out')->where('source_type', Sale::class)->sum('quantity'),
+            'out_returns'     => (clone $this->buildQuery($request))->where('type','out')->where('source_type', PurchaseReturn::class)->sum('quantity'),
+            'in_purchases'    => (clone $this->buildQuery($request))->where('type','in')->where('source_type', Purchase::class)->sum('quantity'),
+            'in_sale_returns' => (clone $this->buildQuery($request))->where('type','in')->where('source_type', SaleReturn::class)->sum('quantity'),
+        ];
+
+        $pdf = Pdf::loadView('stock_movements.report', compact('movements', 'totals', 'breakdown'))
             ->setPaper('a4', 'landscape');
 
         return $pdf->stream('stock_history_' . now()->format('Ymd_His') . '.pdf');

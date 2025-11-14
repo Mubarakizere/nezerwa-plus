@@ -2,9 +2,23 @@
 @section('title', 'Debits & Credits')
 
 @section('content')
+@php
+    use Carbon\Carbon;
+
+    // Quick date ranges
+    $today  = Carbon::today()->toDateString();
+    $last7  = Carbon::today()->subDays(6)->toDateString();
+    $last30 = Carbon::today()->subDays(29)->toDateString();
+    $monthS = Carbon::today()->startOfMonth()->toDateString();
+
+    // Page-only totals from current paginator page
+    $pageCredits = $records->getCollection()->where('type','credit')->sum('amount');
+    $pageDebits  = $records->getCollection()->where('type','debit')->sum('amount');
+@endphp
+
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-    {{-- 🔹 Flash Messages --}}
+    {{-- Flash --}}
     @if(session('success'))
         <div class="p-3 rounded-md bg-green-100 text-green-700 text-sm border border-green-200">
             {{ session('success') }}
@@ -12,14 +26,12 @@
     @elseif($errors->any())
         <div class="p-3 rounded-md bg-red-100 text-red-700 text-sm border border-red-200">
             <ul class="list-disc list-inside space-y-1">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
+                @foreach($errors->all() as $error) <li>{{ $error }}</li> @endforeach
             </ul>
         </div>
     @endif
 
-    {{-- 🔸 Header --}}
+    {{-- Header --}}
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <i data-lucide="wallet" class="w-6 h-6 text-indigo-600 dark:text-indigo-400"></i>
@@ -30,55 +42,84 @@
         </a>
     </div>
 
-    {{-- 💰 Totals Summary --}}
-    @php
-        $netColor = $net > 0 ? 'text-green-600 dark:text-green-400'
-                  : ($net < 0 ? 'text-red-600 dark:text-red-400'
-                  : 'text-gray-800 dark:text-gray-300');
-    @endphp
-
+    {{-- Totals Summary (filter-aware) --}}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <x-stat-card title="Total Debits" value="{{ number_format($debitsTotal, 2) }}" color="red" />
+        <x-stat-card title="Total Debits"  value="{{ number_format($debitsTotal,  2) }}" color="red"   />
         <x-stat-card title="Total Credits" value="{{ number_format($creditsTotal, 2) }}" color="green" />
-        <x-stat-card title="Net Balance"
-            value="{{ number_format($net, 2) }}"
-            color="{{ $net > 0 ? 'green' : ($net < 0 ? 'red' : 'gray') }}" />
+        <x-stat-card
+            title="Net Balance"
+            value="{{ number_format($creditsTotal - $debitsTotal, 2) }}"
+            color="{{ ($creditsTotal - $debitsTotal) > 0 ? 'green' : (($creditsTotal - $debitsTotal) < 0 ? 'red' : 'gray') }}" />
     </div>
 
-    {{-- 🔍 Filters --}}
-    <form method="GET" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-        <div>
-            <label class="form-label text-xs">Type</label>
-            <select name="type" class="form-select">
-                <option value="">All</option>
-                <option value="debit" @selected(request('type')=='debit')>Debits</option>
-                <option value="credit" @selected(request('type')=='credit')>Credits</option>
-            </select>
-        </div>
+    {{-- Filters --}}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm space-y-3">
+        <form method="GET" class="grid grid-cols-1 md:grid-cols-7 gap-3 items-end">
+            <div>
+                <label class="form-label text-xs">Type</label>
+                <select name="type" class="form-select">
+                    <option value="">All</option>
+                    <option value="debit"  @selected(request('type')=='debit')>Debits</option>
+                    <option value="credit" @selected(request('type')=='credit')>Credits</option>
+                </select>
+            </div>
 
-        <div>
-            <label class="form-label text-xs">From</label>
-            <input type="date" name="from" value="{{ request('from') }}" class="form-input">
-        </div>
+            <div>
+                <label class="form-label text-xs">From</label>
+                <input type="date" name="from" value="{{ request('from') }}" class="form-input">
+            </div>
 
-        <div>
-            <label class="form-label text-xs">To</label>
-            <input type="date" name="to" value="{{ request('to') }}" class="form-input">
-        </div>
+            <div>
+                <label class="form-label text-xs">To</label>
+                <input type="date" name="to" value="{{ request('to') }}" class="form-input">
+            </div>
 
-        <div class="md:col-span-1">
-            <label class="form-label text-xs">Search</label>
-            <input type="text" name="q" value="{{ request('q') }}" placeholder="Search..." class="form-input">
-        </div>
+            <div>
+                <label class="form-label text-xs">Customer</label>
+                <select name="customer_id" class="form-select">
+                    <option value="">All</option>
+                    @foreach(\App\Models\Customer::select('id','name')->orderBy('name')->get() as $c)
+                        <option value="{{ $c->id }}" @selected(request('customer_id') == $c->id)>{{ $c->name }}</option>
+                    @endforeach
+                </select>
+            </div>
 
-        <div class="flex items-end">
-            <button type="submit" class="btn btn-secondary w-full flex items-center gap-1">
-                <i data-lucide="filter" class="w-4 h-4"></i> Filter
-            </button>
-        </div>
-    </form>
+            <div>
+                <label class="form-label text-xs">Supplier</label>
+                <select name="supplier_id" class="form-select">
+                    <option value="">All</option>
+                    @foreach(\App\Models\Supplier::select('id','name')->orderBy('name')->get() as $s)
+                        <option value="{{ $s->id }}" @selected(request('supplier_id') == $s->id)>{{ $s->name }}</option>
+                    @endforeach
+                </select>
+            </div>
 
-    {{-- 📋 Table --}}
+            <div class="md:col-span-1">
+                <label class="form-label text-xs">Search</label>
+                <input type="text" name="q" value="{{ request('q') }}" placeholder="Description, names..." class="form-input">
+            </div>
+
+            <div class="flex items-end">
+                <button type="submit" class="btn btn-secondary w-full flex items-center gap-1">
+                    <i data-lucide="filter" class="w-4 h-4"></i> Filter
+                </button>
+            </div>
+        </form>
+
+        {{-- Quick ranges --}}
+        <div class="flex flex-wrap gap-2">
+            <a class="btn btn-outline btn-sm"
+               href="{{ route('debits-credits.index', array_merge(request()->query(), ['from'=>$today,'to'=>$today])) }}">Today</a>
+            <a class="btn btn-outline btn-sm"
+               href="{{ route('debits-credits.index', array_merge(request()->query(), ['from'=>$last7,'to'=>$today])) }}">Last 7d</a>
+            <a class="btn btn-outline btn-sm"
+               href="{{ route('debits-credits.index', array_merge(request()->query(), ['from'=>$last30,'to'=>$today])) }}">Last 30d</a>
+            <a class="btn btn-outline btn-sm"
+               href="{{ route('debits-credits.index', array_merge(request()->query(), ['from'=>$monthS,'to'=>$today])) }}">This Month</a>
+        </div>
+    </div>
+
+    {{-- Table --}}
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm divide-y divide-gray-200 dark:divide-gray-700">
@@ -91,6 +132,7 @@
                         <th class="px-4 py-3 text-left">Customer</th>
                         <th class="px-4 py-3 text-left">Supplier</th>
                         <th class="px-4 py-3 text-left">User</th>
+                        <th class="px-4 py-3 text-left">Linked Txn</th>
                         <th class="px-4 py-3 text-center">Actions</th>
                     </tr>
                 </thead>
@@ -98,31 +140,50 @@
                     @forelse($records as $item)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-all">
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $item->date }}</td>
+
                             <td class="px-4 py-3">
                                 <span class="px-2 py-1 rounded-full text-xs font-semibold
-                                    {{ $item->type == 'debit'
+                                    {{ $item->type === 'debit'
                                         ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                                         : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' }}">
                                     {{ ucfirst($item->type) }}
                                 </span>
                             </td>
+
                             <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-gray-100">
                                 {{ number_format($item->amount, 2) }}
                             </td>
+
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $item->description ?? '—' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $item->customer->name ?? '—' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $item->supplier->name ?? '—' }}</td>
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $item->user->name ?? '—' }}</td>
+
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                @if($item->transaction_id)
+                                    <a href="{{ route('transactions.show', $item->transaction_id) }}"
+                                       class="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline">
+                                        <i data-lucide="banknote" class="w-4 h-4"></i>
+                                        #{{ $item->transaction_id }}
+                                    </a>
+                                @else
+                                    <span class="text-xs text-gray-500">—</span>
+                                @endif
+                            </td>
+
                             <td class="px-4 py-3 text-center">
                                 <div class="flex justify-center gap-2">
-                                    <a href="{{ route('debits-credits.edit', $item->id) }}" class="btn btn-outline btn-sm" title="Edit">
+                                    <a href="{{ route('debits-credits.edit', $item->id) }}"
+                                       class="btn btn-outline btn-sm" title="Edit">
                                         <i data-lucide="edit-3" class="w-4 h-4"></i>
                                     </a>
+
                                     <button type="button"
                                             @click="$store.confirm.openWith($el.nextElementSibling)"
                                             class="btn btn-danger btn-sm" title="Delete">
                                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                                     </button>
+
                                     <form action="{{ route('debits-credits.destroy', $item->id) }}" method="POST" class="hidden">
                                         @csrf @method('DELETE')
                                     </form>
@@ -131,12 +192,31 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="9" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
                                 No records found.
                             </td>
                         </tr>
                     @endforelse
                 </tbody>
+
+                {{-- Page totals footer --}}
+                <tfoot class="bg-gray-50 dark:bg-gray-900/40">
+                    <tr class="text-sm font-semibold">
+                        <td class="px-4 py-3" colspan="2">Page totals</td>
+                        <td class="px-4 py-3 text-right">{{ number_format($pageCredits + $pageDebits, 2) }}</td>
+                        <td class="px-4 py-3 text-left" colspan="6">
+                            <span class="mr-4">
+                                Credits:
+                                <span class="text-green-600 dark:text-green-400">{{ number_format($pageCredits, 2) }}</span>
+                            </span>
+                            <span>
+                                Debits:
+                                <span class="text-red-600 dark:text-red-400">{{ number_format($pageDebits, 2) }}</span>
+                            </span>
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
 
@@ -147,7 +227,7 @@
     </div>
 </div>
 
-{{-- 🗑️ Global Delete Modal --}}
+{{-- Global Delete Modal --}}
 <div x-data
      x-show="$store.confirm.open"
      x-cloak
@@ -173,23 +253,13 @@
 document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) lucide.createIcons();
 });
-
 document.addEventListener('alpine:init', () => {
     Alpine.store('confirm', {
         open: false,
         submitEl: null,
-        openWith(form) {
-            this.submitEl = form;
-            this.open = true;
-        },
-        close() {
-            this.open = false;
-            this.submitEl = null;
-        },
-        confirm() {
-            if (this.submitEl) this.submitEl.submit();
-            this.close();
-        },
+        openWith(form) { this.submitEl = form; this.open = true },
+        close() { this.open = false; this.submitEl = null },
+        confirm() { if (this.submitEl) this.submitEl.submit(); this.close() },
     });
 });
 </script>

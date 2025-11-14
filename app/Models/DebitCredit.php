@@ -9,7 +9,6 @@ class DebitCredit extends Model
 {
     use HasFactory;
 
-    // Custom table name
     protected $table = 'debits_credits';
 
     protected $fillable = [
@@ -23,24 +22,33 @@ class DebitCredit extends Model
         'transaction_id',
     ];
 
-    // Relationships
-    public function user()
+    protected $casts = [
+        'date'   => 'date:Y-m-d',
+        'amount' => 'decimal:2',
+    ];
+
+    // ---- Relations
+    public function user()       { return $this->belongsTo(User::class); }
+    public function customer()   { return $this->belongsTo(Customer::class); }
+    public function supplier()   { return $this->belongsTo(Supplier::class); }
+    public function transaction(){ return $this->belongsTo(Transaction::class); }
+
+    // ---- Scopes (make controller/views cleaner)
+    public function scopeType($q, ?string $type)
     {
-        return $this->belongsTo(User::class);
+        return $type ? $q->where('type', $type) : $q;
     }
 
-    public function customer()
+    public function scopeBetweenDates($q, ?string $from, ?string $to)
     {
-        return $this->belongsTo(Customer::class);
+        if ($from) $q->whereDate('date', '>=', $from);
+        if ($to)   $q->whereDate('date', '<=', $to);
+        return $q;
     }
 
-    public function supplier()
+    public function scopeSearch($q, ?string $term)
     {
-        return $this->belongsTo(Supplier::class);
-    }
-
-    public function transaction()
-    {
-        return $this->belongsTo(Transaction::class);
+        if (!$term) return $q;
+        return $q->where('description', 'like', "%{$term}%");
     }
 }

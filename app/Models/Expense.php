@@ -2,33 +2,40 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class Expense extends Model
 {
     public const METHODS = ['cash','bank','momo'];
 
     protected $fillable = [
-        'date', 'amount', 'category_id', 'supplier_id',
-        'method', 'reference', 'note', 'created_by',
+        'date','amount','category_id','supplier_id',
+        'method','reference','note','created_by',
     ];
 
     protected $casts = [
-        'date' => 'date',
+        'date'   => 'date',
         'amount' => 'decimal:2',
     ];
 
-    // Relationships
+    // --- Relationships ---
     public function category(): BelongsTo
     {
-        return $this->belongsTo(Category::class);
+        // Keep withTrashed only if Category uses SoftDeletes
+        return $this->belongsTo(Category::class)->withTrashed();
     }
 
     public function supplier(): BelongsTo
     {
+        // Remove withTrashed unless Supplier actually uses SoftDeletes
         return $this->belongsTo(Supplier::class);
+    }
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function creator(): BelongsTo
@@ -36,9 +43,10 @@ class Expense extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    // Scopes (for filters & reporting)
+    // --- Scopes ---
     public function scopeBetween(Builder $q, $from = null, $to = null): Builder
     {
+        if ($from && $to && $from > $to) [$from, $to] = [$to, $from];
         if ($from) $q->whereDate('date', '>=', $from);
         if ($to)   $q->whereDate('date', '<=', $to);
         return $q;
@@ -46,7 +54,7 @@ class Expense extends Model
 
     public function scopeMethod(Builder $q, ?string $method): Builder
     {
-        if ($method) $q->where('method', $method);
+        if ($method) $q->where('method', strtolower($method));
         return $q;
     }
 
@@ -56,7 +64,8 @@ class Expense extends Model
         return $q;
     }
 
-    public function scopeSupplier(Builder $q, ?int $supplierId): Builder
+    // 🔧 renamed to avoid collision with the relationship:
+    public function scopeForSupplier(Builder $q, ?int $supplierId): Builder
     {
         if ($supplierId) $q->where('supplier_id', $supplierId);
         return $q;
@@ -65,11 +74,15 @@ class Expense extends Model
     public function scopeSearch(Builder $q, ?string $term): Builder
     {
         if (!$term) return $q;
-        return $q->where(function ($w) use ($term) {
-            $w->where('reference', 'like', "%{$term}%")
-              ->orWhere('note', 'like', "%{$term}%")
-              ->orWhereHas('category', fn($c) => $c->where('name', 'like', "%{$term}%"))
-              ->orWhereHas('supplier', fn($s) => $s->where('name', 'like', "%{$term}%"));
+
+        $op   = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+        $wild = "%{$term}%";
+
+        return $q->where(function ($w) use ($op, $wild) {
+            $w->where('reference', $op, $wild)
+              ->orWhere('note', $op, $wild)
+              ->orWhereHas('category', fn ($c) => $c->where('name', $op, $wild))
+              ->orWhereHas('supplier', fn ($s) => $s->where('name', $op, $wild));
         });
     }
 }

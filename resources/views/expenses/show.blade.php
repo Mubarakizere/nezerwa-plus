@@ -4,9 +4,7 @@
 @section('content')
 <style>[x-cloak]{display:none!important}</style>
 @php
-    use Carbon\Carbon;
     $fmt = fn($n) => number_format((float)$n, 2);
-
     $method = strtolower($expense->method ?? '');
     $methodBadge = [
         'cash'  => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
@@ -36,7 +34,7 @@
                         <i data-lucide="wallet" class="w-3.5 h-3.5 mr-1"></i>{{ strtoupper($expense->method ?? '—') }}
                     </span>
                     <span class="text-gray-500 dark:text-gray-400">
-                        on {{ optional($expense->date)->format('M j, Y') ?? Carbon::parse($expense->date)->format('M j, Y') }}
+                        on {{ optional($expense->date)->format('M j, Y') }}
                     </span>
                 </div>
             </div>
@@ -60,7 +58,6 @@
         </div>
     </div>
 
-    {{-- Content --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {{-- Amount card --}}
         <div class="lg:col-span-1">
@@ -112,7 +109,7 @@
                     <div>
                         <div class="text-gray-500 dark:text-gray-400">Date</div>
                         <div class="mt-1 font-medium text-gray-900 dark:text-gray-100">
-                            {{ optional($expense->date)->format('M j, Y') ?? Carbon::parse($expense->date)->format('M j, Y') }}
+                            {{ optional($expense->date)->format('M j, Y') }}
                         </div>
                     </div>
 

@@ -5,28 +5,43 @@
 @php
     use Carbon\Carbon;
 
-    // Ensure relations exist
-    try { $sale->loadMissing(['items.product','returns.items.product','customer','user','loan']); } catch (\Throwable $e) {}
+    // Eager/safe loads
+    try {
+        $sale->loadMissing([
+            'items.product',
+            'returns.items.product',
+            'customer',
+            'user',
+            'payments.user',
+            'loan.payments.user',
+        ])->loadSum('returns as returns_total','amount');
+    } catch (\Throwable $e) {}
 
-    $date      = $sale->sale_date ? Carbon::parse($sale->sale_date) : ($sale->created_at ?? now());
-    $status    = $sale->status ?? 'completed';
-    $channel   = strtolower($sale->payment_channel ?? 'cash');
+    // Dates / status
+    $date    = $sale->sale_date ? Carbon::parse($sale->sale_date) : ($sale->created_at ?? now());
+    $status  = $sale->status ?? 'completed';
+    $channel = strtolower($sale->payment_channel ?? 'cash');
 
-    // Totals (return-aware)
+    // Totals (return-aware) + payments breakdown
     $returnsTotal = (float) ($sale->returns_total ?? $sale->returns()->sum('amount'));
     $grossTotal   = (float) ($sale->total_amount ?? 0);
     $netAfter     = max(0, $grossTotal - $returnsTotal);
-    $paid         = (float) ($sale->amount_paid ?? 0);
+
+    $paymentsCol  = $sale->payments ?? collect();
+    $byMethod     = $paymentsCol->groupBy(fn($p) => strtolower($p->method ?? 'cash'))->map->sum('amount');
+    $paid         = (float) ($paymentsCol->sum('amount') ?: ($sale->amount_paid ?? 0));
     $balance      = max(0, round($netAfter - $paid, 2));
     $progress     = $netAfter > 0 ? min(100, (int) round(($paid / $netAfter) * 100)) : 0;
 
-    $qtyTotal     = (float) $sale->items->sum('quantity');
-    $profitTotal  = (float) $sale->items->sum('profit');
+    $qtyTotal    = (float) $sale->items->sum('quantity');
+    $profitTotal = (float) $sale->items->sum('profit');
 
+    // Badges
     $channelClasses = [
-        'cash' => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-        'bank' => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-        'momo' => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+        'cash'   => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+        'bank'   => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+        'momo'   => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+        'mobile' => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
     ][$channel] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-200';
 
     $statusClasses = match ($status) {
@@ -35,7 +50,7 @@
         default     => 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
     };
 
-    // Build item options for itemized modal, respecting already-returned quantities
+    // Build item options for itemized return modal (respecting already-returned qty)
     $alreadyByItem = $sale->returns
         ->flatMap(fn($r) => $r->items ?? collect())
         ->groupBy('sale_item_id')
@@ -44,7 +59,6 @@
     $saleRows = $sale->items->map(function ($si) use ($alreadyByItem) {
         $returned = (float)($alreadyByItem[$si->id] ?? 0);
         $max      = max(0, (float)$si->quantity - $returned);
-
         return [
             'sale_item_id' => (int) $si->id,
             'product_id'   => (int) $si->product_id,
@@ -53,6 +67,14 @@
             'max'          => (float) $max,
         ];
     })->values();
+
+    // Loan helpers
+    $methods  = ['cash','momo','bank'];
+    $loan     = $sale->loan;
+    $loanAmt  = (float) ($loan->amount ?? 0);
+    $loanPaid = (float) ($loan ? $loan->payments->sum('amount') : 0);
+    $loanRem  = $loan ? max(0, round($loanAmt - $loanPaid, 2)) : 0;
+    $loanProg = $loanAmt > 0 ? min(100, (int) round(($loanPaid / $loanAmt) * 100)) : 0;
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -72,12 +94,12 @@
                 {{ strtoupper($channel) }}
             </span>
 
-            @if($sale->loan)
+            @if($loan)
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold
-                    {{ $sale->loan->status === 'paid'
+                    {{ $loan->status === 'paid'
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
                         : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
-                    Loan {{ ucfirst($sale->loan->status) }}
+                    Loan {{ ucfirst($loan->status) }}
                 </span>
             @endif
         </div>
@@ -97,13 +119,13 @@
 
     {{-- Quick stats --}}
     <div class="grid md:grid-cols-4 gap-4">
-        <x-stat-card title="Customer" icon="user" :value="$sale->customer->name ?? 'Walk-in'" />
-        <x-stat-card title="Date" icon="calendar" :value="$date->format('Y-m-d')" />
+        <x-stat-card title="Customer"  icon="user"         :value="$sale->customer->name ?? 'Walk-in'" />
+        <x-stat-card title="Date"      icon="calendar"     :value="$date->format('Y-m-d')" />
         <x-stat-card title="Items (Qty)" icon="shopping-bag" :value="$qtyTotal" />
         <x-stat-card title="Recorded By" icon="shield-check" :value="$sale->user->name ?? 'N/A'" />
     </div>
 
-    {{-- Totals and payment strip (return-aware) --}}
+    {{-- Totals + progress --}}
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
         <div class="grid md:grid-cols-2 gap-6">
             <div class="space-y-2 text-sm">
@@ -152,6 +174,65 @@
         </div>
     </div>
 
+    {{-- Payments breakdown --}}
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="wallet" class="w-5 h-5 text-indigo-500"></i>
+                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Payments</h4>
+            </div>
+            <div class="flex flex-wrap gap-1">
+                @forelse($byMethod as $m => $amt)
+                    @php
+                        $chip = match($m){
+                            'bank' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                            'momo' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+                            'mobile' => 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                            default => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+                        };
+                    @endphp
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] {{ $chip }}">
+                        {{ strtoupper($m) }} {{ number_format($amt,2) }}
+                    </span>
+                @empty
+                    <span class="text-xs text-gray-500">No split payments • using legacy amount.</span>
+                @endforelse
+            </div>
+        </div>
+
+        @if($paymentsCol->count())
+            <div class="mt-4 overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                    <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 uppercase text-xs">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Date</th>
+                            <th class="px-4 py-2 text-right">Amount</th>
+                            <th class="px-4 py-2 text-left">Method</th>
+                            <th class="px-4 py-2 text-left">Reference</th>
+                            <th class="px-4 py-2 text-left">Phone</th>
+                            <th class="px-4 py-2 text-left">Recorded By</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        @foreach($paymentsCol->sortByDesc('paid_at') as $p)
+                            @php
+                                $pdate = $p->paid_at ? Carbon::parse($p->paid_at)->format('Y-m-d') : '';
+                            @endphp
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30">
+                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $pdate }}</td>
+                                <td class="px-4 py-2 text-right font-semibold text-green-700 dark:text-green-400">{{ number_format($p->amount, 2) }}</td>
+                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300 uppercase">{{ $p->method }}</td>
+                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $p->reference ?? '—' }}</td>
+                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $p->phone ?? '—' }}</td>
+                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $p->user->name ?? 'System' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
+
     {{-- Returns --}}
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -182,7 +263,7 @@
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     @forelse($sale->returns as $ret)
                         @php
-                            $retDate = $ret->date ? Carbon::parse($ret->date)->format('Y-m-d') : '';
+                            $retDate  = $ret->date ? Carbon::parse($ret->date)->format('Y-m-d') : '';
                             $retItems = $ret->items ?? collect();
                             $hasItems = $retItems->isNotEmpty();
                         @endphp
@@ -262,37 +343,81 @@
         </div>
     </div>
 
-    {{-- Loan --}}
-    @if($sale->loan)
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
-            <div class="flex justify-between items-center mb-3">
-                <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-1">
-                    <i data-lucide="banknote" class="w-5 h-5 text-yellow-500"></i> Linked Loan
-                </h4>
-                <span class="px-2 py-1 rounded-full text-xs font-medium
-                    {{ $sale->loan->status === 'paid' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
-                    {{ ucfirst($sale->loan->status) }}
-                </span>
+    {{-- Loan (summary + quick pay + history) --}}
+    @if($loan)
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="banknote" class="w-5 h-5 text-yellow-500"></i>
+                    <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Linked Loan</h4>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium
+                        {{ $loan->status === 'paid' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
+                        {{ ucfirst($loan->status) }}
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    @if($loan->status === 'pending')
+                        <button type="button" class="btn btn-primary btn-sm" @click="$store.loanpay.open = true">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Quick Pay
+                        </button>
+                    @endif
+                    <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-outline btn-sm">More Options</a>
+                    <a href="{{ route('loans.show', $loan) }}" class="btn btn-outline btn-sm">View Loan</a>
+                </div>
             </div>
 
-            <div class="grid md:grid-cols-2 gap-2 text-sm">
-                <p><strong>Loan Amount:</strong> {{ number_format($sale->loan->amount, 2) }}</p>
-                <p><strong>Type:</strong> {{ ucfirst($sale->loan->type) }}</p>
-                <p><strong>Loan Date:</strong> {{ Carbon::parse($sale->loan->loan_date)->format('Y-m-d') }}</p>
-                @if($sale->loan->due_date)
-                    <p><strong>Due Date:</strong> {{ Carbon::parse($sale->loan->due_date)->format('Y-m-d') }}</p>
-                @endif
+            <div class="grid md:grid-cols-3 gap-4 text-sm">
+                <div>
+                    <p class="text-gray-500 dark:text-gray-400">Loan Amount</p>
+                    <p class="text-lg font-semibold text-indigo-600 dark:text-indigo-400">{{ number_format($loanAmt, 2) }}</p>
+                </div>
+                <div>
+                    <p class="text-gray-500 dark:text-gray-400">Total Paid</p>
+                    <p class="text-lg font-semibold text-green-600 dark:text-green-400">{{ number_format($loanPaid, 2) }}</p>
+                </div>
+                <div>
+                    <p class="text-gray-500 dark:text-gray-400">Remaining</p>
+                    <p class="text-lg font-semibold {{ $loanRem <= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                        {{ number_format($loanRem, 2) }}
+                    </p>
+                </div>
             </div>
 
-            @if($sale->loan->notes)
-                <p class="mt-3 text-gray-600 dark:text-gray-400 text-sm italic">{{ $sale->loan->notes }}</p>
-            @endif
+            <div>
+                <div class="flex justify-between items-center mb-1 text-xs text-gray-600 dark:text-gray-400">
+                    <span>Repayment Progress</span><span>{{ $loanProg }}%</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width: {{ $loanProg }}%"></div>
+                </div>
+            </div>
 
-            @if($sale->loan->status === 'pending')
-                <div class="mt-4">
-                    <a href="{{ route('loan-payments.create', $sale->loan) }}" class="btn btn-primary btn-sm">
-                        <i data-lucide="plus" class="w-4 h-4"></i> Add Payment
-                    </a>
+            @if($loan->payments->count())
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-xs">
+                        <thead class="bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-300 uppercase">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Date</th>
+                                <th class="px-3 py-2 text-right">Amount</th>
+                                <th class="px-3 py-2 text-left">Method</th>
+                                <th class="px-3 py-2 text-left">By</th>
+                                <th class="px-3 py-2 text-left">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                            @foreach($loan->payments->sortByDesc('payment_date') as $p)
+                                @php $lpdate = $p->payment_date ? Carbon::parse($p->payment_date)->format('Y-m-d') : ''; @endphp
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30">
+                                    <td class="px-3 py-2">{{ $lpdate }}</td>
+                                    <td class="px-3 py-2 text-right text-green-700 dark:text-green-400 font-semibold">{{ number_format($p->amount, 2) }}</td>
+                                    <td class="px-3 py-2 capitalize">{{ $p->method }}</td>
+                                    <td class="px-3 py-2">{{ $p->user->name ?? 'System' }}</td>
+                                    <td class="px-3 py-2">{{ $p->notes ?? '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
                 </div>
             @endif
         </div>
@@ -547,18 +672,94 @@
     </div>
 </div>
 @endrole
+
+{{-- Loan Quick-Pay Modal --}}
+@if($loan && $loan->status === 'pending')
+<div x-data
+     x-cloak
+     x-show="$store.loanpay.open"
+     x-transition.opacity
+     class="fixed inset-0 z-[10000]">
+
+    <div class="absolute inset-0 bg-black/40"
+         @click="$store.loanpay.open=false"
+         @keydown.escape.window="$store.loanpay.open=false"></div>
+
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+        <div class="w-full max-w-md rounded-xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 shadow-xl"
+             x-data="loanPayModal({
+                remaining: {{ json_encode($loanRem) }},
+                defaultAmount: {{ json_encode($loanRem) }},
+                defaultMethod: {{ json_encode(in_array($channel, $methods, true) ? $channel : 'cash') }},
+                today: {{ json_encode(now()->toDateString()) }}
+             })">
+            <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Record Loan Payment</h3>
+                <button type="button" @click="$store.loanpay.open=false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="{{ route('loan-payments.store', $loan) }}" class="p-5 space-y-4">
+                @csrf
+                <div class="grid grid-cols-1 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Amount <span class="text-red-500">*</span></label>
+                        <input type="number" step="0.01" min="0.01" name="amount" x-model="amount"
+                               @input="clamp()" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                        <p class="mt-1 text-[11px]" :class="warn ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'">
+                            Remaining: <strong x-text="money(remaining)"></strong>
+                            <span x-show="warn"> • Exceeds remaining — will be blocked.</span>
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Payment Date <span class="text-red-500">*</span></label>
+                        <input type="date" name="payment_date" x-model="payment_date"
+                               class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Method <span class="text-red-500">*</span></label>
+                        <select name="method" x-model="method"
+                                class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                            @foreach($methods as $m)
+                                <option value="{{ $m }}">{{ strtoupper($m) }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Notes</label>
+                        <textarea name="notes" rows="3" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" placeholder="Reference / comment…"></textarea>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" class="btn btn-outline" @click="$store.loanpay.open=false">Cancel</button>
+                    <button class="btn btn-success" :disabled="warn || !amount || amount<=0">Save Payment</button>
+                </div>
+            </form>
+
+            <div class="px-5 pb-4 text-[11px] text-gray-500 dark:text-gray-400">
+                Note: This posts to the loan payments endpoint and updates accounting (Transaction + DebitCredit) automatically.
+            </div>
+        </div>
+    </div>
+</div>
+@endif
 @endsection
 
 @push('scripts')
 <script>
 document.addEventListener('alpine:init', () => {
     if (!Alpine.store('returns')) Alpine.store('returns', { open:false });
+    if (!Alpine.store('loanpay')) Alpine.store('loanpay', { open:false });
 
-    // Open the returns modal when ?open=returns is present
+    // URL triggers: ?open=returns or ?open=loan
     const params = new URLSearchParams(location.search);
-    if (params.get('open') === 'returns') {
-        Alpine.store('returns').open = true;
-    }
+    if (params.get('open') === 'returns') Alpine.store('returns').open = true;
+    if (params.get('open') === 'loan')    Alpine.store('loanpay').open   = true;
 });
 
 function saleReturnModal({ items }) {
@@ -568,13 +769,8 @@ function saleReturnModal({ items }) {
         options: items,
         lines: [],
         total: 0,
-        add(){
-            this.lines.push({ key: uid(), sale_item_id: null, product_id: null, unit_price: 0, max: 0, quantity: 1, disposition: 'restock' });
-        },
-        remove(i){
-            this.lines.splice(i,1);
-            this.recalc();
-        },
+        add(){ this.lines.push({ key: uid(), sale_item_id: null, product_id: null, unit_price: 0, max: 0, quantity: 1, disposition: 'restock' }); },
+        remove(i){ this.lines.splice(i,1); this.recalc(); },
         onSelect(i, ev){
             const id = Number(ev.target.value || 0);
             const opt = this.options.find(o => o.sale_item_id === id);
@@ -588,14 +784,27 @@ function saleReturnModal({ items }) {
             this.clamp(i);
         },
         clamp(i){
-            const r = this.lines[i];
-            if (!r) return;
+            const r = this.lines[i]; if (!r) return;
             if (r.quantity > r.max) r.quantity = r.max;
             if (r.quantity < 0.01) r.quantity = 0.01;
             this.recalc();
         },
-        recalc(){
-            this.total = this.lines.reduce((s, r) => s + (Number(r.quantity||0) * Number(r.unit_price||0)), 0);
+        recalc(){ this.total = this.lines.reduce((s, r) => s + (Number(r.quantity||0) * Number(r.unit_price||0)), 0); },
+        money(v){ return Number(v||0).toFixed(2); }
+    }
+}
+
+function loanPayModal({ remaining, defaultAmount, defaultMethod, today }) {
+    return {
+        remaining: Number(remaining || 0),
+        amount: Number(defaultAmount || 0).toFixed(2),
+        method: defaultMethod || 'cash',
+        payment_date: today || new Date().toISOString().slice(0,10),
+        warn: false,
+        clamp(){
+            const amt = parseFloat(this.amount || 0);
+            this.warn = isFinite(amt) ? (amt > (this.remaining + 0.009)) : true;
+            if (isFinite(amt) && !this.warn) this.amount = amt.toFixed(2);
         },
         money(v){ return Number(v||0).toFixed(2); }
     }

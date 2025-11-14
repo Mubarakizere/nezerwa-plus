@@ -9,15 +9,19 @@ use App\Models\DebitCredit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class LoanPaymentController extends Controller
 {
+    /** Allow tiny rounding wiggle room when comparing remaining balance */
+    private const EPSILON = 0.01;
+
     /**
      * Show the form to add a new payment for a loan.
      */
     public function create(Loan $loan)
     {
-        //  Prevent adding payments to already paid loans
+        // Block adding payments to already closed loans
         if ($loan->status === 'paid') {
             return redirect()
                 ->route('loans.show', $loan)
@@ -31,67 +35,69 @@ class LoanPaymentController extends Controller
      * Store a new loan payment.
      */
     public function store(Request $request, Loan $loan)
-    {
-        //  Prevent accidental payments if loan is already closed
-        if ($loan->status === 'paid') {
-            return redirect()
-                ->route('loans.show', $loan)
-                ->with('error', 'Cannot record payment — this loan is already marked as paid.');
-        }
+{
+    if ($loan->status === 'paid') {
+        return redirect()->route('loans.show', $loan)
+            ->with('error', 'Cannot record payment — this loan is already marked as paid.');
+    }
 
-        $validated = $request->validate([
-            'amount'       => 'required|numeric|min:0.01',
-            'payment_date' => 'required|date',
-            'method'       => 'required|string|max:100',
-            'notes'        => 'nullable|string',
-        ]);
+    $validated = $request->validate([
+        'amount'       => ['required','numeric','min:0.01'],
+        'payment_date' => ['required','date'],
+        'method'       => ['required','string', \Illuminate\Validation\Rule::in(\App\Models\LoanPayment::METHODS)],
+        'notes'        => ['nullable','string'],
+    ]);
 
+    try {
         DB::transaction(function () use ($validated, $loan) {
             $userId = Auth::id();
 
-            //  Record payment
             $payment = $loan->payments()->create([
                 'user_id'      => $userId,
-                'amount'       => $validated['amount'],
+                'amount'       => (float)$validated['amount'],
                 'payment_date' => $validated['payment_date'],
-                'method'       => $validated['method'],
+                'method'       => strtolower(trim($validated['method'])),
                 'notes'        => $validated['notes'] ?? null,
             ]);
 
-            //  Create Transaction
+            $txnType = $loan->type === 'taken' ? 'debit' : 'credit';
+
             $transaction = Transaction::create([
-                'type'             => 'credit',
+                'type'             => $txnType,
                 'amount'           => $payment->amount,
-                'transaction_date' => now(),
+                'transaction_date' => $validated['payment_date'],
                 'method'           => $payment->method,
                 'user_id'          => $userId,
                 'customer_id'      => $loan->customer_id,
-                'loan_id'          => $loan->id,
+                'supplier_id'      => $loan->supplier_id,
+                'loan_id'          => $loan->id, // ✅ relies on migration
                 'notes'            => 'Loan payment for Loan #' . $loan->id,
             ]);
 
-            // Record in DebitCredit
             DebitCredit::create([
-                'type'           => 'credit',
+                'type'           => $txnType,
                 'amount'         => $payment->amount,
                 'description'    => 'Loan payment for Loan #' . $loan->id,
-                'date'           => now()->toDateString(),
+                'date'           => $validated['payment_date'],
                 'user_id'        => $userId,
                 'customer_id'    => $loan->customer_id,
+                'supplier_id'    => $loan->supplier_id,
                 'transaction_id' => $transaction->id,
             ]);
 
-            //  Update Loan Status
-            $totalPaid = $loan->payments()->sum('amount');
-            $remaining = $loan->amount - $totalPaid;
-
-            if ($remaining <= 0.009) {
+            // Auto-close within epsilon
+            $totalPaid = (float) $loan->payments()->sum('amount');
+            if ($totalPaid >= ((float)$loan->amount - 0.01)) {
                 $loan->update(['status' => 'paid']);
             }
         });
 
-        return redirect()
-            ->route('loans.show', $loan)
+        return redirect()->route('loans.show', $loan)
             ->with('success', 'Payment recorded successfully.');
+    } catch (\Throwable $e) {
+        \Log::error('❌ LoanPayment@store failed', ['loan_id' => $loan->id, 'error' => $e->getMessage()]);
+        return back()->withInput()->withErrors(['error' => 'Failed to record payment: '.$e->getMessage()]);
     }
+}
+
 }

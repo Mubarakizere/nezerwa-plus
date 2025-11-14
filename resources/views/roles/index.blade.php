@@ -8,16 +8,82 @@
     class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6"
 >
 
+    {{-- Flash messages --}}
+    @if(session('success'))
+        <div class="p-3 rounded-md bg-green-100 text-green-700 text-sm border border-green-200">
+            {{ session('success') }}
+        </div>
+    @elseif(session('error'))
+        <div class="p-3 rounded-md bg-red-100 text-red-700 text-sm border border-red-200">
+            {{ session('error') }}
+        </div>
+    @elseif($errors->any())
+        <div class="p-3 rounded-md bg-red-100 text-red-700 text-sm border border-red-200">
+            <ul class="list-disc list-inside space-y-1">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     {{-- Header --}}
     <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <i data-lucide="shield" class="w-6 h-6 text-indigo-600 dark:text-indigo-400"></i>
-            <span>Roles Management</span>
-        </h1>
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <i data-lucide="shield" class="w-6 h-6 text-indigo-600 dark:text-indigo-400"></i>
+                <span>Roles Management</span>
+            </h1>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Control who can access what in the system. Click a role to preview its users and permissions.
+            </p>
+        </div>
 
         <a href="{{ route('roles.create') }}" class="btn btn-primary flex items-center gap-2 text-sm">
             <i data-lucide="plus" class="w-4 h-4"></i> New Role
         </a>
+    </div>
+
+    {{-- Search / filters --}}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm space-y-3">
+        <form method="GET" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+            <div class="md:col-span-3">
+                <label class="form-label text-xs">Search</label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-3 flex items-center text-gray-400">
+                        <i data-lucide="search" class="w-4 h-4"></i>
+                    </span>
+                    <input
+                        type="text"
+                        name="q"
+                        value="{{ $query ?? request('q') }}"
+                        placeholder="Search by role name, permission or user..."
+                        class="form-input w-full pl-9 pr-9"
+                    >
+                    @if(($query ?? request('q')) !== null && ($query ?? request('q')) !== '')
+                        <a href="{{ route('roles.index') }}"
+                           class="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                           title="Clear search">
+                            <i data-lucide="x-circle" class="w-4 h-4"></i>
+                        </a>
+                    @endif
+                </div>
+            </div>
+
+            <div class="md:col-span-1 flex gap-2">
+                <button type="submit" class="btn btn-secondary w-full flex items-center justify-center gap-1">
+                    <i data-lucide="filter" class="w-4 h-4"></i>
+                    <span>Apply</span>
+                </button>
+            </div>
+        </form>
+
+        @if(($query ?? request('q')) !== null && ($query ?? request('q')) !== '')
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+                Showing results for:
+                <span class="font-semibold text-gray-700 dark:text-gray-200">“{{ $query ?? request('q') }}”</span>
+            </p>
+        @endif
     </div>
 
     {{-- Table --}}
@@ -36,7 +102,9 @@
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     @forelse ($roles as $role)
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/40 transition">
-                            <td class="px-4 py-3 text-gray-500">{{ $loop->iteration }}</td>
+                            <td class="px-4 py-3 text-gray-500">
+                                {{ $loop->iteration + ($roles->currentPage() - 1) * $roles->perPage() }}
+                            </td>
 
                             {{-- Clickable role badge (opens drawer) --}}
                             <td class="px-4 py-3">
@@ -62,6 +130,11 @@
                                         } }}"
                                 >
                                     {{ ucfirst($role->name) }}
+                                    @if(in_array($role->name, ['admin','manager']))
+                                        <span class="ml-1 text-[10px] uppercase tracking-wide text-gray-500">
+                                            system
+                                        </span>
+                                    @endif
                                 </button>
                             </td>
 
@@ -111,9 +184,11 @@
     </div>
 
     {{-- Pagination --}}
-    <div class="mt-4">
-        {{ $roles->links() }}
-    </div>
+    @if($roles instanceof \Illuminate\Pagination\LengthAwarePaginator)
+        <div class="mt-4">
+            {{ $roles->onEachSide(1)->links() }}
+        </div>
+    @endif
 
     {{-- Delete Modal --}}
     <div
@@ -135,7 +210,7 @@
 
             <div class="flex justify-end gap-3">
                 <button @click="deleteRoleId = null" class="btn btn-outline text-sm">Cancel</button>
-                <form :action="`/roles/${deleteRoleId}`" method="POST">
+                <form :action="`{{ url('roles') }}/${deleteRoleId}`" method="POST">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="btn btn-danger text-sm">Delete</button>
@@ -166,7 +241,7 @@
             class="relative bg-white dark:bg-gray-800 w-full sm:w-96 shadow-xl h-full overflow-y-auto rounded-l-xl"
         >
             <div class="p-6 space-y-5">
-                {{-- Header --}}
+                {{-- Drawer Header --}}
                 <div class="flex items-start justify-between">
                     <div>
                         <h2 class="text-xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1">
@@ -229,10 +304,19 @@
 @push('scripts')
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
-document.addEventListener('alpine:init', () => {
-    Alpine.effect(() => lucide.createIcons());
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
 });
-document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+document.addEventListener('alpine:init', () => {
+    // Recreate icons when Alpine updates DOM (drawer, modal, etc.)
+    Alpine.effect(() => {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    });
+});
 </script>
 @endpush
 @endsection

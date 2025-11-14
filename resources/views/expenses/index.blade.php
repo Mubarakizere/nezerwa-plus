@@ -40,11 +40,9 @@
     <form method="GET" action="{{ route('expenses.index') }}"
           class="rounded-2xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-4">
         <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
-            {{-- Category --}}
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Category</label>
-                <select name="category_id"
-                        class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <select name="category_id" class="form-select w-full">
                     <option value="">All</option>
                     @foreach($categories as $c)
                         <option value="{{ $c->id }}" @selected((string)request('category_id')===(string)$c->id)>{{ $c->name }}</option>
@@ -52,11 +50,9 @@
                 </select>
             </div>
 
-            {{-- Supplier --}}
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Supplier</label>
-                <select name="supplier_id"
-                        class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <select name="supplier_id" class="form-select w-full">
                     <option value="">All</option>
                     @foreach($suppliers as $s)
                         <option value="{{ $s->id }}" @selected((string)request('supplier_id')===(string)$s->id)>{{ $s->name }}</option>
@@ -64,11 +60,9 @@
                 </select>
             </div>
 
-            {{-- Method --}}
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Method</label>
-                <select name="method"
-                        class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <select name="method" class="form-select w-full">
                     <option value="">Any</option>
                     @foreach($methods as $m)
                         <option value="{{ $m }}" @selected(request('method')===$m)>{{ strtoupper($m) }}</option>
@@ -76,25 +70,20 @@
                 </select>
             </div>
 
-            {{-- From --}}
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">From</label>
-                <input type="date" name="from" value="{{ request('from') }}"
-                       class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <input type="date" name="from" value="{{ request('from') }}" class="form-input w-full">
             </div>
 
-            {{-- To --}}
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">To</label>
-                <input type="date" name="to" value="{{ request('to') }}"
-                       class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <input type="date" name="to" value="{{ request('to') }}" class="form-input w-full">
             </div>
 
-            {{-- Search --}}
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Search</label>
                 <input type="text" name="q" value="{{ request('q') }}" placeholder="Ref, note, category, supplier…"
-                       class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                       class="form-input w-full">
             </div>
         </div>
 
@@ -135,7 +124,7 @@
                         <tr>
                             <td class="px-5 py-3 text-gray-700 dark:text-gray-300">#{{ $e->id }}</td>
                             <td class="px-5 py-3 text-gray-700 dark:text-gray-300">
-                                {{ optional($e->date)->format('M j, Y') ?? \Carbon\Carbon::parse($e->date)->format('M j, Y') }}
+                                {{ optional($e->date)->format('M j, Y') }}
                             </td>
                             <td class="px-5 py-3 text-gray-900 dark:text-gray-100">{{ $e->category->name ?? '—' }}</td>
                             <td class="px-5 py-3 text-gray-900 dark:text-gray-100">{{ $e->supplier->name ?? '—' }}</td>
@@ -171,7 +160,6 @@
                     @endforelse
                 </tbody>
 
-                {{-- PAGE TOTAL --}}
                 <tfoot class="bg-gray-50 dark:bg-gray-800/50 text-sm">
                     <tr>
                         <td colspan="6" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Page Total</td>

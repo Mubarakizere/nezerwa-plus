@@ -6,65 +6,98 @@ use App\Models\Transaction;
 use App\Models\Customer;
 use App\Models\Supplier;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\{Auth, DB, Log};
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class TransactionController extends Controller
 {
+    /* =========================
+     |  LIST / INDEX
+     |=========================*/
     public function index(Request $request)
     {
-        $rid = uniqid('tx_index_');
-        Log::info('Transactions@index called', ['rid' => $rid, 'query' => $request->all()]);
+        $rid  = uniqid('tx_index_');
+        $isPg = DB::getDriverName() === 'pgsql';
+        $like = $isPg ? 'ilike' : 'like';
 
         try {
-            $query = Transaction::with(['user','customer','supplier','sale','purchase']);
+            // Base query with relations + text search
+            $base = Transaction::query()
+                ->with(['user','customer','supplier','sale','purchase'])
+                ->when($request->filled('type'),        fn($q) => $q->where('type', $request->type))
+                ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->customer_id))
+                ->when($request->filled('supplier_id'), fn($q) => $q->where('supplier_id', $request->supplier_id))
+                ->when($request->filled('method'),      fn($q) => $q->where('method', $request->method))
+                ->when($request->filled('q'), function ($q) use ($request, $like) {
+                    $term = trim($request->q);
+                    $q->where(function ($xx) use ($term, $like) {
+                        $xx->where('method', $like, "%{$term}%")
+                           ->orWhere('notes',  $like, "%{$term}%")
+                           ->orWhereHas('user',     fn($uq) => $uq->where('name', $like, "%{$term}%"))
+                           ->orWhereHas('customer', fn($cq) => $cq->where('name', $like, "%{$term}%"))
+                           ->orWhereHas('supplier', fn($sq) => $sq->where('name', $like, "%{$term}%"));
+                    });
+                });
 
-            if ($request->filled('type'))         $query->where('type', $request->type);
-            if ($request->filled('customer_id'))  $query->where('customer_id', $request->customer_id);
-            if ($request->filled('supplier_id'))  $query->where('supplier_id', $request->supplier_id);
-            if ($request->filled('date_from'))    $query->whereDate('transaction_date', '>=', $request->date_from);
-            if ($request->filled('date_to'))      $query->whereDate('transaction_date', '<=', $request->date_to);
+            // Robust TIMESTAMP bounds (inclusive day)
+            $from = $request->date_from ? "{$request->date_from} 00:00:00" : null;
+            $to   = $request->date_to   ? "{$request->date_to} 23:59:59"   : null;
+            if ($from && $to)      { $base->whereBetween('transaction_date', [$from, $to]); }
+            elseif ($from)         { $base->where('transaction_date', '>=', $from); }
+            elseif ($to)           { $base->where('transaction_date', '<=', $to); }
 
-            $transactions = $query->orderByDesc('transaction_date')->paginate(10);
-            $totalCredits = Transaction::where('type','credit')->sum('amount');
-            $totalDebits  = Transaction::where('type','debit')->sum('amount');
+            // Page query (keep full model columns)
+            $query = (clone $base)->select('transactions.*');
+            if ($isPg) {
+                $query->addSelect(DB::raw("
+                    sum(case when type='credit' then amount else -amount end)
+                    over (order by transaction_date, id rows unbounded preceding) as running_balance
+                "));
+            }
 
-            Log::info('Transactions@index success', [
-                'rid' => $rid,
-                'count' => $transactions->count(),
-                'page' => $transactions->currentPage(),
-                'totals' => ['credits' => $totalCredits, 'debits' => $totalDebits],
-            ]);
+            // Filter-aware totals
+            $totalCredits = (clone $base)->where('type', 'credit')->sum('amount');
+            $totalDebits  = (clone $base)->where('type', 'debit')->sum('amount');
 
-            return view('transactions.index', compact('transactions','totalCredits','totalDebits'));
+            // Page data
+            $transactions = $query
+                ->orderByDesc('transaction_date')
+                ->orderByDesc('id')
+                ->paginate(15)
+                ->withQueryString();
+
+            $pageCredits = $transactions->getCollection()->where('type','credit')->sum('amount');
+            $pageDebits  = $transactions->getCollection()->where('type','debit')->sum('amount');
+
+            return view('transactions.index', compact(
+                'transactions','totalCredits','totalDebits','pageCredits','pageDebits'
+            ));
         } catch (Throwable $e) {
-            Log::error('Transactions@index failed', ['rid' => $rid, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Transactions@index failed', ['rid' => $rid, 'error' => $e->getMessage()]);
             return back()->with('error', 'Failed to load transactions. Ref: '.$rid);
         }
     }
 
+    /* =========================
+     |  CREATE / STORE
+     |=========================*/
     public function create()
     {
-        $rid = uniqid('tx_create_');
-        Log::info('Transactions@create called', ['rid' => $rid]);
-
         try {
             $customers = Customer::select('id','name')->orderBy('name')->get();
             $suppliers = Supplier::select('id','name')->orderBy('name')->get();
             return view('transactions.create', compact('customers','suppliers'));
         } catch (Throwable $e) {
-            Log::error('Transactions@create failed', ['rid' => $rid, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-            return back()->with('error', 'Failed to open create form. Ref: '.$rid);
+            Log::error('Transactions@create failed', ['error' => $e->getMessage()]);
+            return back()->with('error', 'Failed to open create form.');
         }
     }
 
     public function store(Request $request)
     {
         $rid = uniqid('tx_store_');
-        Log::info('Transactions@store called', ['rid' => $rid, 'payload' => $request->all()]);
-
         try {
             $validated = $request->validate([
                 'type'             => 'required|in:credit,debit',
@@ -76,59 +109,47 @@ class TransactionController extends Controller
                 'supplier_id'      => 'nullable|exists:suppliers,id',
             ]);
 
-            $validated['user_id'] = auth()->id();
-            $tx = Transaction::create($validated);
-
-            Log::info('Transactions@store success', ['rid' => $rid, 'id' => $tx->id]);
+            $validated['user_id'] = Auth::id();
+            Transaction::create($validated);
 
             return redirect()->route('transactions.index')->with('success', 'Transaction added successfully.');
         } catch (ValidationException $ve) {
-            Log::warning('Transactions@store validation failed', [
-                'rid' => $rid,
-                'errors' => $ve->errors(),
-                'payload' => $request->all(),
-            ]);
-            throw $ve; // let Laravel redirect back with errors
+            throw $ve;
         } catch (Throwable $e) {
-            Log::error('Transactions@store failed', ['rid' => $rid, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Transactions@store failed', ['rid' => $rid, 'error' => $e->getMessage()]);
             return back()->withInput()->with('error', 'Failed to save transaction. Ref: '.$rid);
         }
     }
 
+    /* =========================
+     |  SHOW / EDIT / UPDATE
+     |=========================*/
     public function show(Transaction $transaction)
     {
-        $rid = uniqid('tx_show_');
-        Log::info('Transactions@show called', ['rid' => $rid, 'id' => $transaction->id]);
-
         try {
             $transaction->load(['user','customer','supplier','sale','purchase']);
             return view('transactions.show', compact('transaction'));
         } catch (Throwable $e) {
-            Log::error('Transactions@show failed', ['rid' => $rid, 'id' => $transaction->id, 'error' => $e->getMessage()]);
-            return back()->with('error', 'Failed to load transaction. Ref: '.$rid);
+            Log::error('Transactions@show failed', ['id' => $transaction->id, 'error' => $e->getMessage()]);
+            return back()->with('error', 'Failed to load transaction.');
         }
     }
 
     public function edit(Transaction $transaction)
     {
-        $rid = uniqid('tx_edit_');
-        Log::info('Transactions@edit called', ['rid' => $rid, 'id' => $transaction->id]);
-
         try {
             $customers = Customer::select('id','name')->orderBy('name')->get();
             $suppliers = Supplier::select('id','name')->orderBy('name')->get();
             return view('transactions.edit', compact('transaction','customers','suppliers'));
         } catch (Throwable $e) {
-            Log::error('Transactions@edit failed', ['rid' => $rid, 'id' => $transaction->id, 'error' => $e->getMessage()]);
-            return back()->with('error', 'Failed to open edit form. Ref: '.$rid);
+            Log::error('Transactions@edit failed', ['id' => $transaction->id, 'error' => $e->getMessage()]);
+            return back()->with('error', 'Failed to open edit form.');
         }
     }
 
     public function update(Request $request, Transaction $transaction)
     {
         $rid = uniqid('tx_update_');
-        Log::info('Transactions@update called', ['rid' => $rid, 'id' => $transaction->id, 'payload' => $request->all()]);
-
         try {
             $validated = $request->validate([
                 'type'             => 'required|in:credit,debit',
@@ -142,57 +163,76 @@ class TransactionController extends Controller
 
             $transaction->update($validated);
 
-            Log::info('Transactions@update success', ['rid' => $rid, 'id' => $transaction->id]);
-
             return redirect()->route('transactions.index')->with('success', 'Transaction updated successfully.');
         } catch (ValidationException $ve) {
-            Log::warning('Transactions@update validation failed', [
-                'rid' => $rid,
-                'id' => $transaction->id,
-                'errors' => $ve->errors(),
-            ]);
             throw $ve;
-        } catch (Throwable $e) {
-            Log::error('Transactions@update failed', ['rid' => $rid, 'id' => $transaction->id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+    } catch (Throwable $e) {
+            Log::error('Transactions@update failed', ['rid' => $rid, 'id' => $transaction->id, 'error' => $e->getMessage()]);
             return back()->withInput()->with('error', 'Failed to update transaction. Ref: '.$rid);
         }
     }
 
+    /* =========================
+     |  DESTROY
+     |=========================*/
     public function destroy(Transaction $transaction)
     {
         $rid = uniqid('tx_destroy_');
-        Log::info('Transactions@destroy called', ['rid' => $rid, 'id' => $transaction->id]);
-
         try {
             $transaction->delete();
-            Log::info('Transactions@destroy success', ['rid' => $rid, 'id' => $transaction->id]);
             return redirect()->route('transactions.index')->with('success', 'Transaction deleted successfully.');
         } catch (Throwable $e) {
-            Log::error('Transactions@destroy failed', ['rid' => $rid, 'id' => $transaction->id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Transactions@destroy failed', ['rid' => $rid, 'id' => $transaction->id, 'error' => $e->getMessage()]);
             return back()->with('error', 'Failed to delete transaction. Ref: '.$rid);
         }
     }
 
-    // 🔹 CSV Export (uses storage path to avoid permission issues)
-    public function exportCsv()
+    /* =========================
+     |  EXPORTS (respect filters)
+     |=========================*/
+    public function exportCsv(Request $request)
     {
-        $rid = uniqid('tx_csv_');
-        Log::info('Transactions@exportCsv called', ['rid' => $rid]);
+        $rid  = uniqid('tx_csv_');
+        $isPg = DB::getDriverName() === 'pgsql';
+        $like = $isPg ? 'ilike' : 'like';
 
         try {
-            $transactions = Transaction::with(['user','customer','supplier'])->get();
+            $base = Transaction::query()
+                ->with(['user','customer','supplier'])
+                ->when($request->filled('type'),        fn($q) => $q->where('type', $request->type))
+                ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->customer_id))
+                ->when($request->filled('supplier_id'), fn($q) => $q->where('supplier_id', $request->supplier_id))
+                ->when($request->filled('method'),      fn($q) => $q->where('method', $request->method))
+                ->when($request->filled('q'), function ($q) use ($request, $like) {
+                    $term = trim($request->q);
+                    $q->where(function ($xx) use ($term, $like) {
+                        $xx->where('method', $like, "%{$term}%")
+                           ->orWhere('notes',  $like, "%{$term}%")
+                           ->orWhereHas('user',     fn($uq) => $uq->where('name', $like, "%{$term}%"))
+                           ->orWhereHas('customer', fn($cq) => $cq->where('name', $like, "%{$term}%"))
+                           ->orWhereHas('supplier', fn($sq) => $sq->where('name', $like, "%{$term}%"));
+                    });
+                });
+
+            $from = $request->date_from ? "{$request->date_from} 00:00:00" : null;
+            $to   = $request->date_to   ? "{$request->date_to} 23:59:59"   : null;
+            if ($from && $to)      { $base->whereBetween('transaction_date', [$from, $to]); }
+            elseif ($from)         { $base->where('transaction_date', '>=', $from); }
+            elseif ($to)           { $base->where('transaction_date', '<=', $to); }
+
+            $transactions = $base
+                ->select('transactions.*')
+                ->orderBy('transaction_date')
+                ->orderBy('id')
+                ->get();
+
             $filename = 'transactions_' . now()->format('Y-m-d_H-i-s') . '.csv';
-            $path = storage_path('app/exports');
-
-            if (!is_dir($path)) {
-                mkdir($path, 0755, true);
-            }
-
+            $path     = storage_path('app/exports');
+            if (!is_dir($path)) mkdir($path, 0755, true);
             $fullpath = $path . DIRECTORY_SEPARATOR . $filename;
+
             $handle = fopen($fullpath, 'w+');
-
             fputcsv($handle, ['Date','Type','Amount','Method','User','Customer','Supplier','Notes']);
-
             foreach ($transactions as $t) {
                 fputcsv($handle, [
                     $t->transaction_date,
@@ -205,31 +245,56 @@ class TransactionController extends Controller
                     $t->notes ?? '-',
                 ]);
             }
-
             fclose($handle);
 
-            Log::info('Transactions@exportCsv success', ['rid' => $rid, 'file' => $fullpath]);
             return response()->download($fullpath)->deleteFileAfterSend(true);
         } catch (Throwable $e) {
-            Log::error('Transactions@exportCsv failed', ['rid' => $rid, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Transactions@exportCsv failed', ['rid' => $rid, 'error' => $e->getMessage()]);
             return back()->with('error', 'Failed to export CSV. Ref: '.$rid);
         }
     }
 
-    public function exportPdf()
+    public function exportPdf(Request $request)
     {
-        $rid = uniqid('tx_pdf_');
-        Log::info('Transactions@exportPdf called', ['rid' => $rid]);
+        $rid  = uniqid('tx_pdf_');
+        $isPg = DB::getDriverName() === 'pgsql';
+        $like = $isPg ? 'ilike' : 'like';
 
         try {
-            $transactions = Transaction::with(['user','customer','supplier'])->get();
-            $pdf = Pdf::loadView('transactions.export-pdf', compact('transactions'));
-            $name = 'transactions_' . now()->format('Y-m-d_H-i-s') . '.pdf';
+            $base = Transaction::query()
+                ->with(['user','customer','supplier'])
+                ->when($request->filled('type'),        fn($q) => $q->where('type', $request->type))
+                ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->customer_id))
+                ->when($request->filled('supplier_id'), fn($q) => $q->where('supplier_id', $request->supplier_id))
+                ->when($request->filled('method'),      fn($q) => $q->where('method', $request->method))
+                ->when($request->filled('q'), function ($q) use ($request, $like) {
+                    $term = trim($request->q);
+                    $q->where(function ($xx) use ($term, $like) {
+                        $xx->where('method', $like, "%{$term}%")
+                           ->orWhere('notes',  $like, "%{$term}%")
+                           ->orWhereHas('user',     fn($uq) => $uq->where('name', $like, "%{$term}%"))
+                           ->orWhereHas('customer', fn($cq) => $cq->where('name', $like, "%{$term}%"))
+                           ->orWhereHas('supplier', fn($sq) => $sq->where('name', $like, "%{$term}%"));
+                    });
+                });
 
-            Log::info('Transactions@exportPdf success', ['rid' => $rid, 'records' => $transactions->count()]);
+            $from = $request->date_from ? "{$request->date_from} 00:00:00" : null;
+            $to   = $request->date_to   ? "{$request->date_to} 23:59:59"   : null;
+            if ($from && $to)      { $base->whereBetween('transaction_date', [$from, $to]); }
+            elseif ($from)         { $base->where('transaction_date', '>=', $from); }
+            elseif ($to)           { $base->where('transaction_date', '<=', $to); }
+
+            $transactions = $base
+                ->select('transactions.*')
+                ->orderBy('transaction_date')
+                ->orderBy('id')
+                ->get();
+
+            $pdf  = Pdf::loadView('transactions.export-pdf', compact('transactions'));
+            $name = 'transactions_' . now()->format('Y-m-d_H-i-s') . '.pdf';
             return $pdf->download($name);
         } catch (Throwable $e) {
-            Log::error('Transactions@exportPdf failed', ['rid' => $rid, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('Transactions@exportPdf failed', ['rid' => $rid, 'error' => $e->getMessage()]);
             return back()->with('error', 'Failed to export PDF. Ref: '.$rid);
         }
     }

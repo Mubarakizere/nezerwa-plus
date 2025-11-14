@@ -7,34 +7,31 @@ use Illuminate\Support\Facades\{Log, Auth};
 
 class LoanObserver
 {
-    /**
-     * 🔹 When a loan is created.
-     */
-    public function created(Loan $loan)
+    public function created(Loan $loan): void
     {
         try {
-            $isGiven = $loan->type === 'given'; // We gave money → Debit
-            $isTaken = $loan->type === 'taken'; // We received money → Credit
+            $isGiven = $loan->type === 'given';   // we lent out money → debit cash
+            $isTaken = $loan->type === 'taken';   // we took a loan → credit cash
 
-            // 1️⃣ Create a Transaction record
+            // Create the initial disbursement/receipt transaction and tie it to the loan
             $transaction = Transaction::create([
                 'type'             => $isGiven ? 'debit' : 'credit',
-                'user_id'          => Auth::id() ?? 1,
+                'user_id'          => Auth::id(),
                 'customer_id'      => $loan->customer_id,
                 'supplier_id'      => $loan->supplier_id,
+                'loan_id'          => $loan->id,               // ✅ critical
                 'amount'           => $loan->amount,
-                'transaction_date' => $loan->loan_date,
+                'transaction_date' => $loan->loan_date ?? now(),
                 'method'           => 'cash',
                 'notes'            => ucfirst($loan->type) . " loan recorded - #{$loan->id}",
             ]);
 
-            // 2️⃣ Create DebitCredit entry linked to that transaction
             DebitCredit::create([
                 'type'           => $isGiven ? 'debit' : 'credit',
                 'amount'         => $loan->amount,
                 'description'    => ucfirst($loan->type) . " loan recorded - #{$loan->id}",
-                'date'           => $loan->loan_date,
-                'user_id'        => Auth::id() ?? 1,
+                'date'           => ($loan->loan_date ?? now())->toDateString(),
+                'user_id'        => Auth::id(),
                 'customer_id'    => $loan->customer_id,
                 'supplier_id'    => $loan->supplier_id,
                 'transaction_id' => $transaction->id,
@@ -45,85 +42,83 @@ class LoanObserver
                 'transaction_id' => $transaction->id,
             ]);
         } catch (\Throwable $e) {
-            Log::error('❌ LoanObserver create failed', [
+            Log::error('❌ LoanObserver@created failed', [
                 'loan_id' => $loan->id,
                 'error'   => $e->getMessage(),
             ]);
         }
     }
 
-    /**
-     * 🔹 When a loan is updated.
-     */
-    public function updated(Loan $loan)
+    public function updated(Loan $loan): void
     {
         try {
-            // 1️⃣ Sync related debit/credit entry
-            $debitCredit = DebitCredit::whereHas('transaction', function ($q) use ($loan) {
-                $q->where('notes', 'like', "%#{$loan->id}%");
-            })->first();
+            // Find the initial transaction via loan_id (not notes)
+            $transaction = Transaction::where('loan_id', $loan->id)->first();
 
-            if ($debitCredit) {
-                $debitCredit->update([
-                    'amount'      => $loan->amount,
-                    'description' => ucfirst($loan->type) . " loan updated - #{$loan->id}",
-                    'date'        => $loan->updated_at->toDateString(),
+            if ($transaction) {
+                // Keep base transaction in sync if the principal amount/type changed
+                $transaction->update([
+                    'type'             => $loan->type === 'given' ? 'debit' : 'credit',
+                    'amount'           => $loan->amount,
+                    'transaction_date' => $loan->loan_date ?? $transaction->transaction_date,
+                    'customer_id'      => $loan->customer_id,
+                    'supplier_id'      => $loan->supplier_id,
+                    'notes'            => ucfirst($loan->type) . " loan updated - #{$loan->id}",
                 ]);
+
+                // Mirror the DebitCredit linked to that transaction (if any)
+                $dc = DebitCredit::where('transaction_id', $transaction->id)->first();
+                if ($dc) {
+                    $dc->update([
+                        'type'        => $loan->type === 'given' ? 'debit' : 'credit',
+                        'amount'      => $loan->amount,
+                        'description' => ucfirst($loan->type) . " loan updated - #{$loan->id}",
+                        'date'        => ($loan->updated_at ?? now())->toDateString(),
+                        'customer_id' => $loan->customer_id,
+                        'supplier_id' => $loan->supplier_id,
+                    ]);
+                }
             }
 
-            // 2️⃣ If the loan is manually marked as PAID → update related sale/purchase
+            // Keep linked sale/purchase status in sync
             if ($loan->status === 'paid') {
                 if ($loan->sale) {
                     $loan->sale->updateQuietly(['status' => 'completed']);
-                    Log::info("💰 Sale #{$loan->sale->id} marked COMPLETED (Loan #{$loan->id} paid).");
                 }
-
                 if ($loan->purchase) {
-                    $loan->purchase->updateQuietly(['status' => 'completed']); // ✅ Fixed from 'paid' → 'completed'
-                    Log::info("📦 Purchase #{$loan->purchase->id} marked COMPLETED (Loan #{$loan->id} paid).");
+                    $loan->purchase->updateQuietly(['status' => 'completed']);
                 }
-            }
-
-            // 3️⃣ If reverted back to pending → reflect on related sale/purchase
-            elseif ($loan->status === 'pending') {
+            } elseif ($loan->status === 'pending') {
                 if ($loan->sale) {
                     $loan->sale->updateQuietly(['status' => 'pending']);
-                    Log::info("↩️ Sale #{$loan->sale->id} reverted to PENDING (Loan #{$loan->id}).");
                 }
-
                 if ($loan->purchase) {
                     $loan->purchase->updateQuietly(['status' => 'pending']);
-                    Log::info("↩️ Purchase #{$loan->purchase->id} reverted to PENDING (Loan #{$loan->id}).");
                 }
             }
 
             Log::info('🔁 LoanObserver: updated', ['loan_id' => $loan->id]);
         } catch (\Throwable $e) {
-            Log::error('❌ LoanObserver update failed', [
+            Log::error('❌ LoanObserver@updated failed', [
                 'loan_id' => $loan->id,
                 'error'   => $e->getMessage(),
             ]);
         }
     }
 
-    /**
-     * 🔹 When a loan is deleted.
-     */
-    public function deleted(Loan $loan)
+    public function deleted(Loan $loan): void
     {
         try {
-            // Remove related financial entries
-            DebitCredit::whereHas('transaction', function ($q) use ($loan) {
-                $q->where('notes', 'like', "%#{$loan->id}%");
-            })->delete();
+            // Remove initial financial entries tied by loan_id
+            $txns = Transaction::where('loan_id', $loan->id)->get();
+            foreach ($txns as $t) {
+                DebitCredit::where('transaction_id', $t->id)->delete();
+                $t->delete();
+            }
 
-            Transaction::where('notes', 'like', "%#{$loan->id}%")->delete();
-
-            Log::info('🗑️ LoanObserver: deleted linked records', [
-                'loan_id' => $loan->id,
-            ]);
+            Log::info('🗑️ LoanObserver: deleted linked records', ['loan_id' => $loan->id]);
         } catch (\Throwable $e) {
-            Log::error('❌ LoanObserver delete failed', [
+            Log::error('❌ LoanObserver@deleted failed', [
                 'loan_id' => $loan->id,
                 'error'   => $e->getMessage(),
             ]);

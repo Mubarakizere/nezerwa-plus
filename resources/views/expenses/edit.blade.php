@@ -32,44 +32,33 @@
     @endif
 
     {{-- Form --}}
-    <form action="{{ route('expenses.update', $expense) }}" method="POST"
-          class="space-y-5 rounded-2xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-6">
+    <form action="{{ route('expenses.update', $expense) }}" method="POST" class="space-y-5 rounded-2xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-6">
         @csrf
         @method('PUT')
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {{-- Date --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
-                <input type="date" name="date"
-                       value="{{ old('date', optional($expense->date)->toDateString() ?? \Carbon\Carbon::parse($expense->date)->toDateString()) }}"
-                       class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                <label class="form-label">Date</label>
+                <input type="date" name="date" value="{{ old('date', optional($expense->date)->toDateString()) }}" class="form-input w-full" required>
             </div>
 
-            {{-- Amount --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount (RWF)</label>
-                <input type="number" step="0.01" min="0" name="amount"
-                       value="{{ old('amount', $expense->amount) }}"
-                       class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                <label class="form-label">Amount (RWF)</label>
+                <input type="number" step="0.01" min="0" name="amount" value="{{ old('amount', $expense->amount) }}" class="form-input w-full" required>
             </div>
 
-            {{-- Category --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
-                <select name="category_id"
-                        class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                <label class="form-label">Category</label>
+                <select name="category_id" class="form-select w-full" required>
                     @foreach($categories as $c)
                         <option value="{{ $c->id }}" @selected(old('category_id', $expense->category_id) == $c->id)>{{ $c->name }}</option>
                     @endforeach
                 </select>
             </div>
 
-            {{-- Supplier (optional) --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Supplier (optional)</label>
-                <select name="supplier_id"
-                        class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                <label class="form-label">Supplier (optional)</label>
+                <select name="supplier_id" class="form-select w-full">
                     <option value="">None</option>
                     @foreach($suppliers as $s)
                         <option value="{{ $s->id }}" @selected(old('supplier_id', $expense->supplier_id) == $s->id)>{{ $s->name }}</option>
@@ -77,31 +66,24 @@
                 </select>
             </div>
 
-            {{-- Method --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Method</label>
-                <select name="method"
-                        class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" required>
+                <label class="form-label">Method</label>
+                <select name="method" class="form-select w-full" required>
                     @foreach($methods as $m)
                         <option value="{{ $m }}" @selected(old('method', $expense->method) == $m)>{{ strtoupper($m) }}</option>
                     @endforeach
                 </select>
             </div>
 
-            {{-- Reference --}}
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reference (optional)</label>
-                <input type="text" name="reference" value="{{ old('reference', $expense->reference) }}"
-                       class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" placeholder="Receipt / Txn ID">
+                <label class="form-label">Reference (optional)</label>
+                <input type="text" name="reference" value="{{ old('reference', $expense->reference) }}" class="form-input w-full" placeholder="Receipt / Txn ID">
             </div>
         </div>
 
-        {{-- Note --}}
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note</label>
-            <textarea name="note" rows="3"
-                      class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                      placeholder="Details…">{{ old('note', $expense->note) }}</textarea>
+            <label class="form-label">Note</label>
+            <textarea name="note" rows="3" class="form-textarea w-full" placeholder="Details…">{{ old('note', $expense->note) }}</textarea>
         </div>
 
         <div class="flex items-center justify-end gap-2">

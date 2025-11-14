@@ -20,6 +20,7 @@ class Transaction extends Model
         'transaction_date',
         'method',
         'notes',
+        'loan_id',
     ];
 
     // Who recorded the transaction
@@ -51,4 +52,8 @@ class Transaction extends Model
     {
         return $this->belongsTo(Purchase::class);
     }
+    public function loan()
+{
+    return $this->belongsTo(\App\Models\Loan::class);
+}
 }

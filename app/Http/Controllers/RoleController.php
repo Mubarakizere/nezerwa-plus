@@ -12,15 +12,35 @@ class RoleController extends Controller
     /**
      * Display a listing of roles.
      */
-    public function index()
+    public function index(Request $request)
     {
-        // ✅ Eager-load users and permissions for drawer preview
-        $roles = Role::with(['users', 'permissions'])
-            ->withCount('users')
-            ->orderBy('name')
-            ->paginate(10);
+        $query = trim($request->get('q', ''));
 
-        return view('roles.index', compact('roles'));
+        // Eager-load users and permissions for drawer preview
+        $rolesQuery = Role::with(['users', 'permissions'])
+            ->withCount('users');
+
+        if ($query !== '') {
+            $rolesQuery->where(function ($qB) use ($query) {
+                $qB->where('name', 'like', "%{$query}%")
+                    ->orWhereHas('permissions', function ($p) use ($query) {
+                        $p->where('name', 'like', "%{$query}%");
+                    })
+                    ->orWhereHas('users', function ($u) use ($query) {
+                        $u->where('name', 'like', "%{$query}%");
+                    });
+            });
+        }
+
+        $roles = $rolesQuery
+            ->orderBy('name')
+            ->paginate(10)
+            ->withQueryString();
+
+        return view('roles.index', [
+            'roles' => $roles,
+            'query' => $query,
+        ]);
     }
 
     /**
@@ -64,12 +84,12 @@ class RoleController extends Controller
      */
     public function edit(Role $role)
     {
-        $permissions = $this->groupPermissions();
-        $rolePermissions = $role->permissions->pluck('name')->toArray();
+        $permissions      = $this->groupPermissions();
+        $rolePermissions  = $role->permissions->pluck('name')->toArray();
 
         return view('roles.edit', [
-            'role' => $role,
-            'permissions' => $permissions,
+            'role'            => $role,
+            'permissions'     => $permissions,
             'rolePermissions' => $rolePermissions,
         ]);
     }

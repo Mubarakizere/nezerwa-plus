@@ -1,196 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Business Insights Report ({{ $start }} → {{ $end }})</title>
+    <meta charset="utf-8">
+    <title>Business Insights Report</title>
     <style>
-        body {
-            font-family: DejaVu Sans, sans-serif;
-            color: #222;
-            font-size: 13px;
-            line-height: 1.6;
-            margin: 40px;
-        }
+        @page { margin: 24px 26px 34px 26px; }
+        body { font-family: DejaVu Sans, sans-serif; color:#111827; font-size:11px; }
+        h1 { font-size:18px; margin:0 0 4px; letter-spacing:.3px; text-transform:uppercase; }
+        .sub { color:#6b7280; font-size:10px; margin-bottom:14px; }
+        .bar { height:2px; background:#4f46e5; margin:8px 0 14px; }
 
-        /* ---- Typography ---- */
-        h1 {
-            font-size: 20px;
-            font-weight: 600;
-            color: #111827;
-            text-align: center;
-            margin-bottom: 5px;
-        }
-        h2 {
-            font-size: 15px;
-            color: #374151;
-            border-bottom: 1px solid #E5E7EB;
-            padding-bottom: 4px;
-            margin-top: 25px;
-            margin-bottom: 10px;
-        }
-        h3 {
-            font-size: 14px;
-            color: #4F46E5;
-            margin-bottom: 4px;
-        }
-        p {
-            margin: 0 0 10px;
-        }
+        .grid { display:flex; flex-wrap:wrap; margin:-6px; }
+        .col { padding:6px; }
+        .col-4 { width:25%; } .col-3 { width:33.3333%; } .col-6 { width:50%; }
+        .card { border:1px solid #e5e7eb; border-radius:8px; padding:10px; background:#fff; }
+        .card h3 { margin:0 0 6px; font-size:10px; color:#6b7280; font-weight:600; text-transform:uppercase; }
+        .card .v { font-size:14px; font-weight:700; }
+        .green { color:#16a34a; } .red { color:#dc2626; } .indigo { color:#4f46e5; } .amber { color:#d97706; }
 
-        /* ---- Summary Cards ---- */
-        .summary {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            margin: 25px 0;
-        }
-        .card {
-            flex: 1;
-            border: 1px solid #E5E7EB;
-            border-radius: 6px;
-            padding: 12px 14px;
-            text-align: center;
-            background-color: #FAFAFA;
-        }
-        .card h3 {
-            font-weight: 600;
-            font-size: 13px;
-            color: #6B7280;
-            margin-bottom: 6px;
-        }
-        .card p {
-            font-size: 15px;
-            font-weight: 600;
-            margin: 0;
-        }
+        table { width:100%; border-collapse:collapse; margin-top:10px; }
+        th, td { border:1px solid #e5e7eb; padding:6px 7px; text-align:left; vertical-align:top; }
+        th { background:#f9fafb; font-size:10px; text-transform:uppercase; color:#374151; }
+        tr:nth-child(even) td { background:#fcfcfd; }
 
-        /* ---- Tables ---- */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-            margin-bottom: 20px;
-        }
-        th, td {
-            border: 1px solid #E5E7EB;
-            padding: 8px 10px;
-            text-align: left;
-        }
-        th {
-            background-color: #F9FAFB;
-            font-weight: 600;
-            color: #374151;
-        }
-        tr:nth-child(even) {
-            background-color: #FAFAFA;
-        }
+        .section { margin-top:16px; page-break-inside: avoid; }
+        .footer { margin-top:12px; padding-top:6px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:9.5px; }
 
-        /* ---- Colors ---- */
-        .text-green { color: #059669; }
-        .text-red { color: #DC2626; }
-        .text-indigo { color: #4F46E5; }
-
-        /* ---- Footer ---- */
-        footer {
-            text-align: center;
-            font-size: 11px;
-            color: #6B7280;
-            border-top: 1px solid #E5E7EB;
-            padding-top: 8px;
-            margin-top: 30px;
-        }
+        .muted { color:#6b7280; }
+        .right { text-align:right; }
     </style>
 </head>
 <body>
+@php
+    $fmt = function($n){ return number_format((float)$n, 2); };
+    $p   = fn($n)=> number_format((float)$n,1).'%';
+@endphp
 
-    {{-- ===== HEADER ===== --}}
-    <h1>Stock Manager</h1>
-    <p style="text-align:center; font-size:12px; color:#6B7280;">
-        Business Insights Report<br>
-        Period: {{ $start }} → {{ $end }}
-    </p>
+<h1>Business Insights</h1>
+<div class="sub">
+    Period: <strong>{{ $start->toDateString() }}</strong> &rarr; <strong>{{ $end->toDateString() }}</strong>
+    <span style="margin-left:6px; border:1px solid #e5e7eb; border-radius:999px; padding:1px 6px; font-size:10px;">RWF</span>
+</div>
+<div class="bar"></div>
 
-    {{-- ===== SUMMARY CARDS ===== --}}
-    <div class="summary">
+{{-- Summary --}}
+<div class="grid">
+    <div class="col col-4"><div class="card"><h3>Total Sales</h3><div class="v indigo">RWF {{ $fmt($totalSales ?? 0) }}</div></div></div>
+    <div class="col col-4"><div class="card"><h3>Total Profit</h3><div class="v green">RWF {{ $fmt($totalProfit ?? 0) }}</div></div></div>
+    <div class="col col-4"><div class="card"><h3>Total Purchases</h3><div class="v amber">RWF {{ $fmt($totalPurchases ?? 0) }}</div></div></div>
+</div>
+<div class="grid">
+    <div class="col col-4"><div class="card"><h3>Credits (In)</h3><div class="v green">RWF {{ $fmt($credits ?? 0) }}</div></div></div>
+    <div class="col col-4"><div class="card"><h3>Debits (Out)</h3><div class="v red">RWF {{ $fmt($debits ?? 0) }}</div></div></div>
+    @php $nb = (float)($netBalance ?? 0); @endphp
+    <div class="col col-4"><div class="card"><h3>Net Balance</h3><div class="v {{ $nb>=0 ? 'green' : 'red' }}">RWF {{ $fmt($nb) }}</div></div></div>
+</div>
+<div class="grid">
+    <div class="col col-3"><div class="card"><h3>Profit Margin</h3><div class="v">{{ $p($profitMargin ?? 0) }}</div></div></div>
+    <div class="col col-3"><div class="card"><h3>Expense Ratio</h3><div class="v">{{ $p($expenseRatio ?? 0) }}</div></div></div>
+    <div class="col col-6">
         <div class="card">
-            <h3>Total Sales</h3>
-            <p class="text-indigo">{{ number_format($totalSales, 2) }}</p>
-        </div>
-        <div class="card">
-            <h3>Total Profit</h3>
-            <p class="text-green">{{ number_format($totalProfit, 2) }}</p>
-        </div>
-        <div class="card">
-            <h3>Net Balance</h3>
-            <p class="{{ $netBalance >= 0 ? 'text-green' : 'text-red' }}">
-                {{ number_format($netBalance, 2) }}
-            </p>
+            <h3>Notes</h3>
+            <div class="muted">Margin = Profit / Sales. Expense Ratio ≈ (Purchases + Debits) / Sales.</div>
         </div>
     </div>
+</div>
 
-    {{-- ===== RATIOS ===== --}}
-    <h2>Key Financial Ratios</h2>
+{{-- Top 5 Products --}}
+<div class="section">
+    <h3 style="margin:0 0 6px; font-size:12px;">Top 5 Products</h3>
     <table>
+        <thead><tr><th>#</th><th>Product</th><th class="right">Total Sales (RWF)</th></tr></thead>
         <tbody>
+        @php $i=1; @endphp
+        @forelse(($topProducts ?? []) as $row)
             <tr>
-                <td>Profit Margin</td>
-                <td><span class="text-green">{{ number_format($profitMargin, 1) }}%</span></td>
+                <td style="width:28px;">{{ $i++ }}</td>
+                <td>{{ $row->product->name ?? '—' }}</td>
+                <td class="right">{{ $fmt($row->total_sales ?? 0) }}</td>
             </tr>
-            <tr>
-                <td>Expense Ratio</td>
-                <td><span class="text-indigo">{{ number_format($expenseRatio, 1) }}%</span></td>
-            </tr>
+        @empty
+            <tr><td colspan="3" class="muted">No product data in this period.</td></tr>
+        @endforelse
         </tbody>
     </table>
+</div>
 
-    {{-- ===== TOP PRODUCTS ===== --}}
-    <h2>Top 5 Products</h2>
+{{-- Top 5 Customers --}}
+<div class="section">
+    <h3 style="margin:0 0 6px; font-size:12px;">Top 5 Customers</h3>
     <table>
-        <thead>
-            <tr>
-                <th>Product</th>
-                <th>Total Sales (RWF)</th>
-            </tr>
-        </thead>
+        <thead><tr><th>#</th><th>Customer</th><th class="right">Total Spent (RWF)</th></tr></thead>
         <tbody>
-            @forelse($topProducts as $p)
-                <tr>
-                    <td>{{ $p->product->name ?? 'N/A' }}</td>
-                    <td>{{ number_format($p->total_sales, 2) }}</td>
-                </tr>
-            @empty
-                <tr><td colspan="2" style="text-align:center; color:#9CA3AF;">No product data</td></tr>
-            @endforelse
+        @php $i=1; @endphp
+        @forelse(($topCustomers ?? []) as $row)
+            <tr>
+                <td style="width:28px;">{{ $i++ }}</td>
+                <td>{{ $row->customer->name ?? '—' }}</td>
+                <td class="right">{{ $fmt($row->total_spent ?? 0) }}</td>
+            </tr>
+        @empty
+            <tr><td colspan="3" class="muted">No customer data in this period.</td></tr>
+        @endforelse
         </tbody>
     </table>
+</div>
 
-    {{-- ===== TOP CUSTOMERS ===== --}}
-    <h2>Top 5 Customers</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Customer</th>
-                <th>Total Spent (RWF)</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($topCustomers as $c)
-                <tr>
-                    <td>{{ $c->customer->name ?? 'N/A' }}</td>
-                    <td>{{ number_format($c->total_spent, 2) }}</td>
-                </tr>
-            @empty
-                <tr><td colspan="2" style="text-align:center; color:#9CA3AF;">No customer data</td></tr>
-            @endforelse
-        </tbody>
-    </table>
-
-    {{-- ===== FOOTER ===== --}}
-    <footer>
-        Generated by <strong>Stock Manager</strong> |
-        {{ now()->format('d M Y H:i') }} <br>
-        Confidential business document — internal use only.
-    </footer>
-
+<div class="footer">
+    Generated on {{ now()->format('d M Y, H:i') }} — Period: {{ $start->toDateString() }} to {{ $end->toDateString() }}
+</div>
 </body>
 </html>

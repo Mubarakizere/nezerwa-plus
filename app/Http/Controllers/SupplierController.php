@@ -8,10 +8,33 @@ use Illuminate\Http\Request;
 class SupplierController extends Controller
 {
     // Show list of suppliers
-    public function index()
+    public function index(Request $request)
     {
-        $suppliers = Supplier::all();
-        return view('suppliers.index', compact('suppliers'));
+        $query = trim($request->get('q', ''));
+
+        $suppliersQuery = Supplier::query();
+
+        if ($query !== '') {
+            $suppliersQuery->where(function ($qB) use ($query) {
+                $qB->where('name', 'like', "%{$query}%")
+                    ->orWhere('email', 'like', "%{$query}%")
+                    ->orWhere('phone', 'like', "%{$query}%")
+                    ->orWhere('address', 'like', "%{$query}%");
+            });
+        }
+
+        $suppliers = $suppliersQuery
+            ->orderBy('name')
+            ->paginate(15)
+            ->withQueryString();
+
+        $totalSuppliers = Supplier::count();
+
+        return view('suppliers.index', [
+            'suppliers'      => $suppliers,
+            'query'          => $query,
+            'totalSuppliers' => $totalSuppliers,
+        ]);
     }
 
     // Show create form
@@ -24,15 +47,17 @@ class SupplierController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
+            'name'    => 'required|string|max:255',
+            'email'   => 'nullable|email|max:255',
+            'phone'   => 'nullable|string|max:50',
             'address' => 'nullable|string',
         ]);
 
         Supplier::create($data);
 
-        return redirect()->route('suppliers.index')->with('success', 'Supplier created successfully.');
+        return redirect()
+            ->route('suppliers.index')
+            ->with('success', 'Supplier created successfully.');
     }
 
     // Show edit form
@@ -45,21 +70,26 @@ class SupplierController extends Controller
     public function update(Request $request, Supplier $supplier)
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'nullable|email',
-            'phone' => 'nullable|string|max:50',
+            'name'    => 'required|string|max:255',
+            'email'   => 'nullable|email|max:255',
+            'phone'   => 'nullable|string|max:50',
             'address' => 'nullable|string',
         ]);
 
         $supplier->update($data);
 
-        return redirect()->route('suppliers.index')->with('success', 'Supplier updated successfully.');
+        return redirect()
+            ->route('suppliers.index')
+            ->with('success', 'Supplier updated successfully.');
     }
 
     // Delete supplier
     public function destroy(Supplier $supplier)
     {
         $supplier->delete();
-        return redirect()->route('suppliers.index')->with('success', 'Supplier deleted successfully.');
+
+        return redirect()
+            ->route('suppliers.index')
+            ->with('success', 'Supplier deleted successfully.');
     }
 }

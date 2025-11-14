@@ -10,21 +10,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
-    /**
-     * Display list of products with category and stock summary.
-     */
+    /** List products */
     public function index(Request $request)
     {
         $threshold = 5;
         $perPage   = (int) $request->input('per_page', 20);
+        $op        = DB::connection()->getDriverName() === 'pgsql' ? 'ILIKE' : 'LIKE';
 
-        $categories = Category::orderBy('name')->get();
+        // Only show categories that are usable for products in filters
+        $categories = Category::active()->forProducts()->orderBy('name')->get();
 
         $query = Product::query()
-            ->with('category')
+            ->with(['category' => fn($q) => $q->withTrashed()])
             ->withSum(['stockMovements as qty_in' => fn($q) => $q->where('type', 'in')], 'quantity')
             ->withSum(['stockMovements as qty_out' => fn($q) => $q->where('type', 'out')], 'quantity')
             ->withSum(['stockMovements as qty_returned' => function ($q) {
@@ -32,20 +33,22 @@ class ProductController extends Controller
             }], 'quantity')
             ->withMax('stockMovements as last_moved_at', 'created_at');
 
-        //  Search (name / SKU)
-        if ($s = trim((string) $request->input('search'))) {
-            $query->where(function ($q) use ($s) {
-                $q->where('name', 'like', "%{$s}%")
-                    ->orWhere('sku', 'like', "%{$s}%");
+        // Case-insensitive search (supports ?q= or ?search=)
+        if ($s = trim((string) ($request->input('q', $request->input('search', ''))))) {
+            $pattern = "%{$s}%";
+            $query->where(function ($w) use ($op, $pattern, $s) {
+                $w->where('name', $op, $pattern)
+                  ->orWhere('sku', $op, $pattern);
+                if (is_numeric($s)) $w->orWhere('id', (int) $s);
             });
         }
 
-        //  Category filter
+        // Category filter
         if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $query->where('category_id', $request->integer('category_id'));
         }
 
-        //  Stock status filter (Postgres-safe: use correlated subquery in WHERE)
+        // Stock status filter
         if ($status = $request->input('stock_status')) {
             $stockExpr = "
                 (
@@ -56,8 +59,6 @@ class ProductController extends Controller
                     WHERE sm.product_id = products.id
                 )
             ";
-
-            // Expose computed_stock for display/sorting if needed
             $query->select('products.*')->selectRaw("$stockExpr AS computed_stock");
 
             if ($status === 'out') {
@@ -69,36 +70,33 @@ class ProductController extends Controller
             }
         }
 
-        $query->orderBy('name');
+        $products = $query->orderBy('name')->paginate($perPage)->appends($request->query());
 
-        $products = $query->paginate($perPage);
-
-        return view('products.index', [
-            'products'   => $products,
-            'categories' => $categories,
-            'threshold'  => $threshold,
-        ]);
+        return view('products.index', compact('products', 'categories', 'threshold'));
     }
 
-    /**
-     * Show form to create a new product.
-     */
+    /** Create form */
     public function create()
     {
-        $categories = Category::orderBy('name')->get();
+        $categories = Category::active()->forProducts()->orderBy('name')->get();
         return view('products.create', compact('categories'));
     }
 
-    /**
-     * Store a newly created product and optionally record an initial stock movement.
-     */
+    /** Store */
     public function store(Request $request)
     {
         $request->validate([
-            'name'        => 'required|string|max:255',
-            'category_id' => 'required|exists:categories,id',
-            'price'       => 'required|numeric|min:0',
-            'stock'       => 'required|numeric|min:0',
+            'name'        => ['required','string','max:255'],
+            'category_id' => [
+                'required','integer',
+                Rule::exists('categories','id')->where(fn($q) =>
+                    $q->whereNull('deleted_at')->where('is_active', true)->whereIn('kind',['product','both'])
+                ),
+            ],
+            'price'       => ['required','numeric','min:0'],
+            'stock'       => ['required','numeric','min:0'],
+        ], [
+            'category_id.exists' => 'The selected category is invalid or inactive.',
         ]);
 
         try {
@@ -106,20 +104,20 @@ class ProductController extends Controller
 
             $product = Product::create([
                 'name'        => $request->name,
-                'category_id' => $request->category_id,
-                'price'       => $request->price,
-                'stock'       => $request->stock,
+                'category_id' => $request->integer('category_id'),
+                'price'       => $request->input('price'),
+                'stock'       => $request->input('stock'),
             ]);
 
-            // Record initial stock as StockMovement (type: in)
-            if ($request->stock > 0) {
+            // Initial stock movement
+            if ($request->float('stock', 0) > 0) {
                 $uc = $product->cost_price ?? $product->price ?? 0;
                 StockMovement::create([
                     'product_id'  => $product->id,
                     'type'        => 'in',
-                    'quantity'    => $request->stock,
+                    'quantity'    => $request->float('stock'),
                     'unit_cost'   => $uc,
-                    'total_cost'  => $uc * $request->stock,
+                    'total_cost'  => $uc * $request->float('stock'),
                     'source_type' => Product::class,
                     'source_id'   => $product->id,
                     'user_id'     => Auth::id(),
@@ -127,25 +125,20 @@ class ProductController extends Controller
             }
 
             DB::commit();
-            Log::info(' Product created', ['product_id' => $product->id]);
+            Log::info('Product created', ['product_id' => $product->id]);
 
-            return redirect()
-                ->route('products.index')
-                ->with('success', 'Product created successfully.');
-
+            return redirect()->route('products.index')->with('success', 'Product created successfully.');
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error(' Product create failed', ['error' => $e->getMessage()]);
-            return back()->withErrors(['error' => 'Failed to create product: ' . $e->getMessage()]);
+            Log::error('Product create failed', ['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => 'Failed to create product: ' . $e->getMessage()])->withInput();
         }
     }
 
-    /**
-     * Display a single product with recent stock movements.
-     */
+    /** Show */
     public function show(Product $product)
     {
-        $product->load(['category', 'stockMovements' => function ($q) {
+        $product->load(['category' => fn($q) => $q->withTrashed(), 'stockMovements' => function ($q) {
             $q->latest()->take(10)->with('user');
         }]);
 
@@ -156,25 +149,28 @@ class ProductController extends Controller
         return view('products.show', compact('product', 'totalIn', 'totalOut', 'current'));
     }
 
-    /**
-     * Show form to edit an existing product.
-     */
+    /** Edit form */
     public function edit(Product $product)
     {
-        $categories = Category::orderBy('name')->get();
+        $categories = Category::active()->forProducts()->orderBy('name')->get();
         return view('products.edit', compact('product', 'categories'));
     }
 
-    /**
-     * Update product details and adjust stock movement if stock changes.
-     */
+    /** Update */
     public function update(Request $request, Product $product)
     {
         $request->validate([
-            'name'        => 'required|string|max:255',
-            'category_id' => 'required|exists:categories,id',
-            'price'       => 'required|numeric|min:0',
-            'stock'       => 'required|numeric|min:0',
+            'name'        => ['required','string','max:255'],
+            'category_id' => [
+                'required','integer',
+                Rule::exists('categories','id')->where(fn($q) =>
+                    $q->whereNull('deleted_at')->where('is_active', true)->whereIn('kind',['product','both'])
+                ),
+            ],
+            'price'       => ['required','numeric','min:0'],
+            'stock'       => ['required','numeric','min:0'],
+        ], [
+            'category_id.exists' => 'The selected category is invalid or inactive.',
         ]);
 
         try {
@@ -184,15 +180,14 @@ class ProductController extends Controller
 
             $product->update([
                 'name'        => $request->name,
-                'category_id' => $request->category_id,
-                'price'       => $request->price,
-                'stock'       => $request->stock,
+                'category_id' => $request->integer('category_id'),
+                'price'       => $request->input('price'),
+                'stock'       => $request->input('stock'),
             ]);
 
-            $newStock   = (float) $request->stock;
+            $newStock   = (float) $request->input('stock');
             $difference = $newStock - (float) $oldStock;
 
-            // Record stock adjustment
             if ($difference != 0) {
                 $uc = $product->cost_price ?? $product->price ?? 0;
                 StockMovement::create([
@@ -208,34 +203,25 @@ class ProductController extends Controller
             }
 
             DB::commit();
-            Log::info(' Product updated', ['product_id' => $product->id]);
+            Log::info('Product updated', ['product_id' => $product->id]);
 
-            return redirect()
-                ->route('products.index')
-                ->with('success', 'Product updated successfully.');
-
+            return redirect()->route('products.index')->with('success', 'Product updated successfully.');
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error(' Product update failed', ['error' => $e->getMessage()]);
-            return back()->withErrors(['error' => 'Failed to update product: ' . $e->getMessage()]);
+            Log::error('Product update failed', ['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => 'Failed to update product: ' . $e->getMessage()])->withInput();
         }
     }
 
-    /**
-     * Delete a product safely (stock movements remain for history).
-     */
+    /** Delete (soft or hard depending on your model setup) */
     public function destroy(Product $product)
     {
         try {
             $product->delete();
-
-            Log::info(' Product deleted', ['product_id' => $product->id]);
-
-            return redirect()
-                ->route('products.index')
-                ->with('success', 'Product deleted successfully.');
+            Log::info('Product deleted', ['product_id' => $product->id]);
+            return redirect()->route('products.index')->with('success', 'Product deleted successfully.');
         } catch (\Throwable $e) {
-            Log::error(' Product delete failed', ['error' => $e->getMessage()]);
+            Log::error('Product delete failed', ['error' => $e->getMessage()]);
             return back()->withErrors(['error' => 'Failed to delete product: ' . $e->getMessage()]);
         }
     }

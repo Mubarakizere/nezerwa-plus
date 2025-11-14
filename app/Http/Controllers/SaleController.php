@@ -3,35 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Models\{
-    Sale,
-    SaleItem,
-    Product,
-    Customer,
-    Transaction,
-    StockMovement
+    Sale, SaleItem, Product, Customer, Transaction, StockMovement, SalePayment
 };
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Auth, Log};
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 
 class SaleController extends Controller
 {
-    /** Allowed payment channels */
-    private const CHANNELS = ['cash', 'bank', 'momo'];
+    /** Old single-channel on Sale (kept for compatibility) */
+    private const CHANNELS = ['cash', 'bank', 'momo','mobile'];
 
-    /**
-     * List sales with search, filters, sorting, and per-page control.
-     *
-     * Query params:
-     * - search: free text (customer name, channel, status, method, numeric id)
-     * - channel: cash|bank|momo
-     * - status: completed|pending|cancelled
-     * - from / to: YYYY-MM-DD (sale_date range)
-     * - has_returns: 1 to require at least one return
-     * - sort: sale_date|total_amount|amount_paid|id
-     * - dir: asc|desc
-     * - per_page: 10|15|25|50|100
-     */
+    /** New payment methods for split payments */
+    private const PAYMENT_METHODS = ['cash', 'bank', 'momo', 'mobile'];
+
+    /** ===================== INDEX ===================== */
     public function index(Request $request)
     {
         $perPage = $this->sanitizePerPage((int) $request->get('per_page', 15));
@@ -43,9 +30,7 @@ class SaleController extends Controller
         return view('sales.index', compact('sales'));
     }
 
-    /**
-     * Show form for creating a sale.
-     */
+    /** ===================== CREATE ===================== */
     public function create()
     {
         $customers = Customer::orderBy('name')->get(['id', 'name']);
@@ -54,145 +39,215 @@ class SaleController extends Controller
         return view('sales.create', compact('customers', 'products'));
     }
 
-    /**
-     * Store a new sale.
-     */
+    /** ===================== STORE ===================== */
     public function store(Request $request)
-    {
-        // Remove empty product rows from the request before validating
-        $cleanProducts = collect($request->input('products', []))
-            ->filter(fn ($p) => !empty($p['product_id']) && floatval($p['quantity']) > 0)
-            ->values()
-            ->toArray();
-        $request->merge(['products' => $cleanProducts]);
+{
+    // Normalize product lines (remove empties/zero qty)
+    $cleanProducts = collect($request->input('products', []))
+        ->filter(fn ($p) => !empty($p['product_id']) && floatval($p['quantity']) > 0)
+        ->values()
+        ->toArray();
+    $request->merge(['products' => $cleanProducts]);
 
-        $request->validate([
-            'customer_id'           => 'nullable|exists:customers,id',
-            'sale_date'             => 'required|date',
-            'products'              => 'required|array|min:1',
-            'products.*.product_id' => 'required|exists:products,id',
-            'products.*.quantity'   => 'required|numeric|min:0.01',
-            'products.*.unit_price' => 'required|numeric|min:0',
-            'amount_paid'           => 'nullable|numeric|min:0',
-            'payment_channel'       => 'nullable|in:cash,bank,momo',
-            'method'                => 'nullable|string|max:50',
-            'notes'                 => 'nullable|string|max:500',
-        ]);
+    // -------- Validate (mode-aware) --------
+    $mode = $request->input('cust_mode', 'walkin'); // walkin|existing|new
 
-        if (empty($request->products)) {
-            return back()->withErrors(['products' => 'Please add at least one product.'])->withInput();
-        }
+    $rules = [
+        'cust_mode'             => 'required|in:walkin,existing,new',
+        'sale_date'             => 'required|date',
+        'products'              => 'required|array|min:1',
+        'products.*.product_id' => 'required|exists:products,id',
+        'products.*.quantity'   => 'required|numeric|min:0.01',
+        'products.*.unit_price' => 'required|numeric|min:0',
 
-        $channel = $this->normalizeChannel($request->payment_channel, $request->method);
+        // Legacy single-payment fallback
+        'amount_paid'           => 'nullable|numeric|min:0',
+        'payment_channel'       => 'nullable|in:cash,bank,momo,mobile',
+        'method'                => 'nullable|string|max:50',
+        'notes'                 => 'nullable|string|max:500',
 
-        try {
-            DB::beginTransaction();
+        // Split payments (optional)
+        'payments'              => 'nullable|array|min:1',
+        'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile',
+        'payments.*.amount'     => 'required_with:payments|numeric|min:0.01',
+        'payments.*.reference'  => 'nullable|string|max:100',
+        'payments.*.phone'      => 'nullable|string|max:30',
+        'payments.*.paid_at'    => 'nullable|date',
+    ];
 
-            // 1) Create Sale
-            $sale = Sale::create([
-                'customer_id'     => $request->customer_id,
-                'user_id'         => Auth::id(),
-                'sale_date'       => $request->sale_date,
-                'payment_channel' => $channel,
-                'method'          => $request->method ?? null,
-                'amount_paid'     => $request->amount_paid ?? 0,
-                'total_amount'    => 0,
-                'status'          => 'pending',
-                'notes'           => $request->notes,
-            ]);
-
-            $totalAmount = 0;
-            $totalProfit = 0;
-
-            // 2) Items + stock movements
-            foreach (collect($request->products) as $item) {
-                $product = Product::findOrFail($item['product_id']);
-
-                // Optional live-stock guard if using movements-derived stock
-                if (method_exists($product, 'currentStock') && $product->currentStock() < $item['quantity']) {
-                    throw new \Exception("Insufficient stock for {$product->name}");
-                }
-
-                $qty       = (float) $item['quantity'];
-                $unitPrice = (float) $item['unit_price'];
-                $subtotal  = round($qty * $unitPrice, 2);
-                $cost      = (float) ($product->cost_price ?? 0);
-                $profit    = round(($unitPrice - $cost) * $qty, 2);
-
-                SaleItem::create([
-                    'sale_id'    => $sale->id,
-                    'product_id' => $product->id,
-                    'quantity'   => $qty,
-                    'unit_price' => $unitPrice,
-                    'subtotal'   => $subtotal,
-                    'cost_price' => $cost,
-                    'profit'     => $profit,
-                ]);
-
-                StockMovement::create([
-                    'product_id'  => $product->id,
-                    'type'        => 'out',
-                    'quantity'    => $qty,
-                    'unit_cost'   => $cost,
-                    'total_cost'  => round($cost * $qty, 2),
-                    'source_type' => Sale::class,
-                    'source_id'   => $sale->id,
-                    'user_id'     => Auth::id(),
-                ]);
-
-                $totalAmount += $subtotal;
-                $totalProfit += $profit;
-            }
-
-            // 3) Totals + status
-            $sale->update([
-                'total_amount' => $totalAmount,
-                'status'       => ($totalAmount <= ($sale->amount_paid ?? 0)) ? 'completed' : 'pending',
-            ]);
-
-            DB::commit();
-            Log::info('Sale stored successfully', ['sale_id' => $sale->id, 'channel' => $sale->payment_channel]);
-
-            return redirect()->route('sales.show', $sale->id)
-                ->with('success', 'Sale recorded successfully.');
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('Sale creation failed', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return back()
-                ->withErrors(['error' => 'Failed to create sale: ' . $e->getMessage()])
-                ->withInput();
-        }
+    if ($mode === 'existing') {
+        $rules['customer_id'] = 'required|exists:customers,id';
+    } elseif ($mode === 'new') {
+        // Accept both modern customer_* and legacy new_customer_* field names
+        $rules['customer_name']    = 'required_without:new_customer_name|string|min:2|max:120';
+        $rules['new_customer_name'] = 'required_without:customer_name|string|min:2|max:120';
+        $rules['customer_phone']   = 'nullable|string|max:30';
+        $rules['customer_email']   = 'nullable|email|max:120';
+        $rules['customer_address'] = 'nullable|string|max:200';
     }
 
-    /**
-     * Display a sale.
-     */
+    $request->validate($rules);
+
+    // Abort early if no products after cleaning
+    if (empty($request->products)) {
+        return back()->withErrors(['products' => 'Please add at least one product.'])->withInput();
+    }
+
+    try {
+        DB::beginTransaction();
+
+        // -------- Resolve customer id by mode --------
+        $customerId = null;
+        if ($mode === 'existing') {
+            $customerId = (string) $request->customer_id;
+        } elseif ($mode === 'new') {
+            $customerId = $this->quickCreateCustomerFromRequest($request);
+            if (!$customerId) {
+                throw new \RuntimeException('Failed to create customer (missing name).');
+            }
+        } // walkin => null
+
+        // -------- Create base Sale (amounts/status set later) --------
+        $sale = Sale::create([
+            'customer_id'     => $customerId,
+            'user_id'         => Auth::id(),
+            'sale_date'       => $request->sale_date,
+            'payment_channel' => $this->normalizeChannel($request->payment_channel, $request->method),
+            'method'          => $request->method ?: null, // reference/batch
+            'amount_paid'     => 0,
+            'total_amount'    => 0,
+            'status'          => 'pending',
+            'notes'           => $request->notes,
+        ]);
+
+        // -------- Items + stock movements --------
+        $totalAmount = 0.0;
+        $totalProfit = 0.0;
+
+        foreach ($request->products as $item) {
+            $product = Product::findOrFail($item['product_id']);
+
+            $qty       = (float) $item['quantity'];
+            $unitPrice = (float) $item['unit_price'];
+            $subtotal  = round($qty * $unitPrice, 2);
+            $cost      = (float) ($product->cost_price ?? 0);
+            $profit    = round(($unitPrice - $cost) * $qty, 2);
+
+            SaleItem::create([
+                'sale_id'    => $sale->id,
+                'product_id' => $product->id,
+                'quantity'   => $qty,
+                'unit_price' => $unitPrice,
+                'subtotal'   => $subtotal,
+                'cost_price' => $cost,
+                'profit'     => $profit,
+            ]);
+
+            StockMovement::create([
+                'product_id'  => $product->id,
+                'type'        => 'out',
+                'quantity'    => $qty,
+                'unit_cost'   => $cost,
+                'total_cost'  => round($cost * $qty, 2),
+                'source_type' => Sale::class,
+                'source_id'   => $sale->id,
+                'user_id'     => Auth::id(),
+            ]);
+
+            $totalAmount += $subtotal;
+            $totalProfit += $profit;
+        }
+
+        // -------- Payments (prefer split) --------
+        $payments = collect($request->input('payments', []))
+            ->filter(fn ($p) => isset($p['method'], $p['amount']) && (float)$p['amount'] > 0);
+
+        $sumPaid  = 0.0;
+        $dominant = null;
+
+        if ($payments->isNotEmpty()) {
+            foreach ($payments as $p) {
+                $amount = round((float)$p['amount'], 2);
+
+                SalePayment::create([
+                    'sale_id'   => $sale->id,
+                    'method'    => $this->normalizePaymentMethod($p['method']),
+                    'amount'    => $amount,
+                    'reference' => $p['reference'] ?? null,
+                    'phone'     => $p['phone'] ?? null,
+                    'paid_at'   => $p['paid_at'] ?? $request->sale_date ?? now(),
+                    'user_id'   => Auth::id(),
+                ]);
+
+                $sumPaid += $amount;
+            }
+
+            $byMethod = $payments
+                ->groupBy(fn($p) => $this->normalizePaymentMethod($p['method']))
+                ->map(fn($gs) => collect($gs)->sum('amount'));
+
+            $dominant = $byMethod->sortDesc()->keys()->first();
+        } else {
+            // legacy single payment
+            $sumPaid  = round((float)($request->amount_paid ?? 0), 2);
+            $dominant = $this->normalizeChannel($request->payment_channel, $request->method);
+        }
+
+        // -------- Finalize sale --------
+        $sale->update([
+            'total_amount'    => $totalAmount,
+            'amount_paid'     => $sumPaid,
+            'payment_channel' => $dominant ?: 'cash',
+            'status'          => ($totalAmount <= $sumPaid) ? 'completed' : 'pending',
+        ]);
+
+        DB::commit();
+
+        return redirect()->route('sales.show', $sale->id)
+            ->with('success', 'Sale recorded successfully.');
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        Log::error('Sale creation failed', ['error' => $e->getMessage()]);
+        return back()->withErrors(['error' => 'Failed to create sale: '.$e->getMessage()])->withInput();
+    }
+}
+
+    /** ===================== SHOW ===================== */
     public function show(Sale $sale)
     {
-        $sale->load(['customer', 'items.product', 'transaction', 'user']);
+        $sale->load([
+            'customer:id,name',
+            'user:id,name',
+            'items.product:id,name,cost_price,price',
+            'returns.items.product:id,name',
+            'payments.user:id,name',
+            'loan' => function ($q) {
+                $q->with(['payments' => fn ($p) => $p->orderBy('payment_date', 'desc')->with('user:id,name')]);
+            },
+        ])->loadSum('returns as returns_total', 'amount');
+
         return view('sales.show', compact('sale'));
     }
 
-    /**
-     * Edit a sale.
-     */
+    /** ===================== EDIT ===================== */
     public function edit(Sale $sale)
     {
         $customers = Customer::orderBy('name')->get(['id', 'name']);
         $products  = Product::orderBy('name')->get(['id', 'name', 'price', 'cost_price']);
-        $sale->load('items.product');
+        $sale->load(['items.product', 'payments']);
 
         return view('sales.edit', compact('sale', 'customers', 'products'));
     }
 
-    /**
-     * Update a sale.
-     */
+    /** ===================== UPDATE ===================== */
     public function update(Request $request, Sale $sale)
     {
+        // Quick customer create if inline fields provided (and no id)
+        if (!$request->filled('customer_id')) {
+            $cid = $this->quickCreateCustomerFromRequest($request);
+            if ($cid) { $request->merge(['customer_id' => $cid]); }
+        }
+
         $request->validate([
             'customer_id'           => 'nullable|exists:customers,id',
             'sale_date'             => 'required|date',
@@ -200,29 +255,35 @@ class SaleController extends Controller
             'products.*.product_id' => 'required|exists:products,id',
             'products.*.quantity'   => 'required|numeric|min:0.01',
             'products.*.unit_price' => 'required|numeric|min:0',
+
             'amount_paid'           => 'nullable|numeric|min:0',
-            'payment_channel'       => 'nullable|in:cash,bank,momo',
+            'payment_channel'       => 'nullable|in:cash,bank,momo,mobile',
             'method'                => 'nullable|string|max:50',
             'notes'                 => 'nullable|string|max:500',
+
+            // split payments
+            'payments'              => 'nullable|array|min:1',
+            'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile',
+            'payments.*.amount'     => 'required_with:payments|numeric|min:0.01',
+            'payments.*.reference'  => 'nullable|string|max:100',
+            'payments.*.phone'      => 'nullable|string|max:30',
+            'payments.*.paid_at'    => 'nullable|date',
         ]);
 
         $products = collect($request->products)
             ->filter(fn ($p) => !empty($p['product_id']) && $p['quantity'] > 0)
             ->values();
 
-        $channel = $this->normalizeChannel($request->payment_channel, $request->method, $sale->payment_channel);
-
         try {
             DB::beginTransaction();
 
-            // Clear old stock + items
+            // Reset items + stock movements
             StockMovement::where('source_type', Sale::class)
                 ->where('source_id', $sale->id)
                 ->delete();
             $sale->items()->delete();
 
-            $totalAmount = 0;
-            $totalProfit = 0;
+            $totalAmount = 0; $totalProfit = 0;
 
             foreach ($products as $item) {
                 $product = Product::findOrFail($item['product_id']);
@@ -258,120 +319,146 @@ class SaleController extends Controller
                 $totalProfit += $profit;
             }
 
-            $status = ($totalAmount <= ($request->amount_paid ?? 0)) ? 'completed' : 'pending';
+            // Reset and re-create payments
+            $sumPaid = 0.0; $dominant = null;
+            $sale->payments()->delete();
+
+            $payments = collect($request->input('payments', []))
+                ->filter(fn ($p) => isset($p['method'], $p['amount']) && (float)$p['amount'] > 0);
+
+            if ($payments->isNotEmpty()) {
+                foreach ($payments as $p) {
+                    $amount = round((float)$p['amount'], 2);
+                    $sumPaid += $amount;
+
+                    SalePayment::create([
+                        'sale_id'   => $sale->id,
+                        'method'    => $this->normalizePaymentMethod($p['method']),
+                        'amount'    => $amount,
+                        'reference' => $p['reference'] ?? null,
+                        'phone'     => $p['phone'] ?? null,
+                        'paid_at'   => $p['paid_at'] ?? $request->sale_date ?? now(),
+                        'user_id'   => Auth::id(),
+                    ]);
+                }
+
+                $byMethod = $payments->groupBy(fn($p) => $this->normalizePaymentMethod($p['method']))
+                                     ->map(fn($gs) => collect($gs)->sum('amount'));
+                $dominant = $byMethod->sortDesc()->keys()->first();
+            } else {
+                $sumPaid  = round((float)($request->amount_paid ?? 0), 2);
+                $dominant = $this->normalizeChannel($request->payment_channel, $request->method, $sale->payment_channel);
+            }
 
             $sale->update([
                 'customer_id'     => $request->customer_id,
                 'sale_date'       => $request->sale_date,
-                'payment_channel' => $channel,
+                'payment_channel' => $dominant ?: 'cash',
                 'method'          => $request->method ?? $sale->method,
-                'amount_paid'     => $request->amount_paid ?? 0,
+                'amount_paid'     => $sumPaid,
                 'total_amount'    => $totalAmount,
-                'status'          => $status,
+                'status'          => ($totalAmount <= $sumPaid) ? 'completed' : 'pending',
                 'notes'           => $request->notes,
             ]);
 
             DB::commit();
-            Log::info('Sale updated successfully', ['sale_id' => $sale->id, 'channel' => $sale->payment_channel]);
-
-            return redirect()
-                ->route('sales.show', $sale->id)
+            return redirect()->route('sales.show', $sale->id)
                 ->with('success', 'Sale updated successfully.');
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Sale update failed', ['error' => $e->getMessage()]);
-            return back()->withErrors(['error' => 'Failed to update sale: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Failed to update sale: '.$e->getMessage()]);
         }
     }
 
-    /**
-     * Delete a sale (and related stock + transaction).
-     */
+    /** ===================== DESTROY ===================== */
     public function destroy(Sale $sale)
     {
         DB::transaction(function () use ($sale) {
-            StockMovement::where('source_type', Sale::class)
-                ->where('source_id', $sale->id)
-                ->delete();
-
-            Transaction::where('sale_id', $sale->id)->delete();
+            $sale->payments()->delete();
+            StockMovement::where('source_type', Sale::class)->where('source_id', $sale->id)->delete();
+            Transaction::where('sale_id', $sale->id)->delete(); // keep if you have this FK
             $sale->items()->delete();
             $sale->delete();
         });
 
-        Log::info('Sale deleted', ['sale_id' => $sale->id]);
-
-        return redirect()
-            ->route('sales.index')
-            ->with('success', 'Sale deleted successfully.');
+        return redirect()->route('sales.index')->with('success', 'Sale deleted successfully.');
     }
 
-    /**
-     * Generate printable PDF invoice.
-     */
+    /** ===================== INVOICE ===================== */
     public function invoice(Sale $sale)
     {
-        $sale->load(['customer', 'items.product', 'transaction', 'user']);
+        $sale->load([
+            'customer', 'items.product', 'user', 'returns', 'payments.user', 'loan.payments.user',
+        ])->loadSum('returns as returns_total', 'amount');
 
-        $pdf = Pdf::loadView('sales.invoice', compact('sale'))
-            ->setPaper('a4')
-            ->setOption('isHtml5ParserEnabled', true)
-            ->setOption('isRemoteEnabled', true);
-
+        $pdf = Pdf::loadView('sales.invoice', compact('sale'))->setPaper('a4');
         return $pdf->stream('sale-invoice-' . $sale->id . '.pdf');
     }
 
-    /**
-     * Export filtered sales to CSV (uses same filters as index).
-     */
-    public function export(Request $request)
+    /** ===================== PAYMENTS PDF ===================== */
+    public function exportPaymentsPdf(Request $request)
     {
-        $rows = $this->filteredSalesQuery($request)
-            ->get(['id','sale_date','customer_id','payment_channel','method','status','total_amount','amount_paid'])
-            ->load('customer');
+        $period = $request->input('period'); // daily|weekly|monthly|custom
+        $start  = $request->input('from');
+        $end    = $request->input('to');
 
-        $filename = 'sales-' . now()->format('Ymd-His') . '.csv';
+        if ($period === 'daily') {
+            $start = Carbon::today(); $end = Carbon::today()->endOfDay();
+        } elseif ($period === 'weekly') {
+            $start = Carbon::now()->startOfWeek(); $end = Carbon::now()->endOfWeek();
+        } elseif ($period === 'monthly') {
+            $start = Carbon::now()->startOfMonth(); $end = Carbon::now()->endOfMonth();
+        } else {
+            $start = Carbon::parse($start ?? Carbon::today()->toDateString())->startOfDay();
+            $end   = Carbon::parse($end   ?? Carbon::today()->toDateString())->endOfDay();
+        }
 
-        return response()->streamDownload(function () use ($rows) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, ['#','Date','Customer','Channel','Ref/Method','Status','Total','Paid','Balance','Returns','Net After Returns']);
+        $rows = SalePayment::query()
+            ->select([
+                'sale_payments.*',
+                'sales.sale_date',
+                'sales.id as sale_id',
+                'sales.total_amount',
+                'customers.name as customer_name',
+            ])
+            ->join('sales', 'sales.id', '=', 'sale_payments.sale_id')
+            ->leftJoin('customers', 'customers.id', '=', 'sales.customer_id')
+            ->whereBetween('sales.sale_date', [$start->toDateString(), $end->toDateString()])
+            ->orderBy('sales.sale_date', 'desc')
+            ->get();
 
-            foreach ($rows as $s) {
-                $returns   = (float) ($s->returns_total ?? 0);
-                $total     = (float) ($s->total_amount ?? 0);
-                $paid      = (float) ($s->amount_paid ?? 0);
-                $netAfter  = max(0, $total - $returns);
-                $balance   = max(0, round($netAfter - $paid, 2));
+        $totalsByMethod = $rows->groupBy('method')->map->sum('amount');
 
-                $date = '';
-                if ($s->sale_date) {
-                    $date = is_string($s->sale_date)
-                        ? $s->sale_date
-                        : $s->sale_date->format('Y-m-d');
-                }
-
-                fputcsv($out, [
-                    $s->id,
-                    $date,
-                    $s->customer->name ?? 'Walk-in',
-                    strtoupper($s->payment_channel ?? 'cash'),
-                    $s->method ?? '',
-                    ucfirst($s->status ?? ''),
-                    number_format($total, 2, '.', ''),
-                    number_format($paid, 2, '.', ''),
-                    number_format($balance, 2, '.', ''),
-                    number_format($returns, 2, '.', ''),
-                    number_format($netAfter, 2, '.', ''),
-                ]);
+        $saleLines = $rows->groupBy('sale_id')->map(function ($grp) {
+            $base = [
+                'sale_id'       => $grp->first()->sale_id,
+                'sale_date'     => $grp->first()->sale_date,
+                'customer_name' => $grp->first()->customer_name ?? 'Walk-in',
+                'total_amount'  => (float)($grp->first()->total_amount ?? 0),
+                'cash'   => 0, 'bank' => 0, 'momo' => 0, 'mobile' => 0,
+            ];
+            foreach ($grp as $p) {
+                $m = $p->method;
+                $base[$m] += (float)$p->amount;
             }
+            $base['paid']    = $base['cash'] + $base['bank'] + $base['momo'] + $base['mobile'];
+            $base['balance'] = max(0, $base['total_amount'] - $base['paid']);
+            return $base;
+        })->values();
 
-            fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv']);
+        $pdf = Pdf::loadView('sales.pdf.payments', [
+            'start'          => $start,
+            'end'            => $end,
+            'saleLines'      => $saleLines,
+            'totalsByMethod' => $totalsByMethod,
+        ])->setPaper('a4', 'portrait');
+
+        return $pdf->download("sales-payments_{$start->toDateString()}_to_{$end->toDateString()}.pdf");
     }
 
-    /**
-     * Build the filtered, sortable base query for listings and export.
-     */
+    /** ===================== HELPERS ===================== */
+
     private function filteredSalesQuery(Request $request)
     {
         $like = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
@@ -380,12 +467,9 @@ class SaleController extends Controller
             ->with(['customer', 'user'])
             ->withSum('returns as returns_total', 'amount');
 
-        // Free-text search
         if (($search = trim((string) $request->get('search'))) !== '') {
             $q->where(function ($w) use ($search, $like) {
-                if (is_numeric($search)) {
-                    $w->orWhere('id', (int) $search);
-                }
+                if (is_numeric($search)) { $w->orWhere('id', (int) $search); }
                 $w->orWhere('payment_channel', $like, "%{$search}%")
                   ->orWhere('status',           $like, "%{$search}%")
                   ->orWhere('method',           $like, "%{$search}%")
@@ -393,57 +477,84 @@ class SaleController extends Controller
             });
         }
 
-        // Channel
         if ($request->filled('channel') && in_array($request->channel, self::CHANNELS, true)) {
             $q->where('payment_channel', $request->channel);
         }
 
-        // Status
-        if ($request->filled('status')) {
-            $q->where('status', $request->status);
-        }
+        if ($request->filled('status')) { $q->where('status', $request->status); }
+        if ($from = $request->get('from')) { $q->whereDate('sale_date', '>=', $from); }
+        if ($to   = $request->get('to'))   { $q->whereDate('sale_date', '<=', $to); }
+        if ($request->boolean('has_returns')) { $q->whereHas('returns'); }
 
-        // Date range
-        if ($from = $request->get('from')) {
-            $q->whereDate('sale_date', '>=', $from);
-        }
-        if ($to = $request->get('to')) {
-            $q->whereDate('sale_date', '<=', $to);
-        }
-
-        // Only sales that have returns
-        if ($request->boolean('has_returns')) {
-            $q->whereHas('returns');
-        }
-
-        // Sorting
         $sortable = ['sale_date', 'total_amount', 'amount_paid', 'id'];
         $sort = in_array($request->get('sort'), $sortable, true) ? $request->get('sort') : 'sale_date';
         $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
 
-        // Primary sort + tiebreaker
-        $q->orderBy($sort, $dir)->orderBy('id', 'desc');
-
-        return $q;
+        return $q->orderBy($sort, $dir)->orderBy('id', 'desc');
     }
 
-    /**
-     * Normalize a payment channel using either explicit channel or method fallback.
-     */
     private function normalizeChannel(?string $paymentChannel, ?string $method, ?string $fallback = 'cash'): string
     {
         $channel = $paymentChannel
             ?? (in_array(strtolower((string) $method), self::CHANNELS, true) ? strtolower($method) : $fallback);
-
         return in_array($channel, self::CHANNELS, true) ? $channel : 'cash';
     }
 
-    /**
-     * Bound per-page to a safe whitelist.
-     */
+    private function normalizePaymentMethod(string $m): string
+    {
+        $m = strtolower(trim($m));
+        return in_array($m, self::PAYMENT_METHODS, true) ? $m : 'cash';
+    }
+
     private function sanitizePerPage(int $n): int
     {
         $allowed = [10, 15, 25, 50, 100];
         return in_array($n, $allowed, true) ? $n : 15;
     }
+
+    /**
+     * Create a customer on-the-fly from inline fields:
+     * accepts: customer_name, customer_phone, customer_email, customer_address
+     * returns customer id or null
+     */
+    private function quickCreateCustomerFromRequest(Request $request): ?string
+{
+    $name    = trim((string) ($request->input('customer_name') ?? $request->input('new_customer_name') ?? ''));
+    $phone   = $request->input('customer_phone')   ?? $request->input('new_customer_phone');
+    $email   = $request->input('customer_email')   ?? $request->input('new_customer_email');
+    $address = $request->input('customer_address') ?? $request->input('new_customer_address');
+
+    if ($name === '') {
+        return null;
+    }
+
+    $data = [
+        'name'    => $name,
+        'phone'   => $phone,
+        'email'   => $email,
+        'address' => $address,
+    ];
+
+    // Prefer phone as lookup if present, else name
+    $lookup = $phone ? ['phone' => $phone] : ['name' => $name];
+
+    $customer = \App\Models\Customer::firstOrCreate(
+        $lookup,
+        ['name' => $name, 'phone' => $phone, 'email' => $email, 'address' => $address]
+    );
+
+    // Optionally fill missing fields on existing record
+    $dirty = false;
+    foreach (['name','phone','email','address'] as $f) {
+        if (!$customer->$f && !empty($data[$f])) {
+            $customer->$f = $data[$f];
+            $dirty = true;
+        }
+    }
+    if ($dirty) {
+        $customer->save();
+    }
+
+    return (string) $customer->id;
+}
 }

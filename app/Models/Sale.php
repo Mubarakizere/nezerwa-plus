@@ -15,19 +15,21 @@ class Sale extends Model
         'sale_date',
         'total_amount',
         'amount_paid',
+        'payment_channel',
         'method',
         'status',
         'notes',
     ];
 
-    // ✅ Date casting
     protected $casts = [
         'sale_date'  => 'date',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
-    // 🧩 Relationships
+    /**
+     * Relationships
+     */
     public function customer()
     {
         return $this->belongsTo(Customer::class);
@@ -48,25 +50,42 @@ class Sale extends Model
         return $this->hasOne(Transaction::class);
     }
 
-    // 📊 Accessor for balance due
-    public function getBalanceAttribute()
+    public function returns()
     {
-        return ($this->total_amount ?? 0) - ($this->amount_paid ?? 0);
+        return $this->hasMany(SaleReturn::class);
     }
 
-    // 📈 Profit summary for reports
-    public function totalProfit()
+    /**
+     * Linked loan created to cover this sale's balance.
+     * (Loan belongsTo Sale; Sale hasOne Loan)
+     */
+    public function loan()
     {
-        return $this->items->sum('profit');
+        return $this->hasOne(Loan::class);
     }
-    public function returns()
-{
-    return $this->hasMany(\App\Models\SaleReturn::class);
-}
-public function getNetTotalAttribute(): float
-{
-    $returns = (float)($this->returns_total ?? $this->returns()->sum('amount'));
-    return max(0, (float)$this->total_amount - $returns);
-}
+
+    /**
+     * Accessors / helpers
+     */
+    public function getBalanceAttribute(): float
+    {
+        return (float) (($this->total_amount ?? 0) - ($this->amount_paid ?? 0));
+    }
+
+    public function totalProfit(): float
+    {
+        return (float) $this->items->sum('profit');
+    }
+
+    /**
+     * Net total after subtracting returns.
+     * Uses preloaded `returns_total` if present, otherwise queries.
+     */
+    public function getNetTotalAttribute(): float
+    {
+        $returns = (float) ($this->returns_total ?? $this->returns()->sum('amount'));
+        return max(0.0, (float) ($this->total_amount ?? 0) - $returns);
+    }
+    public function payments() { return $this->hasMany(\App\Models\SalePayment::class); }
 
 }

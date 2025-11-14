@@ -6,7 +6,7 @@
 @php
     use Carbon\Carbon;
 
-    // Make sure relations exist (safe if already eager-loaded)
+    // Ensure relations exist (safe if already eager-loaded)
     try {
         $purchase->loadMissing([
             'items.product',
@@ -14,7 +14,7 @@
             'returns.items.product',
             'supplier',
             'user',
-            'loan',
+            'loan.payments.user',  // <-- include loan payments
             'transaction',
         ]);
     } catch (\Throwable $e) {}
@@ -60,6 +60,13 @@
     $sumReturnValue  = (float) $returns->sum('total_amount');
     $sumCashRefunds  = (float) $returns->sum('refund_amount');
     $netExposure     = max(0, $total - $paid - $sumCashRefunds);
+
+    // ---- Loan snapshot (for display)
+    $loan        = $purchase->loan;
+    $loanPaid    = $loan ? (float) $loan->payments->sum('amount') : 0.0;
+    $loanAmt     = $loan ? (float) $loan->amount : 0.0;
+    $loanRemain  = $loan ? max(0, round($loanAmt - $loanPaid, 2)) : 0.0;
+    $loanPct     = $loanAmt > 0 ? min(100, (int) round(($loanPaid / $loanAmt) * 100)) : 0;
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -117,6 +124,20 @@
                         Ref: <span class="font-medium">{{ $reference }}</span>
                     </span>
                 @endif
+
+                {{-- Loan status badge --}}
+                @if($loan)
+                    <span class="hidden md:inline text-gray-400">•</span>
+                    <span class="inline-flex items-center gap-1">
+                        <i data-lucide="banknote" class="w-4 h-4 text-indigo-500"></i>
+                        <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold
+                            {{ $loan->status === 'paid'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
+                            Loan {{ ucfirst($loan->status) }}
+                        </span>
+                    </span>
+                @endif
             </div>
         </div>
 
@@ -133,10 +154,17 @@
                 <i data-lucide="printer" class="w-4 h-4"></i> Invoice (PDF)
             </a>
 
-            {{-- Open modal ONLY when clicked --}}
+            {{-- Return to supplier (modal opens on click only) --}}
             <button type="button" class="btn btn-warning" @click="openPurchaseReturn()">
                 Return to Supplier
             </button>
+
+            {{-- Add Loan Payment quick action --}}
+            @if($loan && $loan->status !== 'paid')
+                <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-primary">
+                    Add Loan Payment
+                </a>
+            @endif
         </div>
     </div>
 
@@ -228,6 +256,90 @@
         </div>
     </div>
 
+    {{-- LINKED LOAN (taken) --}}
+    @if($loan)
+        <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-6 space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="banknote" class="w-5 h-5 text-indigo-600 dark:text-indigo-300"></i>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Linked Loan</h3>
+                </div>
+                <span class="px-2 py-1 rounded-full text-xs font-medium
+                    {{ $loan->status === 'paid'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
+                    {{ ucfirst($loan->status) }}
+                </span>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-4 text-sm">
+                <p><strong>Type:</strong> {{ ucfirst($loan->type) }}</p>
+                <p><strong>Amount:</strong> RWF {{ $fmt($loanAmt) }}</p>
+                <p><strong>Loan Date:</strong> {{ optional($loan->loan_date)->format('Y-m-d') }}</p>
+                @if($loan->due_date)
+                    <p><strong>Due Date:</strong> {{ optional($loan->due_date)->format('Y-m-d') }}</p>
+                @endif
+            </div>
+
+            {{-- Loan progress --}}
+            <div>
+                <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                    <span>Repayment Progress</span>
+                    <span>{{ $loanPct }}%</span>
+                </div>
+                <div class="w-full h-2 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
+                    <div class="h-2 rounded-full bg-emerald-500" style="width: {{ $loanPct }}%"></div>
+                </div>
+                <div class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                    Paid: RWF {{ $fmt($loanPaid) }} • Remaining: RWF {{ $fmt($loanRemain) }}
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-500 dark:text-gray-400">
+                    Loan #{{ $loan->id }} • {{ $loan->type === 'taken' ? 'We owe supplier' : 'Customer owes us' }}
+                </div>
+                @if($loan->status !== 'paid')
+                    <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-primary btn-sm">
+                        Add Loan Payment
+                    </a>
+                @endif
+            </div>
+
+            {{-- Loan payment history --}}
+            @if($loan->payments->count())
+                <div class="overflow-x-auto mt-3">
+                    <table class="min-w-full text-sm divide-y divide-gray-200 dark:divide-gray-800">
+                        <thead class="bg-gray-50 dark:bg-gray-800/60 text-xs uppercase text-gray-600 dark:text-gray-300">
+                            <tr>
+                                <th class="px-4 py-2 text-left">Date</th>
+                                <th class="px-4 py-2 text-right">Amount</th>
+                                <th class="px-4 py-2 text-left">Method</th>
+                                <th class="px-4 py-2 text-left">Recorded By</th>
+                                <th class="px-4 py-2 text-left">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            @foreach($loan->payments as $p)
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30">
+                                    <td class="px-4 py-2">{{ optional($p->payment_date)->format('Y-m-d') }}</td>
+                                    <td class="px-4 py-2 text-right text-emerald-700 dark:text-emerald-300">
+                                        RWF {{ $fmt($p->amount) }}
+                                    </td>
+                                    <td class="px-4 py-2">{{ strtoupper($p->method) }}</td>
+                                    <td class="px-4 py-2">{{ optional($p->user)->name ?? 'System' }}</td>
+                                    <td class="px-4 py-2">{{ $p->notes ?? '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @else
+                <p class="text-sm text-gray-500 dark:text-gray-400">No loan payments yet.</p>
+            @endif
+        </div>
+    @endif
+
     {{-- ITEMS TABLE --}}
     <div class="rounded-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
         <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2">
@@ -316,106 +428,106 @@
     @endif
 
     {{-- RETURNS LIST --}}
-     @if($returns->count())
-    <div class="rounded-2xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-5 space-y-4">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <i data-lucide="u-turn-left" class="w-5 h-5 text-indigo-600 dark:text-indigo-300"></i>
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Returns to Supplier</h3>
-            </div>
-            <div class="flex gap-4 text-sm">
-                <span class="text-gray-600 dark:text-gray-300">
-                    Returned Value:
-                    <span class="font-semibold">RWF {{ number_format($sumReturnValue,2) }}</span>
-                </span>
-                <span class="text-gray-600 dark:text-gray-300">
-                    Cash Refunds:
-                    <span class="font-semibold text-emerald-700 dark:text-emerald-300">RWF {{ number_format($sumCashRefunds,2) }}</span>
-                </span>
-                <span class="text-gray-600 dark:text-gray-300">
-                    Net Exposure:
-                    <span class="font-semibold {{ $netExposure>0?'text-rose-700 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
-                        RWF {{ number_format($netExposure,2) }}
+    @if($returns->count())
+        <div class="rounded-2xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-5 space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="u-turn-left" class="w-5 h-5 text-indigo-600 dark:text-indigo-300"></i>
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Returns to Supplier</h3>
+                </div>
+                <div class="flex gap-4 text-sm">
+                    <span class="text-gray-600 dark:text-gray-300">
+                        Returned Value:
+                        <span class="font-semibold">RWF {{ number_format($sumReturnValue,2) }}</span>
                     </span>
-                </span>
+                    <span class="text-gray-600 dark:text-gray-300">
+                        Cash Refunds:
+                        <span class="font-semibold text-emerald-700 dark:text-emerald-300">RWF {{ number_format($sumCashRefunds,2) }}</span>
+                    </span>
+                    <span class="text-gray-600 dark:text-gray-300">
+                        Net Exposure:
+                        <span class="font-semibold {{ $netExposure>0?'text-rose-700 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
+                            RWF {{ number_format($netExposure,2) }}
+                        </span>
+                    </span>
+                </div>
             </div>
-        </div>
 
-        <div class="overflow-x-auto border rounded-lg">
-            <table class="min-w-full text-sm divide-y divide-gray-200 dark:divide-gray-800">
-                <thead class="bg-gray-50 dark:bg-gray-800/50">
-                    <tr class="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                        <th class="px-4 py-2">Date</th>
-                        <th class="px-4 py-2">Channel</th>
-                        <th class="px-4 py-2">Reference</th>
-                        <th class="px-4 py-2 text-right">Refund</th>
-                        <th class="px-4 py-2 text-right">Return Value</th>
-                        <th class="px-4 py-2 text-right">Action</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                    @foreach($returns as $ret)
-                        <tr x-data="{ show:false }">
-                            <td class="px-4 py-2">
-                                {{ $ret->return_date ? \Carbon\Carbon::parse($ret->return_date)->format('M j, Y') : '—' }}
-                            </td>
-                            <td class="px-4 py-2">{{ strtoupper($ret->payment_channel ?? '-') }}</td>
-                            <td class="px-4 py-2">{{ $ret->method ?: '—' }}</td>
-                            <td class="px-4 py-2 text-right text-emerald-700 dark:text-emerald-300">
-                                RWF {{ number_format($ret->refund_amount, 2) }}
-                            </td>
-                            <td class="px-4 py-2 text-right font-medium">
-                                RWF {{ number_format($ret->total_amount, 2) }}
-                            </td>
-                            <td class="px-4 py-2">
-                                <div class="flex items-center justify-end gap-2">
-                                    @if($ret->items->count())
-                                        <button type="button"
-                                                @click="show = !show"
-                                                class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 hover:underline">
-                                            <i data-lucide="chevron-down" class="w-4 h-4" :class="show ? 'rotate-180' : ''"></i>
-                                            <span x-text="show ? 'Hide' : 'Details'"></span>
-                                        </button>
-                                    @endif
-
-                                    <form method="POST"
-                                          action="{{ route('purchases.returns.destroy', $ret) }}"
-                                          onsubmit="return confirm('Delete this return and revert stock/ledger?');"
-                                          class="inline">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit"
-                                                class="inline-flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:underline">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                            <span>Delete</span>
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
+            <div class="overflow-x-auto border rounded-lg">
+                <table class="min-w-full text-sm divide-y divide-gray-200 dark:divide-gray-800">
+                    <thead class="bg-gray-50 dark:bg-gray-800/50">
+                        <tr class="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            <th class="px-4 py-2">Date</th>
+                            <th class="px-4 py-2">Channel</th>
+                            <th class="px-4 py-2">Reference</th>
+                            <th class="px-4 py-2 text-right">Refund</th>
+                            <th class="px-4 py-2 text-right">Return Value</th>
+                            <th class="px-4 py-2 text-right">Action</th>
                         </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        @foreach($returns as $ret)
+                            <tr x-data="{ show:false }">
+                                <td class="px-4 py-2">
+                                    {{ $ret->return_date ? \Carbon\Carbon::parse($ret->return_date)->format('M j, Y') : '—' }}
+                                </td>
+                                <td class="px-4 py-2">{{ strtoupper($ret->payment_channel ?? '-') }}</td>
+                                <td class="px-4 py-2">{{ $ret->method ?: '—' }}</td>
+                                <td class="px-4 py-2 text-right text-emerald-700 dark:text-emerald-300">
+                                    RWF {{ number_format($ret->refund_amount, 2) }}
+                                </td>
+                                <td class="px-4 py-2 text-right font-medium">
+                                    RWF {{ number_format($ret->total_amount, 2) }}
+                                </td>
+                                <td class="px-4 py-2">
+                                    <div class="flex items-center justify-end gap-2">
+                                        @if($ret->items->count())
+                                            <button type="button"
+                                                    @click="show = !show"
+                                                    class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 hover:underline">
+                                                <i data-lucide="chevron-down" class="w-4 h-4" :class="show ? 'rotate-180' : ''"></i>
+                                                <span x-text="show ? 'Hide' : 'Details'"></span>
+                                            </button>
+                                        @endif
 
-                        @if($ret->items->count())
-                            <tr x-show="show" x-cloak class="bg-gray-50/60 dark:bg-gray-800/30">
-                                <td colspan="6" class="px-4 py-2">
-                                    <div class="text-xs text-gray-600 dark:text-gray-300">
-                                        <span class="font-semibold mr-2">Items:</span>
-                                        @foreach($ret->items as $it)
-                                            <span class="inline-block mr-4 mb-1">
-                                                {{ optional($it->product)->name ?? '#'.$it->product_id }}
-                                                × {{ number_format($it->quantity,2) }}
-                                                @ RWF {{ number_format($it->unit_cost,2) }}
-                                            </span>
-                                        @endforeach
+                                        <form method="POST"
+                                              action="{{ route('purchases.returns.destroy', $ret) }}"
+                                              onsubmit="return confirm('Delete this return and revert stock/ledger?');"
+                                              class="inline">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit"
+                                                    class="inline-flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:underline">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                <span>Delete</span>
+                                            </button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
-                        @endif
-                    @endforeach
-                </tbody>
-            </table>
+
+                            @if($ret->items->count())
+                                <tr x-show="show" x-cloak class="bg-gray-50/60 dark:bg-gray-800/30">
+                                    <td colspan="6" class="px-4 py-2">
+                                        <div class="text-xs text-gray-600 dark:text-gray-300">
+                                            <span class="font-semibold mr-2">Items:</span>
+                                            @foreach($ret->items as $it)
+                                                <span class="inline-block mr-4 mb-1">
+                                                    {{ optional($it->product)->name ?? '#'.$it->product_id }}
+                                                    × {{ number_format($it->quantity,2) }}
+                                                    @ RWF {{ number_format($it->unit_cost,2) }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endif
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
-@endif
+    @endif
 
 </div>
 
@@ -427,16 +539,12 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // Initialize Lucide icons
   if (window.lucide) {
     lucide.createIcons();
   }
-
-  console.log(' Purchase show page loaded');
 });
 
 window.openPurchaseReturn = function(){
-  console.log('🔵 openPurchaseReturn() called');
   window.dispatchEvent(new CustomEvent('open-purchase-return'));
 };
 </script>

@@ -1,4 +1,3 @@
-{{-- resources/views/products/index.blade.php --}}
 @extends('layouts.app')
 @section('title', 'Products')
 
@@ -15,7 +14,10 @@
     $threshold = (int)($threshold ?? 5);
 
     // Ensure categories exist even if controller forgot to pass them
-    $categories = $categories ?? Category::orderBy('name')->get();
+    $allCategories    = $categories ?? Category::orderBy('name')->get();
+    $usableCategories = collect($allCategories)
+        ->filter(fn($c) => ($c->is_active ?? true) && in_array($c->kind ?? 'product', ['product','both']))
+        ->values();
 
     // Make stats work whether $products is a Paginator or a Collection
     $__coll = $products instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator
@@ -76,6 +78,7 @@
 
     {{-- Filters --}}
     <form method="GET" action="{{ route('products.index') }}"
+          x-data="{ qcat: '' }"
           class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
         <div class="md:col-span-2">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Search</label>
@@ -85,12 +88,34 @@
 
         <div class="md:col-span-2">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Category</label>
-            <select name="category_id" class="form-select w-full">
+
+            {{-- tiny inline filter for category options --}}
+            <div class="relative mb-1">
+                <i data-lucide="search" class="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400"></i>
+                <input x-model="qcat" type="text" placeholder="Filter categories…"
+                       class="form-input w-full pl-8" aria-label="Filter categories">
+            </div>
+
+            <select name="category_id" class="form-select w-full"
+                    x-init="$watch('qcat', v => {
+                        const opts = $el.querySelectorAll('option[data-name]');
+                        const k = (v||'').toLowerCase();
+                        opts.forEach(o => { o.hidden = !o.dataset.name.includes(k) && o.value !== ''; });
+                    })">
                 <option value="">All categories</option>
-                @foreach($categories as $c)
-                    <option value="{{ $c->id }}" @selected(request('category_id') == $c->id)>{{ $c->name }}</option>
+                @foreach($usableCategories as $c)
+                    @php
+                        $label = trim($c->name.' '.($c->code ? "({$c->code})" : ''));
+                    @endphp
+                    <option value="{{ $c->id }}"
+                            data-name="{{ Str::lower($label) }}"
+                            @selected(request('category_id') == $c->id)>{{ $label }}</option>
                 @endforeach
             </select>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                Only <span class="font-medium">active</span> categories with kind <em>Product</em>/<em>Both</em> are listed.
+                <a href="{{ route('categories.create', ['kind'=>'product']) }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">Create new</a>.
+            </p>
         </div>
 
         <div>
@@ -171,6 +196,10 @@
                             $margin = $price > 0 ? (($price - $cost) / $price) * 100 : 0;
 
                             $last  = $p->last_moved_at ? \Carbon\Carbon::parse($p->last_moved_at)->diffForHumans() : '—';
+
+                            $cat   = $p->category ?? null;
+                            $catOk = $cat && (($cat->is_active ?? true) && in_array($cat->kind ?? 'product',['product','both']));
+                            $dot   = $cat->color ?? '#6b7280';
                         @endphp
 
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-900/30 transition">
@@ -185,8 +214,26 @@
                                 @endif
                             </td>
 
+                            {{-- Category with status --}}
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                                {{ $p->category->name ?? '—' }}
+                                @if($cat)
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <span class="inline-block w-2.5 h-2.5 rounded-full" style="background: {{ $dot }}"></span>
+                                        <span>{{ $cat->name }}</span>
+                                        @if(!empty($cat->code))
+                                            <span class="ml-1 text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                                                {{ $cat->code }}
+                                            </span>
+                                        @endif
+                                        @unless($catOk)
+                                            <span class="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                                                not usable
+                                            </span>
+                                        @endunless
+                                    </span>
+                                @else
+                                    <span class="text-rose-600 dark:text-rose-300">—</span>
+                                @endif
                             </td>
 
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">

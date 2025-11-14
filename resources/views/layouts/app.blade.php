@@ -25,10 +25,25 @@
     <meta name="apple-mobile-web-app-title" content="Stock Management">
     <link rel="apple-touch-startup-image" href="{{ asset('images/icons/icon-512x512.png') }}">
 
-    {{-- Prevent white flash --}}
+    {{-- Prevent white flash + hide Google banner --}}
     <style>
         [x-cloak]{display:none!important}
         html.dark body{background:#0f172a;color:#f8fafc}
+
+        /* ===== Google Translate cleanup ===== */
+        .goog-te-banner-frame,
+        .goog-te-banner-frame.skiptranslate,
+        #goog-gt-tt,
+        .goog-te-balloon-frame,
+        .VIpgJd-ZVi9od-ORHb-OEVmcd { display: none !important; }
+
+        /* Google injects top offset on html/body; force reset */
+        html, body { top: 0 !important; }
+
+        /* Hide default gadget chrome (we use our own dropdown) */
+        .goog-te-gadget { color: transparent !important; }
+        .goog-te-gadget .goog-te-combo { margin:0 !important; }
+        .goog-logo-link, .goog-te-gadget span { display:none !important; }
     </style>
 </head>
 
@@ -87,6 +102,28 @@
                               d="M5 13a10 10 0 0114 0M8.5 16.5a5 5 0 017 0M12 20h.01" />
                     </svg>
                     <span id="connection-text" class="text-green-600 dark:text-green-400">Online</span>
+                </div>
+
+                {{-- 🌍 Language Switcher (Google Translate) --}}
+                <div class="relative" x-data="{ open:false }" @keydown.escape="open=false" @click.away="open=false">
+                    <button @click="open=!open"
+                            class="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                            title="Change language">
+                        <i data-lucide="languages" class="w-4 h-4 text-gray-500"></i>
+                        <span id="lang-badge" class="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300">EN</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400"></i>
+                    </button>
+
+                    <div x-show="open" x-cloak x-transition
+                         class="absolute right-0 mt-2 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50">
+                        <button type="button" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                                @click="window.__setLanguage('en'); open=false">English</button>
+                        <button type="button" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                                @click="window.__setLanguage('fr'); open=false">Français</button>
+                        <button type="button" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                                @click="window.__setLanguage('rw'); open=false">Kinyarwanda</button>
+                        <div class="mt-1 px-4 pb-2 text-[10px] text-gray-400">Powered by Google Translate</div>
+                    </div>
                 </div>
 
                 {{-- 👤 User Dropdown --}}
@@ -156,6 +193,77 @@ document.addEventListener("DOMContentLoaded", () => createIcons({ icons }));
 <x-confirm-delete />
 @stack('scripts')
 
+{{-- ===== Hidden Google Translate mount point ===== --}}
+<div id="google_translate_element" class="absolute -z-50 opacity-0 pointer-events-none"></div>
+
+{{-- ✅ Google Translate: init + helpers --}}
+<script>
+/**
+ * Initialize Google Translate with the three languages we want.
+ * pageLanguage uses the current Laravel locale to hint the source.
+ */
+function googleTranslateElementInit() {
+    new google.translate.TranslateElement({
+        pageLanguage: "{{ str_replace('_','-', app()->getLocale()) ?: 'en' }}",
+        includedLanguages: 'en,fr,rw',
+        autoDisplay: false
+    }, 'google_translate_element');
+
+    // Restore saved language after widget injects the <select>
+    const saved = localStorage.getItem('gt_lang') || 'en';
+    setTimeout(() => window.__setLanguage(saved, /*silent*/ true), 400);
+}
+
+/**
+ * Programmatically change Google Translate language and persist to localStorage.
+ * Also update the top-nav badge.
+ */
+window.__setLanguage = function(lang, silent = false) {
+    try {
+        const combo = document.querySelector('#google_translate_element select.goog-te-combo');
+        if (!combo) {
+            return setTimeout(() => window.__setLanguage(lang, silent), 200);
+        }
+        if (combo.value !== lang) {
+            combo.value = lang;
+            combo.dispatchEvent(new Event('change'));
+        }
+        localStorage.setItem('gt_lang', lang);
+        const badge = document.getElementById('lang-badge');
+        if (badge) badge.textContent = (lang || 'en').toUpperCase();
+        if (!silent && window.createIcons) { /* no-op */ }
+    } catch(e) { console.error('Translate switch failed', e); }
+};
+</script>
+<script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+
+{{-- 🚫 Remove/guard the blue top banner reliably --}}
+<script>
+(function () {
+  function killBar() {
+    const banner = document.querySelector('.goog-te-banner-frame');
+    if (banner) banner.style.display = 'none';
+    const balloon = document.querySelector('.VIpgJd-ZVi9od-ORHb-OEVmcd');
+    if (balloon) balloon.style.display = 'none';
+    document.documentElement.style.top = '0px';
+    document.body.style.top = '0px';
+  }
+
+  // Run now, on load, on resize and whenever DOM mutates (Google injects later)
+  killBar();
+  window.addEventListener('load', killBar, { passive: true });
+  window.addEventListener('resize', killBar, { passive: true });
+  new MutationObserver(killBar).observe(document.documentElement, { childList: true, subtree: true });
+
+  // Also run right after we switch languages via the custom dropdown
+  const prev = window.__setLanguage;
+  window.__setLanguage = function(lang, silent) {
+    if (typeof prev === 'function') prev(lang, silent);
+    setTimeout(killBar, 120);
+  };
+})();
+</script>
+
 {{-- ✅ PWA Service Worker --}}
 <script>
 if ('serviceWorker' in navigator) {
@@ -188,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
             banner.remove();
             localStorage.setItem('pwa_tip_seen', 'true');
         });
-        lucide.createIcons();
+        if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
     }
 });
 </script>

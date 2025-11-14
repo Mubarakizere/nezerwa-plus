@@ -3,9 +3,51 @@
 @section('title', 'Sales')
 
 @section('content')
-@php use Carbon\Carbon; @endphp
+@php
+    use Carbon\Carbon;
+    $paymentsPdfAction = \Illuminate\Support\Facades\Route::has('sales.payments.pdf')
+        ? route('sales.payments.pdf')
+        : (\Illuminate\Support\Facades\Route::has('reports.sales.payments.pdf')
+            ? route('reports.sales.payments.pdf')
+            : null);
+@endphp
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+<div
+    x-data="{
+        // Quick range helpers (filters)
+        applyRange(preset){
+            const url = new URL(window.location.href);
+            const today = new Date();
+            const fmt = d => d.toISOString().slice(0,10);
+
+            let from=null, to=null;
+            if(preset==='today'){
+                from = fmt(today); to = fmt(today);
+            }else if(preset==='week'){
+                const day = today.getDay(); // 0-6
+                const diffToMon = (day === 0 ? -6 : 1 - day);
+                const monday = new Date(today); monday.setDate(today.getDate()+diffToMon);
+                const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+                from = fmt(monday); to = fmt(sunday);
+            }else if(preset==='month'){
+                const first = new Date(today.getFullYear(), today.getMonth(), 1);
+                const last  = new Date(today.getFullYear(), today.getMonth()+1, 0);
+                from = fmt(first); to = fmt(last);
+            }else if(preset==='all'){
+                url.searchParams.delete('from');
+                url.searchParams.delete('to');
+                window.location.href = url.toString(); return;
+            }
+
+            if(from&&to){
+                url.searchParams.set('from', from);
+                url.searchParams.set('to', to);
+            }
+            window.location.href = url.toString();
+        }
+    }"
+    class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6"
+>
 
     {{-- Page Header --}}
     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -15,28 +57,41 @@
         </h1>
 
         <div class="flex items-center flex-wrap gap-2">
+            {{-- CSV --}}
             <a href="{{ route('sales.export', request()->query()) }}"
                class="btn btn-outline text-sm flex items-center gap-1">
                 <i data-lucide="download" class="w-4 h-4"></i> Export CSV
             </a>
+
+            {{-- PDF: Summary (optional/if exists) --}}
+            @if (\Illuminate\Support\Facades\Route::has('reports.sales.summary.pdf'))
+                <a href="{{ route('reports.sales.summary.pdf', request()->query()) }}"
+                   class="btn btn-outline text-sm flex items-center gap-1">
+                    <i data-lucide="file-down" class="w-4 h-4"></i> PDF Summary
+                </a>
+            @elseif (\Illuminate\Support\Facades\Route::has('reports.sales.pdf'))
+                <a href="{{ route('reports.sales.pdf', request()->query()) }}"
+                   class="btn btn-outline text-sm flex items-center gap-1">
+                    <i data-lucide="file-down" class="w-4 h-4"></i> PDF Summary
+                </a>
+            @endif
+
+            {{-- PDF: Payments by Method (exportPaymentsPdf) --}}
+            @if ($paymentsPdfAction)
+                <button type="button"
+                        class="btn btn-outline text-sm flex items-center gap-1"
+                        @click="$store.paypdf.open = true">
+                    <i data-lucide="file-bar-chart-2" class="w-4 h-4"></i> Payments PDF
+                </button>
+            @endif
+
+            {{-- New Sale --}}
             <a href="{{ route('sales.create') }}"
                class="btn btn-primary flex items-center gap-2 text-sm sm:text-base">
                 <i data-lucide="plus" class="w-4 h-4"></i> New Sale
             </a>
         </div>
     </div>
-
-    {{-- Flash Messages --}}
-    @if (session('success'))
-        <div class="rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-300 px-4 py-3 text-sm">
-            {{ session('success') }}
-        </div>
-    @endif
-    @if ($errors->any())
-        <div class="rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 text-sm">
-            {{ $errors->first() }}
-        </div>
-    @endif
 
     {{-- Filters --}}
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-4">
@@ -89,6 +144,14 @@
                        class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
             </div>
 
+            {{-- Quick ranges --}}
+            <div class="flex items-center gap-1 h-[38px] mt-5 md:mt-0">
+                <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('today')">Today</button>
+                <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('week')">This Week</button>
+                <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('month')">This Month</button>
+                <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('all')">All</button>
+            </div>
+
             {{-- Has returns --}}
             <div class="flex items-center h-[38px] mt-5 md:mt-0">
                 <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -111,7 +174,7 @@
                 </select>
             </div>
 
-            {{-- Sort (optional, matches controller if enabled) --}}
+            {{-- Sort --}}
             <div>
                 <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Sort</label>
                 <select name="sort" class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
@@ -145,7 +208,7 @@
 
     {{-- Table --}}
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-x-auto">
-        <table class="w-full text-sm text-left min-w-[1100px]">
+        <table class="w-full text-sm text-left min-w-[1150px]">
             <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 uppercase text-xs font-medium">
                 <tr>
                     <th class="px-4 py-3">#</th>
@@ -171,11 +234,13 @@
                         $badge = match($channel) {
                             'bank' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
                             'momo' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+                            'mobile' => 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
                             default => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
                         };
                         $icon  = match($channel) {
                             'bank' => 'credit-card',
                             'momo' => 'smartphone',
+                            'mobile' => 'phone',
                             default => 'banknote',
                         };
 
@@ -184,6 +249,14 @@
                         $netAfter     = max(0, $grossTotal - $returnsTotal);
                         $paid         = (float) ($sale->amount_paid ?? 0);
                         $balance      = max(0, round($netAfter - $paid, 2));
+
+                        $splitHint = '';
+                        try {
+                            if (method_exists($sale, 'payments')) {
+                                $cnt = $sale->payments()->count();
+                                if ($cnt > 1) $splitHint = "Split";
+                            }
+                        } catch (\Throwable $e) {}
                     @endphp
 
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
@@ -225,22 +298,20 @@
                                     Returns
                                 </span>
                             @endif
-
-                            @if ($sale->loan)
-                                <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-semibold
-                                    {{ $sale->loan->status === 'paid'
-                                        ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
-                                        : 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300' }}">
-                                    Loan {{ ucfirst($sale->loan->status) }}
-                                </span>
-                            @endif
                         </td>
 
                         <td class="px-4 py-3">
-                            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium {{ $badge }}">
-                                <i data-lucide="{{ $icon }}" class="w-3.5 h-3.5"></i>
-                                {{ strtoupper($channel) }}
-                            </span>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium {{ $badge }}">
+                                    <i data-lucide="{{ $icon }}" class="w-3.5 h-3.5"></i>
+                                    {{ strtoupper($channel) }}
+                                </span>
+                                @if($splitHint)
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                                        {{ $splitHint }}
+                                    </span>
+                                @endif
+                            </div>
                             @if($sale->method)
                                 <div class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                                     Ref: {{ $sale->method }}
@@ -270,11 +341,12 @@
                                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Returns
                                 </a>
 
-                                <form action="{{ route('sales.destroy', $sale) }}" method="POST" class="inline"
-                                      onsubmit="return confirm('Delete this sale? This will revert stock movements.');">
+                                {{-- Delete -> global confirm store --}}
+                                <form action="{{ route('sales.destroy', $sale) }}" method="POST" class="inline">
                                     @csrf @method('DELETE')
-                                    <button type="submit"
-                                            class="btn btn-danger text-xs px-2.5 py-1.5 flex items-center gap-1">
+                                    <button type="button"
+                                            class="btn btn-danger text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
+                                            @click="$store.confirm.openWith($el.closest('form'))">
                                         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
                                     </button>
                                 </form>
@@ -298,10 +370,132 @@
     </div>
 </div>
 
+{{-- Global Delete Confirmation Modal (Alpine Store) --}}
+<div x-data
+     x-show="$store.confirm.open"
+     x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+     @keydown.escape.window="$store.confirm.open=false">
+    <div @click.outside="$store.confirm.open=false"
+         class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Confirm Deletion</h2>
+        <p class="text-gray-600 dark:text-gray-300 text-sm mb-6">
+            Are you sure you want to delete this sale? This action cannot be undone and will revert stock movements.
+        </p>
+        <div class="flex justify-end gap-3">
+            <button type="button" class="btn btn-outline" @click="$store.confirm.open=false">Cancel</button>
+            <button type="button" class="btn btn-danger"
+                    @click="$store.confirm.submitEl?.submit(); $store.confirm.open=false;">
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+{{-- Payments PDF Modal (Alpine Store) --}}
+@if ($paymentsPdfAction)
+<div x-data
+     x-show="$store.paypdf.open"
+     x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+     @keydown.escape.window="$store.paypdf.open=false">
+    <div @click.outside="$store.paypdf.open=false"
+         class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">
+            Export Payments PDF
+        </h2>
+        <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">
+            Choose a period or custom range for the payments-by-method report.
+        </p>
+
+        <form id="paymentsPdfForm" method="GET" action="{{ $paymentsPdfAction }}" class="space-y-4">
+            <div class="space-y-1">
+                <label class="text-xs font-semibold text-gray-500 dark:text-gray-400">Period</label>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <label class="inline-flex items-center gap-2">
+                        <input type="radio" name="period" value="daily" class="text-indigo-600 border-gray-300" checked>
+                        <span>Daily (today)</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2">
+                        <input type="radio" name="period" value="weekly" class="text-indigo-600 border-gray-300">
+                        <span>Weekly (this week)</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2">
+                        <input type="radio" name="period" value="monthly" class="text-indigo-600 border-gray-300">
+                        <span>Monthly (this month)</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2">
+                        <input type="radio" name="period" value="custom" class="text-indigo-600 border-gray-300" x-model="$store.paypdf.period" @change="$store.paypdf.period='custom'">
+                        <span>Custom range</span>
+                    </label>
+                </div>
+            </div>
+
+            {{-- Custom range fields (only used when period=custom) --}}
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">From</label>
+                    <input type="date" name="from"
+                           x-bind:disabled="$store.paypdf.period!=='custom'"
+                           x-model="$store.paypdf.from"
+                           class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">To</label>
+                    <input type="date" name="to"
+                           x-bind:disabled="$store.paypdf.period!=='custom'"
+                           x-model="$store.paypdf.to"
+                           class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm px-3 py-2">
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" class="btn btn-outline" @click="$store.paypdf.open=false">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>Download PDF</span>
+                </button>
+            </div>
+        </form>
+
+        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-3">
+            Tip: If you already set <em>From/To</em> in the filters above, pick <strong>Custom</strong> and the dates will prefill.
+        </p>
+    </div>
+</div>
+@endif
+
 @push('scripts')
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.lucide) lucide.createIcons();
+    });
+
+    document.addEventListener('alpine:init', () => {
+        // Global delete-confirm store (reused)
+        if (!Alpine.store('confirm')) {
+            Alpine.store('confirm', {
+                open: false,
+                submitEl: null,
+                openWith(form) {
+                    this.submitEl = form;
+                    this.open = true;
+                }
+            });
+        }
+
+        // Payments PDF modal store
+        if (!Alpine.store('paypdf')) {
+            Alpine.store('paypdf', {
+                open: false,
+                period: 'daily',
+                from: '{{ request('from') ?? now()->toDateString() }}',
+                to:   '{{ request('to')   ?? now()->toDateString() }}'
+            });
+        }
+    });
 </script>
 @endpush
 @endsection
