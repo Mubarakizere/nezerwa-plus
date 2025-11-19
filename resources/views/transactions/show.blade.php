@@ -1,3 +1,4 @@
+{{-- resources/views/transactions/show.blade.php --}}
 @extends('layouts.app')
 @section('title', "Transaction #{$transaction->id}")
 
@@ -10,6 +11,28 @@
         : '—';
 @endphp
 
+@cannot('transactions.view')
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div class="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6">
+            <div class="flex items-start gap-3">
+                <i data-lucide="shield-off" class="w-6 h-6 text-amber-600 dark:text-amber-300 mt-0.5"></i>
+                <div>
+                    <h1 class="text-lg font-semibold text-amber-900 dark:text-amber-100">
+                        You don’t have permission to view this transaction.
+                    </h1>
+                    <p class="mt-1 text-sm text-amber-800/80 dark:text-amber-100/80">
+                        Please contact an administrator if you believe this is a mistake.
+                    </p>
+                    <a href="{{ route('transactions.index') }}"
+                       class="mt-3 inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 underline">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                        Back to Transactions
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+@else
 <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {{-- Header --}}
     <div class="flex items-center justify-between mb-6">
@@ -23,22 +46,28 @@
                 <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
             </a>
 
-            <a href="{{ route('transactions.edit', $transaction->getKey()) }}"
-               class="btn btn-primary flex items-center gap-1">
-                <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
-            </a>
+            @can('transactions.edit')
+                <a href="{{ route('transactions.edit', $transaction->getKey()) }}"
+                   class="btn btn-primary flex items-center gap-1">
+                    <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
+                </a>
+            @endcan
 
-            <button type="button"
-                    class="btn btn-danger flex items-center gap-1"
-                    @click="$store.confirm.openWith($refs.deleteForm)">
-                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
-            </button>
+            @can('transactions.delete')
+                <button type="button"
+                        class="btn btn-danger flex items-center gap-1"
+                        @click="$store.confirm.open('tx-del-{{ $transaction->getKey() }}')">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+                </button>
 
-            <form x-ref="deleteForm" class="hidden"
-                  action="{{ route('transactions.destroy', $transaction->getKey()) }}"
-                  method="POST">
-                @csrf @method('DELETE')
-            </form>
+                <form id="tx-del-{{ $transaction->getKey() }}"
+                      class="hidden"
+                      action="{{ route('transactions.destroy', $transaction->getKey()) }}"
+                      method="POST">
+                    @csrf
+                    @method('DELETE')
+                </form>
+            @endcan
         </div>
     </div>
 
@@ -108,7 +137,7 @@
                     @endif
 
                     @if(!$transaction->sale && !$transaction->purchase)
-                        <span class="text-gray-500">—</span>
+                        <span class="text-gray-500 dark:text-gray-400">—</span>
                     @endif
                 </p>
             </div>
@@ -131,7 +160,7 @@
     </div>
 </div>
 
-{{-- Global Delete Confirm Modal (Alpine store) --}}
+{{-- Global Delete Confirm Modal (shared with index) --}}
 <div x-data x-show="$store.confirm.open" x-cloak
      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
      @keydown.escape.window="$store.confirm.close()" x-transition>
@@ -152,16 +181,25 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    if (window.lucide) lucide.createIcons();
+    if (window.lucide) {
+        lucide.createIcons();
+    }
 });
+
 document.addEventListener('alpine:init', () => {
     Alpine.store('confirm', {
-        open: false, submitEl: null,
-        openWith(form) { this.submitEl = form; this.open = true },
-        close()       { this.open = false; this.submitEl = null },
-        confirm()     { if (this.submitEl) this.submitEl.submit(); this.close() },
+        open: false,
+        formId: null,
+        open(id){ this.formId = id; this.open = true },
+        close(){ this.open = false; this.formId = null },
+        confirm(){
+            const f = this.formId ? document.getElementById(this.formId) : null;
+            if (f) f.submit();
+            this.close();
+        },
     });
 });
 </script>
 @endpush
+@endcannot
 @endsection

@@ -1,4 +1,3 @@
-{{-- resources/views/purchases/show.blade.php --}}
 @extends('layouts.app')
 @section('title', "Purchase #{$purchase->id}")
 
@@ -71,12 +70,22 @@
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-    {{-- Toasts --}}
-    @if(session('success'))
-        <div class="rounded-lg border border-emerald-300/60 bg-emerald-50 text-emerald-800 px-3 py-2 text-sm">
-            {{ session('success') }}
+    @cannot('purchases.view')
+        {{-- No permission state --}}
+        <div class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6">
+            <div class="flex items-start gap-3">
+                <i data-lucide="shield-alert" class="w-5 h-5 text-amber-500 mt-0.5"></i>
+                <div>
+                    <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                        You don’t have permission to view purchases.
+                    </h2>
+                    <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                        Please contact your administrator to request access.
+                    </p>
+                </div>
+            </div>
         </div>
-    @endif
+    @else
 
     {{-- HEADER --}}
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -142,28 +151,47 @@
         </div>
 
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('purchases.index') }}" class="btn btn-secondary flex items-center gap-1">
+            {{-- Back --}}
+            <a href="{{ route('purchases.index') }}" class="btn btn-secondary flex items-center gap-1 text-sm">
                 <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
             </a>
-            @role('admin|manager|accountant')
-                <a href="{{ route('purchases.edit', $purchase) }}" class="btn btn-outline flex items-center gap-1">
+
+            {{-- Edit purchase --}}
+            @can('purchases.edit')
+                <a href="{{ route('purchases.edit', $purchase) }}" class="btn btn-outline flex items-center gap-1 text-sm">
                     <i data-lucide="file-edit" class="w-4 h-4"></i> Edit
                 </a>
-            @endrole
-            <a href="{{ route('purchases.invoice', $purchase) }}" target="_blank" class="btn btn-success flex items-center gap-1">
-                <i data-lucide="printer" class="w-4 h-4"></i> Invoice (PDF)
-            </a>
+            @endcan
 
-            {{-- Return to supplier (modal opens on click only) --}}
-            <button type="button" class="btn btn-warning" @click="openPurchaseReturn()">
-                Return to Supplier
-            </button>
+            {{-- Invoice --}}
+            @can('purchases.view')
+                @if (Route::has('purchases.invoice'))
+                    <a href="{{ route('purchases.invoice', $purchase) }}"
+                       target="_blank"
+                       class="btn btn-success flex items-center gap-1 text-sm">
+                        <i data-lucide="printer" class="w-4 h-4"></i> Invoice (PDF)
+                    </a>
+                @endif
+            @endcan
 
-            {{-- Add Loan Payment quick action --}}
+            {{-- Return to supplier --}}
+            @can('purchases.edit')
+                <button type="button"
+                        class="btn btn-warning text-sm flex items-center gap-1"
+                        @click="openPurchaseReturn()">
+                    <i data-lucide="u-turn-left" class="w-4 h-4"></i>
+                    Return to Supplier
+                </button>
+            @endcan
+
+            {{-- Add Loan Payment --}}
             @if($loan && $loan->status !== 'paid')
-                <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-primary">
-                    Add Loan Payment
-                </a>
+                @can('loans.view')
+                    <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-primary text-sm flex items-center gap-1">
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                        Add Loan Payment
+                    </a>
+                @endcan
             @endif
         </div>
     </div>
@@ -256,7 +284,7 @@
         </div>
     </div>
 
-    {{-- LINKED LOAN (taken) --}}
+    {{-- LINKED LOAN --}}
     @if($loan)
         <div class="rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-6 space-y-4">
             <div class="flex items-center justify-between">
@@ -300,9 +328,11 @@
                     Loan #{{ $loan->id }} • {{ $loan->type === 'taken' ? 'We owe supplier' : 'Customer owes us' }}
                 </div>
                 @if($loan->status !== 'paid')
-                    <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-primary btn-sm">
-                        Add Loan Payment
-                    </a>
+                    @can('loans.view')
+                        <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-primary btn-sm">
+                            Add Loan Payment
+                        </a>
+                    @endcan
                 @endif
             </div>
 
@@ -364,10 +394,18 @@
                             $lt  = $item->total_cost ?? $qty * $uc;
                         @endphp
                         <tr class="text-sm">
-                            <td class="px-5 py-3 text-gray-900 dark:text-gray-100">{{ optional($item->product)->name ?? ('#'.$item->product_id) }}</td>
-                            <td class="px-5 py-3 text-gray-700 dark:text-gray-300">{{ $fmt($qty) }}</td>
-                            <td class="px-5 py-3 text-gray-700 dark:text-gray-300">RWF {{ $fmt($uc) }}</td>
-                            <td class="px-5 py-3 font-medium text-gray-900 dark:text-gray-100">RWF {{ $fmt($lt) }}</td>
+                            <td class="px-5 py-3 text-gray-900 dark:text-gray-100">
+                                {{ optional($item->product)->name ?? ('#'.$item->product_id) }}
+                            </td>
+                            <td class="px-5 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $fmt($qty) }}
+                            </td>
+                            <td class="px-5 py-3 text-gray-700 dark:text-gray-300">
+                                RWF {{ $fmt($uc) }}
+                            </td>
+                            <td class="px-5 py-3 font-medium text-gray-900 dark:text-gray-100">
+                                RWF {{ $fmt($lt) }}
+                            </td>
                         </tr>
                     @empty
                         <tr>
@@ -378,23 +416,33 @@
                 <tfoot class="bg-gray-50/70 dark:bg-gray-800/50 text-sm">
                     <tr>
                         <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Subtotal</td>
-                        <td class="px-5 py-3 font-medium text-gray-900 dark:text-gray-100">RWF {{ $fmt($computedSubtotal) }}</td>
+                        <td class="px-5 py-3 font-medium text-gray-900 dark:text-gray-100">
+                            RWF {{ $fmt($computedSubtotal) }}
+                        </td>
                     </tr>
                     <tr>
                         <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Tax</td>
-                        <td class="px-5 py-3 font-medium text-blue-700 dark:text-blue-300">+ RWF {{ $fmt($tax) }}</td>
+                        <td class="px-5 py-3 font-medium text-blue-700 dark:text-blue-300">
+                            + RWF {{ $fmt($tax) }}
+                        </td>
                     </tr>
                     <tr>
                         <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Discount</td>
-                        <td class="px-5 py-3 font-medium text-amber-700 dark:text-amber-300">– RWF {{ $fmt($discount) }}</td>
+                        <td class="px-5 py-3 font-medium text-amber-700 dark:text-amber-300">
+                            – RWF {{ $fmt($discount) }}
+                        </td>
                     </tr>
                     <tr>
                         <td colspan="3" class="px-5 py-3 text-right text-gray-800 dark:text-gray-100">Total</td>
-                        <td class="px-5 py-3 font-semibold text-gray-900 dark:text-gray-100">RWF {{ $fmt($total) }}</td>
+                        <td class="px-5 py-3 font-semibold text-gray-900 dark:text-gray-100">
+                            RWF {{ $fmt($total) }}
+                        </td>
                     </tr>
                     <tr>
                         <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Paid</td>
-                        <td class="px-5 py-3 font-medium text-emerald-700 dark:text-emerald-300">RWF {{ $fmt($paid) }}</td>
+                        <td class="px-5 py-3 font-medium text-emerald-700 dark:text-emerald-300">
+                            RWF {{ $fmt($paid) }}
+                        </td>
                     </tr>
                     <tr>
                         <td colspan="3" class="px-5 py-3 text-right text-gray-600 dark:text-gray-300">Balance</td>
@@ -416,13 +464,27 @@
                 <h3 class="text-sm font-semibold text-emerald-950 dark:text-emerald-200">Payment Transaction</h3>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
-                <div><span class="text-gray-600 dark:text-gray-400">Amount:</span> <span class="font-semibold">RWF {{ $fmt($txn->amount) }}</span></div>
-                <div><span class="text-gray-600 dark:text-gray-400">Date:</span> {{ \Illuminate\Support\Str::of($txn->transaction_date)->substr(0,10) }}</div>
-                <div><span class="text-gray-600 dark:text-gray-400">Channel:</span> {{ strtoupper($txn->method ?? $channel) }}</div>
-                <div><span class="text-gray-600 dark:text-gray-400">Ref:</span> {{ $reference ?: '—' }}</div>
+                <div>
+                    <span class="text-gray-600 dark:text-gray-400">Amount:</span>
+                    <span class="font-semibold">RWF {{ $fmt($txn->amount) }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-600 dark:text-gray-400">Date:</span>
+                    {{ \Illuminate\Support\Str::of($txn->transaction_date)->substr(0,10) }}
+                </div>
+                <div>
+                    <span class="text-gray-600 dark:text-gray-400">Channel:</span>
+                    {{ strtoupper($txn->method ?? $channel) }}
+                </div>
+                <div>
+                    <span class="text-gray-600 dark:text-gray-400">Ref:</span>
+                    {{ $reference ?: '—' }}
+                </div>
             </div>
             @if($txn->notes)
-                <p class="text-sm text-emerald-900/90 dark:text-emerald-200/90 mt-1">{{ $txn->notes }}</p>
+                <p class="text-sm text-emerald-900/90 dark:text-emerald-200/90 mt-1">
+                    {{ $txn->notes }}
+                </p>
             @endif
         </div>
     @endif
@@ -430,19 +492,21 @@
     {{-- RETURNS LIST --}}
     @if($returns->count())
         <div class="rounded-2xl ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-5 space-y-4">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
                 <div class="flex items-center gap-2">
                     <i data-lucide="u-turn-left" class="w-5 h-5 text-indigo-600 dark:text-indigo-300"></i>
                     <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Returns to Supplier</h3>
                 </div>
-                <div class="flex gap-4 text-sm">
+                <div class="flex gap-4 text-sm flex-wrap">
                     <span class="text-gray-600 dark:text-gray-300">
                         Returned Value:
                         <span class="font-semibold">RWF {{ number_format($sumReturnValue,2) }}</span>
                     </span>
                     <span class="text-gray-600 dark:text-gray-300">
                         Cash Refunds:
-                        <span class="font-semibold text-emerald-700 dark:text-emerald-300">RWF {{ number_format($sumCashRefunds,2) }}</span>
+                        <span class="font-semibold text-emerald-700 dark:text-emerald-300">
+                            RWF {{ number_format($sumCashRefunds,2) }}
+                        </span>
                     </span>
                     <span class="text-gray-600 dark:text-gray-300">
                         Net Exposure:
@@ -485,23 +549,27 @@
                                             <button type="button"
                                                     @click="show = !show"
                                                     class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 hover:underline">
-                                                <i data-lucide="chevron-down" class="w-4 h-4" :class="show ? 'rotate-180' : ''"></i>
+                                                <i data-lucide="chevron-down"
+                                                   class="w-4 h-4 transition-transform"
+                                                   :class="show ? 'rotate-180' : ''"></i>
                                                 <span x-text="show ? 'Hide' : 'Details'"></span>
                                             </button>
                                         @endif
 
-                                        <form method="POST"
-                                              action="{{ route('purchases.returns.destroy', $ret) }}"
-                                              onsubmit="return confirm('Delete this return and revert stock/ledger?');"
-                                              class="inline">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit"
-                                                    class="inline-flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:underline">
-                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                                <span>Delete</span>
-                                            </button>
-                                        </form>
+                                        @can('purchases.edit')
+                                            <form method="POST"
+                                                  action="{{ route('purchases.returns.destroy', $ret) }}"
+                                                  onsubmit="return confirm('Delete this return and revert stock/ledger?');"
+                                                  class="inline">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit"
+                                                        class="inline-flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:underline">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                    <span>Delete</span>
+                                                </button>
+                                            </form>
+                                        @endcan
                                     </div>
                                 </td>
                             </tr>
@@ -529,10 +597,14 @@
         </div>
     @endif
 
+    @endcannot
 </div>
 
-{{-- Modal mount (no auto-open here) --}}
-@include('purchases._return_modal', ['purchase' => $purchase])
+{{-- Return modal only for users who can edit purchases --}}
+@can('purchases.edit')
+    {{-- Modal mount (no auto-open here) --}}
+    @include('purchases._return_modal', ['purchase' => $purchase])
+@endcan
 @endsection
 
 @push('scripts')
@@ -544,6 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// global helper used by the header button
 window.openPurchaseReturn = function(){
   window.dispatchEvent(new CustomEvent('open-purchase-return'));
 };

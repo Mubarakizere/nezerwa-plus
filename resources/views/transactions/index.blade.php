@@ -1,4 +1,3 @@
-{{-- resources/views/transactions/index.blade.php --}}
 @extends('layouts.app')
 @section('title', 'Transactions')
 
@@ -16,6 +15,23 @@
     $hasRunning = optional($transactions->first())->running_balance !== null;
 @endphp
 
+@cannot('transactions.view')
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div class="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6">
+            <div class="flex items-start gap-3">
+                <i data-lucide="shield-off" class="w-6 h-6 text-amber-600 dark:text-amber-300 mt-0.5"></i>
+                <div>
+                    <h1 class="text-lg font-semibold text-amber-900 dark:text-amber-100">
+                        You don’t have permission to view transactions.
+                    </h1>
+                    <p class="mt-1 text-sm text-amber-800/80 dark:text-amber-100/80">
+                        Please contact an administrator if you believe this is a mistake.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+@else
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
     {{-- Header --}}
@@ -26,9 +42,11 @@
         </h1>
 
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('transactions.create') }}" class="btn btn-primary text-sm flex items-center gap-1">
-                <i data-lucide="plus" class="w-4 h-4"></i> New Transaction
-            </a>
+            @can('transactions.create')
+                <a href="{{ route('transactions.create') }}" class="btn btn-primary text-sm flex items-center gap-1">
+                    <i data-lucide="plus" class="w-4 h-4"></i> New Transaction
+                </a>
+            @endcan
 
             {{-- Exports keep current filters (query string) --}}
             <a href="{{ route('transactions.export.csv', request()->query()) }}"
@@ -44,11 +62,11 @@
 
     {{-- Flash --}}
     @if(session('success'))
-        <div class="p-3 rounded-md bg-green-100 text-green-700 text-sm border border-green-200">
+        <div class="p-3 rounded-md bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300 text-sm border border-green-200 dark:border-green-800">
             {{ session('success') }}
         </div>
     @elseif(session('error'))
-        <div class="p-3 rounded-md bg-red-100 text-red-700 text-sm border border-red-200">
+        <div class="p-3 rounded-md bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-sm border border-red-200 dark:border-red-800">
             {{ session('error') }}
         </div>
     @endif
@@ -115,16 +133,25 @@
             {{-- Quick ranges --}}
             <div class="flex flex-wrap gap-2 pt-2">
                 <a class="btn btn-outline btn-sm"
-                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$today,'date_to'=>$today])) }}">Today</a>
+                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$today,'date_to'=>$today])) }}">
+                    Today
+                </a>
                 <a class="btn btn-outline btn-sm"
-                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$last7,'date_to'=>$today])) }}">Last 7d</a>
+                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$last7,'date_to'=>$today])) }}">
+                    Last 7d
+                </a>
                 <a class="btn btn-outline btn-sm"
-                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$last30,'date_to'=>$today])) }}">Last 30d</a>
+                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$last30,'date_to'=>$today])) }}">
+                    Last 30d
+                </a>
                 <a class="btn btn-outline btn-sm"
-                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$monthS,'date_to'=>$today])) }}">This Month</a>
+                   href="{{ route('transactions.index', array_merge(request()->query(), ['date_from'=>$monthS,'date_to'=>$today])) }}">
+                    This Month
+                </a>
 
                 <div class="ml-auto">
                     <button type="submit" class="btn btn-primary">Apply Filters</button>
+                    <a href="{{ route('transactions.index') }}" class="btn btn-outline ml-1">Reset</a>
                 </div>
             </div>
         </form>
@@ -167,7 +194,7 @@
                     @forelse($transactions as $transaction)
                         @php $id = data_get($transaction, 'id'); @endphp
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-all">
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                 {{ \Carbon\Carbon::parse($transaction->transaction_date)->format('Y-m-d H:i') }}
                             </td>
 
@@ -190,58 +217,84 @@
                                 </td>
                             @endif
 
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $transaction->method ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $transaction->user->name ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $transaction->customer->name ?? '-' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $transaction->supplier->name ?? '-' }}</td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $transaction->method ?? '-' }}
+                            </td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $transaction->user->name ?? '-' }}
+                            </td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $transaction->customer->name ?? '-' }}
+                            </td>
+                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
+                                {{ $transaction->supplier->name ?? '-' }}
+                            </td>
 
                             {{-- Source --}}
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 @if($transaction->sale_id && !$transaction->purchase_id)
                                     <span class="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
-                                        <i data-lucide="shopping-cart" class="w-4 h-4"></i> Sale #{{ $transaction->sale_id }}
+                                        <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+                                        Sale #{{ $transaction->sale_id }}
                                     </span>
                                 @elseif($transaction->purchase_id && !$transaction->sale_id)
                                     <span class="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
-                                        <i data-lucide="package" class="w-4 h-4"></i> Purchase #{{ $transaction->purchase_id }}
+                                        <i data-lucide="package" class="w-4 h-4"></i>
+                                        Purchase #{{ $transaction->purchase_id }}
                                     </span>
                                 @elseif($transaction->sale_id && $transaction->purchase_id)
                                     <span class="inline-flex items-center gap-1 text-indigo-700 dark:text-indigo-300">
-                                        <i data-lucide="git-merge" class="w-4 h-4"></i> Mixed
+                                        <i data-lucide="git-merge" class="w-4 h-4"></i>
+                                        Mixed
                                     </span>
                                 @else
                                     <span class="inline-flex items-center gap-1 text-gray-600 dark:text-gray-400">
-                                        <i data-lucide="pencil" class="w-4 h-4"></i> Manual
+                                        <i data-lucide="pencil" class="w-4 h-4"></i>
+                                        Manual
                                     </span>
                                 @endif
                             </td>
 
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ $transaction->notes ?? '—' }}</td>
+                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400">
+                                {{ $transaction->notes ?? '—' }}
+                            </td>
 
                             {{-- Actions --}}
                             <td class="px-4 py-3 text-center">
                                 <div x-data="{ delId: 'tx-del-{{ $id }}' }" class="flex justify-center gap-2">
                                     @if($id)
-                                        <a href="{{ route('transactions.show', $id) }}"
-                                           class="btn btn-secondary btn-sm" title="View">
-                                            <i data-lucide="eye" class="w-4 h-4"></i>
-                                        </a>
+                                        @can('transactions.view')
+                                            <a href="{{ route('transactions.show', $id) }}"
+                                               class="btn btn-secondary btn-sm"
+                                               title="View">
+                                                <i data-lucide="eye" class="w-4 h-4"></i>
+                                            </a>
+                                        @endcan
 
-                                        <a href="{{ route('transactions.edit', $id) }}"
-                                           class="btn btn-outline btn-sm" title="Edit">
-                                            <i data-lucide="edit-3" class="w-4 h-4"></i>
-                                        </a>
+                                        @can('transactions.edit')
+                                            <a href="{{ route('transactions.edit', $id) }}"
+                                               class="btn btn-outline btn-sm"
+                                               title="Edit">
+                                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                            </a>
+                                        @endcan
 
-                                        <button type="button"
-                                                @click="$store.confirm.open(delId)"
-                                                class="btn btn-danger btn-sm" title="Delete">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                        </button>
+                                        @can('transactions.delete')
+                                            <button type="button"
+                                                    @click="$store.confirm.open(delId)"
+                                                    class="btn btn-danger btn-sm"
+                                                    title="Delete">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
 
-                                        <form id="tx-del-{{ $id }}" action="{{ route('transactions.destroy', $id) }}"
-                                              method="POST" class="hidden">
-                                            @csrf @method('DELETE')
-                                        </form>
+                                            <form id="tx-del-{{ $id }}"
+                                                  action="{{ route('transactions.destroy', $id) }}"
+                                                  method="POST"
+                                                  class="hidden">
+                                                @csrf
+                                                @method('DELETE')
+                                            </form>
+                                        @endcan
                                     @else
                                         <span class="text-xs text-amber-500">Row has no id</span>
                                     @endif
@@ -266,7 +319,6 @@
                         @if($hasRunning)
                             <td class="px-4 py-3 text-right">—</td>
                         @endif
-                        {{-- Spans the remaining columns consistently --}}
                         <td class="px-4 py-3 text-left" colspan="7">
                             <span class="mr-4">
                                 Credits:
@@ -284,10 +336,11 @@
 
         {{-- Pagination --}}
         <div class="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
-            {{ $transactions->links() }}
+            {{ $transactions->withQueryString()->links() }}
         </div>
     </div>
 </div>
+@endcannot
 
 {{-- Global Delete Confirmation Modal --}}
 <div x-data x-show="$store.confirm.open" x-cloak
@@ -310,8 +363,11 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    if (window.lucide) lucide.createIcons();
+    if (window.lucide) {
+        lucide.createIcons();
+    }
 });
+
 document.addEventListener('alpine:init', () => {
     Alpine.store('confirm', {
         open: false,

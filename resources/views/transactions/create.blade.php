@@ -15,6 +15,28 @@
     $otherValue = $isKnown ? '' : $oldMethod;
 @endphp
 
+@cannot('transactions.create')
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div class="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6">
+            <div class="flex items-start gap-3">
+                <i data-lucide="shield-off" class="w-6 h-6 text-amber-600 dark:text-amber-300 mt-0.5"></i>
+                <div>
+                    <h1 class="text-lg font-semibold text-amber-900 dark:text-amber-100">
+                        You don’t have permission to create transactions.
+                    </h1>
+                    <p class="mt-1 text-sm text-amber-800/80 dark:text-amber-100/80">
+                        Please contact an administrator if you believe this is a mistake.
+                    </p>
+                    <a href="{{ route('transactions.index') }}"
+                       class="mt-3 inline-flex items-center gap-1 text-xs font-medium text-amber-900 dark:text-amber-100 underline">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+                        Back to Transactions
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+@else
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
     {{-- Header --}}
@@ -89,7 +111,8 @@
                     @error('method') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 
                     <div class="mt-2" x-show="methodSel === 'other'">
-                        <input type="text" class="form-input" placeholder="Type the custom method (e.g., Cheque #123, POS Ref …)"
+                        <input type="text" class="form-input"
+                               placeholder="Type the custom method (e.g., Cheque #123, POS Ref …)"
                                x-model="otherMethod">
                         <p class="text-xs text-gray-500 mt-1">This will be saved into <em>method</em>.</p>
                     </div>
@@ -132,24 +155,31 @@
                 @error('notes') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
 
-            {{-- Hidden helper: if "Other" is selected, submit the text as method --}}
-            <input type="hidden" name="__js_patch_method" x-model="(methodSel==='other' && otherMethod) ? otherMethod : ''">
-
             {{-- Actions --}}
             <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <a href="{{ route('transactions.index') }}" class="btn btn-outline">Cancel</a>
-                <button type="submit" class="btn btn-primary flex items-center gap-1"
+                <button type="submit"
+                        class="btn btn-primary flex items-center gap-1"
                         @click.prevent="
+                            const form = $el.closest('form');
+                            // Ensure correct method value before submit
                             if (methodSel === 'other') {
-                                let m = document.querySelector('input[name=method]');
+                                let m = form.querySelector('input[name=method]');
                                 if (!m) {
                                     m = document.createElement('input');
-                                    m.type = 'hidden'; m.name = 'method';
-                                    document.currentScript.closest('form')?.appendChild(m);
+                                    m.type = 'hidden';
+                                    m.name = 'method';
+                                    form.appendChild(m);
                                 }
                                 m.value = otherMethod || '';
+                            } else {
+                                // Normal case: send the selected known method
+                                let m = form.querySelector('input[name=method]');
+                                if (m) m.remove();
+                                const sel = form.querySelector('select[name=method]');
+                                if (sel) sel.value = methodSel;
                             }
-                            $el.closest('form').submit();
+                            form.submit();
                         ">
                     <i data-lucide="save" class="w-4 h-4"></i> Save Transaction
                 </button>
@@ -166,4 +196,5 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 @endpush
+@endcannot
 @endsection

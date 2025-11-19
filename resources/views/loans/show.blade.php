@@ -54,40 +54,52 @@
         </h1>
 
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route('loans.index') }}" class="btn btn-secondary text-sm flex items-center gap-1">
-                <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
-            </a>
-            <a href="{{ route('loans.edit', $loan) }}" class="btn btn-outline text-sm flex items-center gap-1">
-                <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
-            </a>
+            @can('loans.view')
+                <a href="{{ route('loans.index') }}" class="btn btn-secondary text-sm flex items-center gap-1">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+                </a>
+            @endcan
 
-            {{-- Optional quick actions (guarded by Route::has) --}}
+            @can('loans.edit')
+                <a href="{{ route('loans.edit', $loan) }}" class="btn btn-outline text-sm flex items-center gap-1">
+                    <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
+                </a>
+            @endcan
+
+            {{-- Optional quick actions (guarded by Route::has + permission) --}}
             @if (\Illuminate\Support\Facades\Route::has('loans.markPaid') && $loan->status !== 'paid')
-                <form action="{{ route('loans.markPaid', $loan) }}" method="POST" class="inline">
-                    @csrf
-                    <button type="submit" class="btn btn-success text-sm flex items-center gap-1">
-                        <i data-lucide="check-circle" class="w-4 h-4"></i> Mark Paid
-                    </button>
-                </form>
-            @endif
-            @if (\Illuminate\Support\Facades\Route::has('loans.recalculate'))
-                <form action="{{ route('loans.recalculate', $loan) }}" method="POST" class="inline">
-                    @csrf
-                    <button type="submit" class="btn btn-outline text-sm flex items-center gap-1">
-                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Recalculate
-                    </button>
-                </form>
+                @can('loans.mark-paid')
+                    <form action="{{ route('loans.markPaid', $loan) }}" method="POST" class="inline">
+                        @csrf
+                        <button type="submit" class="btn btn-success text-sm flex items-center gap-1">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i> Mark Paid
+                        </button>
+                    </form>
+                @endcan
             @endif
 
-            <form action="{{ route('loans.destroy', $loan) }}" method="POST" class="inline">
-                @csrf
-                @method('DELETE')
-                <button type="button"
-                        @click="$store.confirm.openWith($el.closest('form'))"
-                        class="btn btn-danger text-sm flex items-center gap-1">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
-                </button>
-            </form>
+            @if (\Illuminate\Support\Facades\Route::has('loans.recalculate'))
+                @can('loans.recalculate')
+                    <form action="{{ route('loans.recalculate', $loan) }}" method="POST" class="inline">
+                        @csrf
+                        <button type="submit" class="btn btn-outline text-sm flex items-center gap-1">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Recalculate
+                        </button>
+                    </form>
+                @endcan
+            @endif
+
+            @can('loans.delete')
+                <form action="{{ route('loans.destroy', $loan) }}" method="POST" class="inline">
+                    @csrf
+                    @method('DELETE')
+                    <button type="button"
+                            @click="$store.confirm.openWith($el.closest('form'))"
+                            class="btn btn-danger text-sm flex items-center gap-1">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+                    </button>
+                </form>
+            @endcan
         </div>
     </div>
 
@@ -222,16 +234,20 @@
                 <p class="text-sm text-gray-700 dark:text-gray-300">
                     Linked to <strong>Sale #{{ $loan->sale->id }}</strong>.
                 </p>
-                <a href="{{ route('sales.show', $loan->sale) }}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">
-                    View Sale Details →
-                </a>
+                @can('sales.view')
+                    <a href="{{ route('sales.show', $loan->sale) }}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">
+                        View Sale Details →
+                    </a>
+                @endcan
             @elseif($loan->purchase)
                 <p class="text-sm text-gray-700 dark:text-gray-300">
                     Linked to <strong>Purchase #{{ $loan->purchase->id }}</strong>.
                 </p>
-                <a href="{{ route('purchases.show', $loan->purchase) }}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">
-                    View Purchase Details →
-                </a>
+                @can('purchases.view')
+                    <a href="{{ route('purchases.show', $loan->purchase) }}" class="text-indigo-600 dark:text-indigo-400 text-sm hover:underline">
+                        View Purchase Details →
+                    </a>
+                @endcan
             @endif
         </section>
     @endif
@@ -241,9 +257,11 @@
         <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Payment History</h3>
             @if($loan->status !== 'paid')
-                <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-success text-xs">
-                    <i data-lucide="plus" class="w-4 h-4"></i> Add Payment
-                </a>
+                @can('loans.view') {{-- payments are under loans.view middleware --}}
+                    <a href="{{ route('loan-payments.create', $loan) }}" class="btn btn-success text-xs">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Add Payment
+                    </a>
+                @endcan
             @else
                 <span class="px-3 py-1 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 text-sm rounded-md">
                     Loan fully paid
@@ -322,10 +340,12 @@
         </p>
         <div class="flex justify-end gap-3">
             <button type="button" class="btn btn-outline" @click="$store.confirm.open=false">Cancel</button>
-            <button type="button" class="btn btn-danger"
-                    @click="$store.confirm.submitEl?.submit(); $store.confirm.open=false;">
-                Delete
-            </button>
+            @can('loans.delete')
+                <button type="button" class="btn btn-danger"
+                        @click="$store.confirm.submitEl?.submit(); $store.confirm.open=false;">
+                    Delete
+                </button>
+            @endcan
         </div>
     </div>
 </div>

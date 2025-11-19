@@ -52,6 +52,7 @@
         $plNetColor = $plNetProfit >= 0 ? 'green' : 'red';
     @endphp
 
+    @can('reports.view')
     <div class="py-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
 
         {{-- 🔸 Filters --}}
@@ -115,7 +116,8 @@
                 <x-stat-card title="Total Purchases" :value="$totalPurchases" color="indigo" />
                 <x-stat-card title="Credits (In)" :value="$credits" color="green" />
                 <x-stat-card title="Debits (Out)" :value="$debits" color="red" />
-                <x-stat-card title="Net Balance"
+                <x-stat-card
+                    title="Net Balance"
                     :value="$netBalance"
                     color="{{ ((float)str_replace(',', '', $netBalance)) >= 0 ? 'green' : 'red' }}" />
                 <x-stat-card title="Loans Given" :value="$loansGiven" color="blue" />
@@ -159,21 +161,25 @@
         <section>
             <h3 class="text-lg font-semibold text-indigo-600 mb-4">Balances & Inventory (Live)</h3>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <x-stat-card title="Accounts Receivable (AR)"
-                             :value="'RWF ' . number_format($arBalance, 2)"
-                             color="{{ $arBalance > 0 ? 'amber' : 'green' }}" />
+                <x-stat-card
+                    title="Accounts Receivable (AR)"
+                    :value="'RWF ' . number_format($arBalance, 2)"
+                    color="{{ $arBalance > 0 ? 'amber' : 'green' }}" />
 
-                <x-stat-card title="Accounts Payable (AP)"
-                             :value="'RWF ' . number_format($apBalance, 2)"
-                             color="{{ $apBalance > 0 ? 'red' : 'green' }}" />
+                <x-stat-card
+                    title="Accounts Payable (AP)"
+                    :value="'RWF ' . number_format($apBalance, 2)"
+                    color="{{ $apBalance > 0 ? 'red' : 'green' }}" />
 
-                <x-stat-card title="Inventory Units"
-                             :value="number_format($inventoryUnits, 0)"
-                             color="blue" />
+                <x-stat-card
+                    title="Inventory Units"
+                    :value="number_format($inventoryUnits, 0)"
+                    color="blue" />
 
-                <x-stat-card title="Inventory Value @ cost"
-                             :value="'RWF ' . number_format($inventoryValue, 2)"
-                             color="purple" />
+                <x-stat-card
+                    title="Inventory Value @ cost"
+                    :value="'RWF ' . number_format($inventoryValue, 2)"
+                    color="purple" />
             </div>
         </section>
 
@@ -203,15 +209,18 @@
         <section>
             <h3 class="text-lg font-semibold text-indigo-600 mb-4">Business Insights</h3>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <x-metric-card label="Revenue Growth (vs Last Month)"
-                               :value="number_format($revenueGrowth, 1) . '%'"
-                               :color="$revenueGrowth >= 0 ? 'text-green-600' : 'text-red-600'" />
-                <x-metric-card label="Profit Margin"
-                               :value="number_format($profitMargin, 1) . '%'"
-                               color="text-green-600" />
-                <x-metric-card label="Expense Ratio"
-                               :value="number_format($expenseRatio, 1) . '%'"
-                               color="text-indigo-600" />
+                <x-metric-card
+                    label="Revenue Growth (vs Last Month)"
+                    :value="number_format($revenueGrowth, 1) . '%'"
+                    :color="$revenueGrowth >= 0 ? 'text-green-600' : 'text-red-600'" />
+                <x-metric-card
+                    label="Profit Margin"
+                    :value="number_format($profitMargin, 1) . '%'"
+                    color="text-green-600" />
+                <x-metric-card
+                    label="Expense Ratio"
+                    :value="number_format($expenseRatio, 1) . '%'"
+                    color="text-indigo-600" />
             </div>
         </section>
 
@@ -230,17 +239,19 @@
             <h3 class="text-lg font-semibold text-indigo-600 mb-4">Insights & Analytics</h3>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <x-top-table title="Top 5 Products"
-                             :headers="['Product', 'Total Sales']"
-                             :items="$topProducts"
-                             :columns="['product.name', 'total_sales']"
-                             color="text-indigo-600" />
+                <x-top-table
+                    title="Top 5 Products"
+                    :headers="['Product', 'Total Sales']"
+                    :items="$topProducts"
+                    :columns="['product.name', 'total_sales']"
+                    color="text-indigo-600" />
 
-                <x-top-table title="Top 5 Customers"
-                             :headers="['Customer', 'Total Spent']"
-                             :items="$topCustomers"
-                             :columns="['customer.name', 'total_spent']"
-                             color="text-green-600" />
+                <x-top-table
+                    title="Top 5 Customers"
+                    :headers="['Customer', 'Total Spent']"
+                    :items="$topCustomers"
+                    :columns="['customer.name', 'total_spent']"
+                    color="text-green-600" />
             </div>
 
             <div class="mt-10 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
@@ -251,6 +262,13 @@
             </div>
         </section>
     </div>
+    @else
+        <div class="py-10 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="bg-amber-50 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700 rounded-xl p-6 text-sm text-amber-800 dark:text-amber-100">
+                You do not have permission to view reports. Please contact your administrator if you believe this is a mistake.
+            </div>
+        </div>
+    @endcan
 
     {{-- 🔸 Chart.js & Icons --}}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -264,7 +282,7 @@
             const monthlyData   = @json($monthlySales);
 
             const monthlyCtx = document.getElementById('monthlySalesChart')?.getContext('2d');
-            if (monthlyCtx) {
+            if (monthlyCtx && monthlyLabels.length) {
                 new Chart(monthlyCtx, {
                     type: 'line',
                     data: {
@@ -295,7 +313,7 @@
             const reExpenses = @json($revenueExpensesChart->pluck('expenses'));
 
             const reCtx = document.getElementById('revenueExpenseChart')?.getContext('2d');
-            if (reCtx) {
+            if (reCtx && reMonths.length) {
                 new Chart(reCtx, {
                     type: 'line',
                     data: {

@@ -8,24 +8,6 @@
     class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6"
 >
 
-    {{-- Flash messages --}}
-    @if(session('success'))
-        <div class="p-3 rounded-md bg-green-100 text-green-700 text-sm border border-green-200">
-            {{ session('success') }}
-        </div>
-    @elseif(session('error'))
-        <div class="p-3 rounded-md bg-red-100 text-red-700 text-sm border border-red-200">
-            {{ session('error') }}
-        </div>
-    @elseif($errors->any())
-        <div class="p-3 rounded-md bg-red-100 text-red-700 text-sm border border-red-200">
-            <ul class="list-disc list-inside space-y-1">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
 
     {{-- Header --}}
     <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">

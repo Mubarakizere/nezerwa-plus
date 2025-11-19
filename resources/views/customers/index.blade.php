@@ -6,7 +6,16 @@
     use Illuminate\Pagination\LengthAwarePaginator;
 
     /** @var \Illuminate\Contracts\Pagination\LengthAwarePaginator|\Illuminate\Support\Collection $customers */
-    $totalCustomers = $totalCustomers ?? ($customers instanceof LengthAwarePaginator ? $customers->total() : $customers->count());
+    $totalCustomers = $totalCustomers
+        ?? ($customers instanceof LengthAwarePaginator ? $customers->total() : $customers->count());
+
+    $user = auth()->user();
+    $canCreate  = $user?->can('customers.create');
+    $canEdit    = $user?->can('customers.edit');
+    $canDelete  = $user?->can('customers.delete');
+    $showActions = $canEdit || $canDelete;
+
+    $currentQuery = $query ?? request('q');
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -19,7 +28,7 @@
                 <span>Customers</span>
             </h1>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Keep track of people you sell to — names, phones and emails in one place.
+                Keep track of people you sell to names, phones and emails in one place.
             </p>
         </div>
 
@@ -30,9 +39,11 @@
                 <span class="font-semibold text-gray-800 dark:text-gray-100">{{ $totalCustomers }}</span>
             </span>
 
-            <a href="{{ route('customers.create') }}" class="btn btn-primary flex items-center gap-1 text-sm">
-                <i data-lucide="user-plus" class="w-4 h-4"></i> Add Customer
-            </a>
+            @can('customers.create')
+                <a href="{{ route('customers.create') }}" class="btn btn-primary flex items-center gap-1 text-sm">
+                    <i data-lucide="user-plus" class="w-4 h-4"></i> Add Customer
+                </a>
+            @endcan
         </div>
     </div>
 
@@ -48,11 +59,11 @@
                     <input
                         type="text"
                         name="q"
-                        value="{{ $query ?? request('q') }}"
+                        value="{{ $currentQuery }}"
                         placeholder="Search by name, email, phone or address..."
                         class="form-input pl-9 pr-9"
                     >
-                    @if(($query ?? request('q')) !== null && ($query ?? request('q')) !== '')
+                    @if(!empty($currentQuery))
                         <a href="{{ route('customers.index') }}"
                            class="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                            title="Clear search">
@@ -69,10 +80,10 @@
             </div>
         </form>
 
-        @if(($query ?? request('q')) !== null && ($query ?? request('q')) !== '')
+        @if(!empty($currentQuery))
             <p class="text-xs text-gray-500 dark:text-gray-400">
                 Showing results for:
-                <span class="font-semibold text-gray-700 dark:text-gray-200">“{{ $query ?? request('q') }}”</span>
+                <span class="font-semibold text-gray-700 dark:text-gray-200">“{{ $currentQuery }}”</span>
             </p>
         @endif
     </div>
@@ -87,7 +98,9 @@
                         <th class="px-4 py-3 text-left">Email</th>
                         <th class="px-4 py-3 text-left">Phone</th>
                         <th class="px-4 py-3 text-left">Address</th>
-                        <th class="px-4 py-3 text-center">Actions</th>
+                        @if($showActions)
+                            <th class="px-4 py-3 text-center">Actions</th>
+                        @endif
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -132,29 +145,36 @@
                                 {{ $customer->address ?? '—' }}
                             </td>
 
-                            <td class="px-4 py-3 text-center">
-                                <div class="flex justify-center gap-2">
-                                    <a href="{{ route('customers.edit', $customer) }}"
-                                       class="btn btn-outline btn-sm flex items-center gap-1" title="Edit">
-                                        <i data-lucide="edit-3" class="w-4 h-4"></i>
-                                    </a>
+                            @if($showActions)
+                                <td class="px-4 py-3 text-center">
+                                    <div class="flex justify-center gap-2">
+                                        @can('customers.edit')
+                                            <a href="{{ route('customers.edit', $customer) }}"
+                                               class="btn btn-outline btn-sm flex items-center gap-1"
+                                               title="Edit">
+                                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                            </a>
+                                        @endcan
 
-                                    <form action="{{ route('customers.destroy', $customer) }}" method="POST" class="inline">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="button"
-                                                class="btn btn-danger btn-sm flex items-center gap-1"
-                                                title="Delete"
-                                                @click="$store.confirm.openWith($el.closest('form'))">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
+                                        @can('customers.delete')
+                                            <form action="{{ route('customers.destroy', $customer) }}" method="POST" class="inline">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button"
+                                                        class="btn btn-danger btn-sm flex items-center gap-1"
+                                                        title="Delete"
+                                                        @click="$store.confirm.openWith($el.closest('form'))">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                </button>
+                                            </form>
+                                        @endcan
+                                    </div>
+                                </td>
+                            @endif
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+                            <td colspan="{{ $showActions ? 5 : 4 }}" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                                 No customers found.
                             </td>
                         </tr>
@@ -172,7 +192,7 @@
     </div>
 </div>
 
-{{-- Global Delete Modal (same style as Debits & Credits) --}}
+{{-- Global Delete Modal --}}
 <div x-data
      x-show="$store.confirm.open"
      x-cloak

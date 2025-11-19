@@ -77,6 +77,24 @@
     $loanProg = $loanAmt > 0 ? min(100, (int) round(($loanPaid / $loanAmt) * 100)) : 0;
 @endphp
 
+@cannot('sales.view')
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6">
+            <div class="flex items-start gap-3">
+                <i data-lucide="shield-alert" class="w-5 h-5 text-amber-500 mt-0.5"></i>
+                <div>
+                    <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                        You don’t have permission to view sales.
+                    </h2>
+                    <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                        Please contact your administrator to request access.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+@elsecan('sales.view')
+
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
     {{-- Header --}}
@@ -101,7 +119,7 @@
                         : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
                     Loan {{ ucfirst($loan->status) }}
                 </span>
-            @endif
+            @endif>
         </div>
 
         <div class="flex flex-wrap gap-2">
@@ -111,11 +129,23 @@
             <button type="button" onclick="window.print()" class="btn btn-outline text-sm">
                 <i data-lucide="printer" class="w-4 h-4"></i> Print
             </button>
-            <a href="{{ route('sales.edit', $sale) }}" class="btn btn-outline text-sm">
-                <i data-lucide="edit" class="w-4 h-4"></i> Edit
-            </a>
+            @can('sales.edit')
+                <a href="{{ route('sales.edit', $sale) }}" class="btn btn-outline text-sm">
+                    <i data-lucide="edit" class="w-4 h-4"></i> Edit
+                </a>
+            @endcan
         </div>
     </div>
+
+    @if($status === 'cancelled')
+        <div class="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-xs text-red-700 dark:text-red-200 flex items-start gap-2">
+            <i data-lucide="alert-octagon" class="w-4 h-4 mt-0.5"></i>
+            <div>
+                <p class="font-semibold">Cancelled Sale</p>
+                <p>This sale has been marked as cancelled. Totals are shown for audit only.</p>
+            </div>
+        </div>
+    @endif
 
     {{-- Quick stats --}}
     <div class="grid md:grid-cols-4 gap-4">
@@ -166,7 +196,7 @@
                 <span class="text-gray-600 dark:text-gray-400 font-medium flex items-center gap-1">
                     <i data-lucide="credit-card" class="w-4 h-4"></i> Payment Progress
                 </span>
-                <span class="text-gray-700 dark:text-gray-300 font-semibold">{{ $progress }}%</span>
+            <span class="text-gray-700 dark:text-gray-300 font-semibold">{{ $progress }}%</span>
             </div>
             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
                 <div class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width: {{ $progress }}%"></div>
@@ -241,11 +271,11 @@
                 <h4 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Returns & Allowances</h4>
                 <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">Total: {{ number_format($returnsTotal, 2) }}</span>
             </div>
-            @role('admin|manager|accountant')
+            @can('sales.edit')
                 <button type="button" @click="$store.returns.open = true" class="btn btn-primary text-xs">
                     <i data-lucide="plus" class="w-4 h-4"></i> Add Return
                 </button>
-            @endrole
+            @endcan
         </div>
 
         <div class="overflow-x-auto">
@@ -284,7 +314,7 @@
                                         </button>
                                     @endif
 
-                                    @role('admin|manager|accountant')
+                                    @can('sales.edit')
                                         <form method="POST" action="{{ route('sales.returns.destroy', $ret) }}"
                                               onsubmit="return confirm('Delete this return?');">
                                             @csrf @method('DELETE')
@@ -292,7 +322,7 @@
                                                 <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
                                             </button>
                                         </form>
-                                    @endrole
+                                    @endcan
                                 </div>
 
                                 @if($hasItems)
@@ -470,7 +500,7 @@
 </div>
 
 {{-- Add Return Modal --}}
-@role('admin|manager|accountant')
+@can('sales.edit')
 <div x-data
      x-cloak
      x-show="$store.returns.open"
@@ -671,7 +701,7 @@
         </div>
     </div>
 </div>
-@endrole
+@endcan
 
 {{-- Loan Quick-Pay Modal --}}
 @if($loan && $loan->status === 'pending')
@@ -748,10 +778,17 @@
     </div>
 </div>
 @endif
+
+@endcan
 @endsection
 
 @push('scripts')
+<script src="https://unpkg.com/lucide@latest"></script>
 <script>
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) window.lucide.createIcons();
+});
+
 document.addEventListener('alpine:init', () => {
     if (!Alpine.store('returns')) Alpine.store('returns', { open:false });
     if (!Alpine.store('loanpay')) Alpine.store('loanpay', { open:false });

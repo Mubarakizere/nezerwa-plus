@@ -26,18 +26,22 @@
         </h1>
 
         <div class="flex gap-2">
-            <a href="{{ route('transactions.index') }}" class="btn btn-secondary flex items-center gap-1">
-                <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
-            </a>
+            @can('transactions.view')
+                <a href="{{ route('transactions.index') }}" class="btn btn-secondary flex items-center gap-1">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back
+                </a>
+            @endcan
 
-            {{-- Delete (only if not linked, or allow if you prefer) --}}
-            <form action="{{ route('transactions.destroy', $transaction->id) }}" method="POST"
-                  onsubmit="return confirm('Delete this transaction? This cannot be undone.');">
-                @csrf @method('DELETE')
-                <button type="submit" class="btn btn-danger flex items-center gap-1">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
-                </button>
-            </form>
+            {{-- Delete (guarded by permission + optional linked rule) --}}
+            @can('transactions.delete')
+                <form action="{{ route('transactions.destroy', $transaction->id) }}" method="POST"
+                      onsubmit="return confirm('Delete this transaction? This cannot be undone.');">
+                    @csrf @method('DELETE')
+                    <button type="submit" class="btn btn-danger flex items-center gap-1">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+                    </button>
+                </form>
+            @endcan
         </div>
     </div>
 
@@ -78,126 +82,131 @@
         x-init="$nextTick(()=>{ onTypeChange(); })"
         class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6"
     >
-        <form action="{{ route('transactions.update', $transaction->id) }}" method="POST" class="space-y-6">
-            @csrf
-            @method('PUT')
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {{-- Type --}}
-                <div>
-                    <label class="form-label">Type <span class="text-red-500">*</span></label>
-                    <select name="type" class="form-select" x-model="type" @change="onTypeChange()" :disabled="lock" required>
-                        <option value="credit">Credit (Money In)</option>
-                        <option value="debit">Debit (Money Out)</option>
-                    </select>
-                    @error('type') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                    <template x-if="lock">
-                        <p class="text-xs text-amber-600 mt-1">Linked record detected: Type is locked.</p>
-                    </template>
-                </div>
+        @can('transactions.edit')
+            <form action="{{ route('transactions.update', $transaction->id) }}" method="POST" class="space-y-6">
+                @csrf
+                @method('PUT')
 
-                {{-- Date --}}
-                <div>
-                    <label class="form-label">Transaction Date <span class="text-red-500">*</span></label>
-                    <input type="date" name="transaction_date" value="{{ old('transaction_date', $dateVal) }}"
-                           class="form-input" required>
-                    @error('transaction_date') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-
-                {{-- Amount --}}
-                <div>
-                    <label class="form-label">Amount <span class="text-red-500">*</span></label>
-                    <input type="number" step="0.01" min="0.01" name="amount"
-                           value="{{ old('amount', $transaction->amount) }}"
-                           class="form-input" :disabled="lock" required>
-                    @error('amount') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                    <template x-if="lock">
-                        <p class="text-xs text-amber-600 mt-1">Linked record detected: Amount is locked.</p>
-                    </template>
-                </div>
-
-                {{-- Method --}}
-                <div>
-                    <label class="form-label">Method</label>
-                    <select name="method" class="form-select" x-model="methodSel">
-                        <template x-for="m in ['cash','bank','momo','other']" :key="m">
-                            <option :value="m" x-text="m === 'momo' ? 'MoMo' : m.charAt(0).toUpperCase()+m.slice(1)"></option>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {{-- Type --}}
+                    <div>
+                        <label class="form-label">Type <span class="text-red-500">*</span></label>
+                        <select name="type" class="form-select" x-model="type" @change="onTypeChange()" :disabled="lock" required>
+                            <option value="credit">Credit (Money In)</option>
+                            <option value="debit">Debit (Money Out)</option>
+                        </select>
+                        @error('type') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                        <template x-if="lock">
+                            <p class="text-xs text-amber-600 mt-1">Linked record detected: Type is locked.</p>
                         </template>
-                    </select>
-                    @error('method') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
 
-                    <div class="mt-2" x-show="methodSel === 'other'">
-                        <input type="text" name="other_method" class="form-input"
-                               placeholder="Type the custom method (e.g., Cheque #123, POS Ref ...)"
-                               x-model="otherMethod">
-                        <p class="text-xs text-gray-500 mt-1">Saved into <em>method</em> field.</p>
+                    {{-- Date --}}
+                    <div>
+                        <label class="form-label">Transaction Date <span class="text-red-500">*</span></label>
+                        <input type="date" name="transaction_date" value="{{ old('transaction_date', $dateVal) }}"
+                               class="form-input" required>
+                        @error('transaction_date') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+
+                    {{-- Amount --}}
+                    <div>
+                        <label class="form-label">Amount <span class="text-red-500">*</span></label>
+                        <input type="number" step="0.01" min="0.01" name="amount"
+                               value="{{ old('amount', $transaction->amount) }}"
+                               class="form-input" :disabled="lock" required>
+                        @error('amount') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                        <template x-if="lock">
+                            <p class="text-xs text-amber-600 mt-1">Linked record detected: Amount is locked.</p>
+                        </template>
+                    </div>
+
+                    {{-- Method --}}
+                    <div>
+                        <label class="form-label">Method</label>
+                        <select name="method" class="form-select" x-model="methodSel">
+                            <template x-for="m in ['cash','bank','momo','other']" :key="m">
+                                <option :value="m" x-text="m === 'momo' ? 'MoMo' : m.charAt(0).toUpperCase()+m.slice(1)"></option>
+                            </template>
+                        </select>
+                        @error('method') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+
+                        <div class="mt-2" x-show="methodSel === 'other'">
+                            <input type="text" name="other_method" class="form-input"
+                                   placeholder="Type the custom method (e.g., Cheque #123, POS Ref ...)"
+                                   x-model="otherMethod">
+                            <p class="text-xs text-gray-500 mt-1">Saved into <em>method</em> field.</p>
+                        </div>
+                    </div>
+
+                    {{-- Customer (for credit) --}}
+                    <div x-show="type === 'credit'">
+                        <label class="form-label">Customer</label>
+                        <select name="customer_id" class="form-select" :disabled="lock && {{ $transaction->customer_id ? 'false' : 'true' }}">
+                            <option value="">None</option>
+                            @foreach($customers as $customer)
+                                <option value="{{ $customer->id }}"
+                                    @selected(old('customer_id', $transaction->customer_id) == $customer->id)>
+                                    {{ $customer->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('customer_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+
+                    {{-- Supplier (for debit) --}}
+                    <div x-show="type === 'debit'">
+                        <label class="form-label">Supplier</label>
+                        <select name="supplier_id" class="form-select" :disabled="lock && {{ $transaction->supplier_id ? 'false' : 'true' }}">
+                            <option value="">None</option>
+                            @foreach($suppliers as $supplier)
+                                <option value="{{ $supplier->id }}"
+                                    @selected(old('supplier_id', $transaction->supplier_id) == $supplier->id)>
+                                    {{ $supplier->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('supplier_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                 </div>
 
-                {{-- Customer (for credit) --}}
-                <div x-show="type === 'credit'">
-                    <label class="form-label">Customer</label>
-                    <select name="customer_id" class="form-select" :disabled="lock && {{ $transaction->customer_id ? 'false' : 'true' }}">
-                        <option value="">None</option>
-                        @foreach($customers as $customer)
-                            <option value="{{ $customer->id }}"
-                                @selected(old('customer_id', $transaction->customer_id) == $customer->id)>
-                                {{ $customer->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                    @error('customer_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                {{-- Notes --}}
+                <div>
+                    <label class="form-label">Notes</label>
+                    <textarea name="notes" rows="3" class="form-textarea">{{ old('notes', $transaction->notes) }}</textarea>
+                    @error('notes') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
 
-                {{-- Supplier (for debit) --}}
-                <div x-show="type === 'debit'">
-                    <label class="form-label">Supplier</label>
-                    <select name="supplier_id" class="form-select" :disabled="lock && {{ $transaction->supplier_id ? 'false' : 'true' }}">
-                        <option value="">None</option>
-                        @foreach($suppliers as $supplier)
-                            <option value="{{ $supplier->id }}"
-                                @selected(old('supplier_id', $transaction->supplier_id) == $supplier->id)>
-                                {{ $supplier->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                    @error('supplier_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-            </div>
+                {{-- Hidden helper: if methodSel == other, send otherMethod as method (handled in controller) --}}
+                <input type="hidden" name="__js_patch_method"
+                       x-model="(methodSel==='other' && otherMethod) ? otherMethod : ''">
 
-            {{-- Notes --}}
-            <div>
-                <label class="form-label">Notes</label>
-                <textarea name="notes" rows="3" class="form-textarea">{{ old('notes', $transaction->notes) }}</textarea>
-                @error('notes') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-            </div>
-
-            {{-- Hidden helper: if methodSel == other, send otherMethod as method --}}
-            <input type="hidden" name="__js_patch_method"
-                   x-model="(methodSel==='other' && otherMethod) ? otherMethod : ''">
-
-            {{-- Actions --}}
-            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <a href="{{ route('transactions.index') }}" class="btn btn-outline">Cancel</a>
-                <button type="submit" class="btn btn-primary flex items-center gap-1"
-                        @click.prevent="
-                            // If 'other' chosen, copy otherMethod into a hidden <input name='method'>
-                            if (methodSel === 'other') {
-                                // create or set a temp input so server gets the value under 'method'
-                                let m = document.querySelector('input[name=method]');
-                                if (!m) {
-                                    m = document.createElement('input');
-                                    m.type = 'hidden'; m.name = 'method';
-                                    document.currentScript.closest('form')?.appendChild(m);
+                {{-- Actions --}}
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <a href="{{ route('transactions.index') }}" class="btn btn-outline">Cancel</a>
+                    <button type="submit" class="btn btn-primary flex items-center gap-1"
+                            @click.prevent="
+                                if (methodSel === 'other') {
+                                    let m = document.querySelector('input[name=method]');
+                                    if (!m) {
+                                        m = document.createElement('input');
+                                        m.type = 'hidden'; m.name = 'method';
+                                        document.currentScript.closest('form')?.appendChild(m);
+                                    }
+                                    m.value = otherMethod || '';
                                 }
-                                m.value = otherMethod || '';
-                            }
-                            $el.closest('form').submit();
-                        ">
-                    <i data-lucide="save" class="w-4 h-4"></i> Update Transaction
-                </button>
+                                $el.closest('form').submit();
+                            ">
+                        <i data-lucide="save" class="w-4 h-4"></i> Update Transaction
+                    </button>
+                </div>
+            </form>
+        @else
+            <div class="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-100">
+                You do not have permission to edit this transaction. Please contact your administrator if you think this is a mistake.
             </div>
-        </form>
+        @endcan
 
         {{-- Audit --}}
         <div class="mt-6 text-xs text-gray-500 dark:text-gray-400">

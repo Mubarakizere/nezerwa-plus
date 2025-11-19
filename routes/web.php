@@ -25,7 +25,6 @@ use App\Http\Controllers\PurchaseReturnController;
 use App\Http\Controllers\StatementController;
 use App\Http\Controllers\ItemLoanController;
 
-
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -42,7 +41,6 @@ Route::pattern('expense', '[0-9]+');
 Route::pattern('loan', '[0-9]+');
 Route::pattern('payment', '[0-9]+');
 
-
 /* -------- Root redirect -------- */
 Route::get('/', function () {
     return auth()->check()
@@ -50,7 +48,7 @@ Route::get('/', function () {
         : redirect()->route('login');
 });
 
-/* -------- Role-based redirect after login -------- */
+/* -------- Role-based redirect after login (still fine to keep) -------- */
 Route::get('/redirect-by-role', RoleRedirectController::class)
     ->middleware(['auth'])
     ->name('redirect.by.role');
@@ -60,114 +58,186 @@ Route::get('/redirect-by-role', RoleRedirectController::class)
 |========================================================================= */
 Route::middleware(['auth', 'verified'])->group(function () {
 
-    /* Dashboard */
+    /*
+    |--------------------------------------------------------------------------
+    | Dashboard
+    |--------------------------------------------------------------------------
+    | Using reports.view as the "can see dashboard" permission.
+    */
     Route::get('/dashboard', [DashboardController::class, 'index'])
         ->name('dashboard')
-        ->middleware('role:admin|manager|cashier|accountant');
+        ->middleware('permission:reports.view');
 
     Route::get('/dashboard/sales-chart', [DashboardController::class, 'salesChartData'])
         ->name('dashboard.sales.chart')
-        ->middleware('role:admin|manager');
+        ->middleware('permission:reports.view');
 
-    /* Admin-only: Users & Roles */
-    Route::middleware('role:admin')->group(function () {
-        Route::resource('users', UserController::class)->except(['show']);
-        Route::resource('roles', RoleController::class)->except(['show']);
+    /*
+    |--------------------------------------------------------------------------
+    | Users & Roles Management
+    |--------------------------------------------------------------------------
+    | Guarded by users.view and roles.view.
+    | In practice only your "admin" role will have these permissions.
+    */
+    Route::resource('users', UserController::class)
+        ->except(['show'])
+        ->middleware('permission:users.view');
+
+    Route::resource('roles', RoleController::class)
+        ->except(['show'])
+        ->middleware('permission:roles.view');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Debits & Credits
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('debits-credits', DebitCreditController::class)
+        ->middleware('permission:debits-credits.view');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transactions - FIXED ROUTE ORDER
+    |--------------------------------------------------------------------------
+    | All guarded by transactions.view for now.
+    */
+    Route::middleware('permission:transactions.view')->group(function () {
+
+        // EXPORTS MUST COME FIRST - before any {transaction} routes
+        Route::get('/transactions/export/csv', [TransactionController::class, 'exportCsv'])
+            ->name('transactions.export.csv');
+
+        Route::get('/transactions/export/pdf', [TransactionController::class, 'exportPdf'])
+            ->name('transactions.export.pdf');
+
+        // List & create (no parameters)
+        Route::get('/transactions', [TransactionController::class, 'index'])
+            ->name('transactions.index');
+
+        Route::get('/transactions/create', [TransactionController::class, 'create'])
+            ->name('transactions.create');
+
+        Route::post('/transactions', [TransactionController::class, 'store'])
+            ->name('transactions.store');
+
+        // Parameterized routes LAST with whereNumber constraint
+        Route::get('/transactions/{transaction}', [TransactionController::class, 'show'])
+            ->whereNumber('transaction')
+            ->name('transactions.show');
+
+        Route::get('/transactions/{transaction}/edit', [TransactionController::class, 'edit'])
+            ->whereNumber('transaction')
+            ->name('transactions.edit');
+
+        Route::put('/transactions/{transaction}', [TransactionController::class, 'update'])
+            ->whereNumber('transaction')
+            ->name('transactions.update');
+
+        Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy'])
+            ->whereNumber('transaction')
+            ->name('transactions.destroy');
     });
 
-    /* Debits & Credits */
-    Route::resource('debits-credits', DebitCreditController::class)
-        ->middleware('role:admin|manager|cashier|accountant');
+    /*
+    |--------------------------------------------------------------------------
+    | Inventory: Categories, Products, Suppliers, Customers
+    |--------------------------------------------------------------------------
+    */
+    // Categories
+    Route::resource('categories', CategoryController::class)
+        ->middleware('permission:categories.view');
 
-     /* Transactions - FIXED ROUTE ORDER */
-Route::middleware(['role:admin|manager|accountant'])->group(function () {
-    // EXPORTS MUST COME FIRST - before any {transaction} routes
-    Route::get('/transactions/export/csv', [TransactionController::class, 'exportCsv'])
-        ->name('transactions.export.csv');
-    Route::get('/transactions/export/pdf', [TransactionController::class, 'exportPdf'])
-        ->name('transactions.export.pdf');
-
-    // List & create (no parameters)
-    Route::get('/transactions', [TransactionController::class, 'index'])
-        ->name('transactions.index');
-    Route::get('/transactions/create', [TransactionController::class, 'create'])
-        ->name('transactions.create');
-    Route::post('/transactions', [TransactionController::class, 'store'])
-        ->name('transactions.store');
-
-    // Parameterized routes LAST with whereNumber constraint
-    Route::get('/transactions/{transaction}', [TransactionController::class, 'show'])
-        ->whereNumber('transaction')
-        ->name('transactions.show');
-    Route::get('/transactions/{transaction}/edit', [TransactionController::class, 'edit'])
-        ->whereNumber('transaction')
-        ->name('transactions.edit');
-    Route::put('/transactions/{transaction}', [TransactionController::class, 'update'])
-        ->whereNumber('transaction')
-        ->name('transactions.update');
-    Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy'])
-        ->whereNumber('transaction')
-        ->name('transactions.destroy');
-});
-
-
-    /* Inventory */
-    Route::resource('categories', CategoryController::class)->middleware('role:admin|manager');
     Route::post('categories/{id}/restore', [CategoryController::class, 'restore'])
-    ->name('categories.restore')
-    ->middleware('role:admin|manager');
+        ->name('categories.restore')
+        ->middleware('permission:categories.view');
+
     Route::delete('categories/{id}/force', [CategoryController::class, 'forceDestroy'])
-    ->name('categories.forceDestroy')
-    ->middleware('role:admin|manager');
-    Route::resource('products', ProductController::class)->middleware('role:admin|manager|cashier');
-    Route::resource('suppliers', SupplierController::class)->middleware('role:admin|manager');
-    Route::resource('customers', CustomerController::class)->middleware('role:admin|manager|cashier');
+        ->name('categories.forceDestroy')
+        ->middleware('permission:categories.view');
 
-    /* Stock Movements (history) */
-    Route::get('/stock-history', [StockMovementController::class, 'index'])
-        ->name('stock.history')
-        ->middleware('role:admin|manager|cashier');
+    // Products
+    Route::resource('products', ProductController::class)
+        ->middleware('permission:products.view');
 
-    Route::get('/stock-history/export/csv', [StockMovementController::class, 'exportCsv'])
-        ->name('stock.history.export.csv')
-        ->middleware('role:admin|manager');
+    // Suppliers
+    Route::resource('suppliers', SupplierController::class)
+        ->middleware('permission:suppliers.view');
 
-    Route::get('/stock-history/export/pdf', [StockMovementController::class, 'exportPdf'])
-        ->name('stock.history.export.pdf')
-        ->middleware('role:admin|manager');
+    // Customers
+    Route::resource('customers', CustomerController::class)
+        ->middleware('permission:customers.view');
 
-    /* Purchases & Sales */
+    /*
+    |--------------------------------------------------------------------------
+    | Stock Movements (history)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:stock.view')->group(function () {
+        Route::get('/stock-history', [StockMovementController::class, 'index'])
+            ->name('stock.history');
 
-    // Purchases
-    Route::resource('purchases', PurchaseController::class)->middleware('role:admin|manager');
-    Route::get('/purchases/{purchase}/invoice', [PurchaseController::class, 'invoice'])
-        ->name('purchases.invoice')
-        ->middleware('role:admin|manager');
-    Route::post('/purchases/{purchase}/returns', [PurchaseReturnController::class, 'store'])
-    ->name('purchases.returns.store');
-    Route::delete('/purchases/returns/{return}', [PurchaseReturnController::class, 'destroy'])
-    ->name('purchases.returns.destroy');
-    Route::get('/purchases/returns/{return}/note', [PurchaseReturnController::class, 'note'])
-    ->name('purchases.returns.note');
+        Route::get('/stock-history/export/csv', [StockMovementController::class, 'exportCsv'])
+            ->name('stock.history.export.csv');
 
-    // Sales exports must be defined BEFORE the sales resource to avoid collision with {sale}
-    Route::get('/sales/export', [SaleController::class, 'export'])
-        ->name('sales.export')
-        ->middleware('role:admin|manager|cashier');
+        Route::get('/stock-history/export/pdf', [StockMovementController::class, 'exportPdf'])
+            ->name('stock.history.export.pdf');
+    });
 
-    // Sales resource
-    Route::resource('sales', SaleController::class)
-        ->whereNumber('sale')
-        ->middleware('role:admin|manager|cashier');
-    Route::get('/reports/sales/payments/pdf', [SaleController::class, 'exportPaymentsPdf'])
-    ->name('sales.payments.pdf'); // or ->name('reports.sales.payments.pdf');
-    // Sales invoice
-    Route::get('/sales/{sale}/invoice', [SaleController::class, 'invoice'])
-        ->name('sales.invoice')
-        ->middleware('role:admin|manager|cashier');
+    /*
+    |--------------------------------------------------------------------------
+    | Purchases
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:purchases.view')->group(function () {
+        Route::resource('purchases', PurchaseController::class);
 
-    /* Sales Returns */
-    Route::middleware(['role:admin|manager|accountant'])->group(function () {
+        Route::get('/purchases/{purchase}/invoice', [PurchaseController::class, 'invoice'])
+            ->name('purchases.invoice')
+            ->whereNumber('purchase');
+
+        Route::post('/purchases/{purchase}/returns', [PurchaseReturnController::class, 'store'])
+            ->name('purchases.returns.store')
+            ->whereNumber('purchase');
+
+        Route::delete('/purchases/returns/{return}', [PurchaseReturnController::class, 'destroy'])
+            ->name('purchases.returns.destroy');
+
+        Route::get('/purchases/returns/{return}/note', [PurchaseReturnController::class, 'note'])
+            ->name('purchases.returns.note');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sales
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:sales.view')->group(function () {
+
+        // Sales exports must be defined BEFORE the sales resource
+        Route::get('/sales/export', [SaleController::class, 'export'])
+            ->name('sales.export');
+
+        // Sales resource
+        Route::resource('sales', SaleController::class)
+            ->whereNumber('sale');
+
+        // Sales payments report PDF
+        Route::get('/reports/sales/payments/pdf', [SaleController::class, 'exportPaymentsPdf'])
+            ->name('sales.payments.pdf'); // or ->name('reports.sales.payments.pdf');
+
+        // Sales invoice
+        Route::get('/sales/{sale}/invoice', [SaleController::class, 'invoice'])
+            ->name('sales.invoice')
+            ->whereNumber('sale');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sales Returns
+    |--------------------------------------------------------------------------
+    | Using sales.view for now; later we can tighten to sales.edit.
+    */
+    Route::middleware('permission:sales.view')->group(function () {
         Route::post('/sales/{sale}/returns', [SaleReturnController::class, 'store'])
             ->name('sales.returns.store')
             ->whereNumber('sale');
@@ -175,126 +245,178 @@ Route::middleware(['role:admin|manager|accountant'])->group(function () {
         Route::delete('/sales/returns/{return}', [SaleReturnController::class, 'destroy'])
             ->name('sales.returns.destroy');
     });
-    /* suppliersStatement */
-    Route::get('/reports/suppliers/statement', [StatementController::class, 'supplier'])
-    ->name('reports.suppliers.statement')
-    ->middleware('role:admin|manager|cashier');
-    Route::get('/reports/customers/statement', [StatementController::class, 'customer'])
-    ->name('reports.customers.statement')
-    ->middleware('role:admin|manager|cashier');
-     /* =======================
-| Loans (Pro)
-|======================= */
-Route::middleware(['role:admin|manager|accountant'])->group(function () {
 
-    // Core resource
-    Route::resource('loans', LoanController::class)
-        ->whereNumber('loan');
+    /*
+    |--------------------------------------------------------------------------
+    | Supplier & Customer Statements
+    |--------------------------------------------------------------------------
+    | These are basically reports.
+    */
+    Route::middleware('permission:reports.view')->group(function () {
+        Route::get('/reports/suppliers/statement', [StatementController::class, 'supplier'])
+            ->name('reports.suppliers.statement');
 
-    // Time-window views (cards/table/summary); ?from=YYYY-MM-DD&to=YYYY-MM-DD for custom
-    Route::get('loans/range/{range}', [LoanController::class, 'range'])
-        ->whereIn('range', ['day','week','month','quarter','year','custom'])
-        ->name('loans.range');
+        Route::get('/reports/customers/statement', [StatementController::class, 'customer'])
+            ->name('reports.customers.statement');
+    });
 
-    // Party-focused view: loans for a specific customer or supplier
-    Route::get('loans/party/{party}/{id}', [LoanController::class, 'party'])
-        ->whereIn('party', ['customer','supplier'])
-        ->whereNumber('id')
-        ->name('loans.party');
+    /*
+    |--------------------------------------------------------------------------
+    | Loans (Pro)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:loans.view')->group(function () {
 
-    // Aggregates for dashboards (JSON or HTML)
-    Route::get('loans/insights', [LoanController::class, 'insights'])
-        ->name('loans.insights');
+        // Core resource
+        Route::resource('loans', LoanController::class)
+            ->whereNumber('loan');
 
-    // Due-date calendar feed (JSON; later can add ICS)
-    Route::get('loans/calendar-feed', [LoanController::class, 'calendarFeed'])
-        ->name('loans.calendar.feed');
+        // Time-window views (cards/table/summary); ?from=YYYY-MM-DD&to=YYYY-MM-DD for custom
+        Route::get('loans/range/{range}', [LoanController::class, 'range'])
+            ->whereIn('range', ['day','week','month','quarter','year','custom'])
+            ->name('loans.range');
 
-    // Actions
-    Route::post('loans/{loan}/mark-paid', [LoanController::class, 'markPaid'])
+        // Party-focused view: loans for a specific customer or supplier
+        Route::get('loans/party/{party}/{id}', [LoanController::class, 'party'])
+            ->whereIn('party', ['customer', 'supplier'])
+            ->whereNumber('id')
+            ->name('loans.party');
+
+        // Aggregates for dashboards (JSON or HTML)
+        Route::get('loans/insights', [LoanController::class, 'insights'])
+            ->name('loans.insights');
+
+        // Due-date calendar feed (JSON; later can add ICS)
+        Route::get('loans/calendar-feed', [LoanController::class, 'calendarFeed'])
+            ->name('loans.calendar.feed');
+
+        // Actions
+        Route::post('loans/{loan}/mark-paid', [LoanController::class, 'markPaid'])
+            ->whereNumber('loan')
+            ->name('loans.mark-paid');
+
+        Route::post('loans/{loan}/recalculate', [LoanController::class, 'recalculate'])
+            ->whereNumber('loan')
+            ->name('loans.recalculate');
+
+        // Exports
+        Route::get('loans/export/csv', [LoanController::class, 'exportCsv'])
+            ->name('loans.export.csv');
+
+        // Keep your PDF export (still under loans.view; if you want admin-only,
+        // we can add a custom permission later like loans.export)
+        Route::get('loans/export/pdf', [LoanController::class, 'exportPdf'])
+            ->name('loans.export.pdf');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Loan Payments (nested + shallow)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('loans/{loan}')
         ->whereNumber('loan')
-        ->name('loans.mark-paid');
+        ->middleware('permission:loans.view')
+        ->group(function () {
+            Route::get('payments/create', [LoanPaymentController::class, 'create'])
+                ->name('loan-payments.create');
 
-    Route::post('loans/{loan}/recalculate', [LoanController::class, 'recalculate'])
-        ->whereNumber('loan')
-        ->name('loans.recalculate');
+            Route::post('payments', [LoanPaymentController::class, 'store'])
+                ->name('loan-payments.store');
+        });
 
-    // Exports
-    Route::get('loans/export/csv', [LoanController::class, 'exportCsv'])
-        ->name('loans.export.csv');
+    Route::middleware('permission:loans.view')->group(function () {
+        Route::get('loan-payments/{payment}/edit', [LoanPaymentController::class, 'edit'])
+            ->whereNumber('payment')
+            ->name('loan-payments.edit');
 
-    // Keep your PDF export (admin only)
-    Route::get('loans/export/pdf', [LoanController::class, 'exportPdf'])
-        ->name('loans.export.pdf')
-        ->middleware('role:admin');
-});
+        Route::put('loan-payments/{payment}', [LoanPaymentController::class, 'update'])
+            ->whereNumber('payment')
+            ->name('loan-payments.update');
 
-/* =======================
-| Loan Payments (nested + shallow)
-|======================= */
-// Create/store under a specific loan
-Route::prefix('loans/{loan}')
-    ->whereNumber('loan')
-    ->middleware(['role:admin|manager|accountant'])
-    ->group(function () {
-        Route::get('payments/create', [LoanPaymentController::class, 'create'])
-            ->name('loan-payments.create');
-        Route::post('payments', [LoanPaymentController::class, 'store'])
-            ->name('loan-payments.store');
+        Route::delete('loan-payments/{payment}', [LoanPaymentController::class, 'destroy'])
+            ->whereNumber('payment')
+            ->name('loan-payments.destroy');
+
+        Route::get('loan-payments/{payment}/receipt', [LoanPaymentController::class, 'receipt'])
+            ->whereNumber('payment')
+            ->name('loan-payments.receipt');
     });
 
-// Edit/update/destroy/receipt (shallow on payment id)
-Route::middleware(['role:admin|manager|accountant'])->group(function () {
-    Route::get('loan-payments/{payment}/edit', [LoanPaymentController::class, 'edit'])
-        ->whereNumber('payment')
-        ->name('loan-payments.edit');
+    /*
+    |--------------------------------------------------------------------------
+    | Inter-company Item Loans
+    |--------------------------------------------------------------------------
+    | Re-using loans.view permission for this module.
+    */
+    Route::middleware('permission:loans.view')->group(function () {
+        Route::resource('inter-loans', ItemLoanController::class)
+            ->parameters(['inter-loans' => 'itemLoan'])
+            ->names('item-loans');
 
-    Route::put('loan-payments/{payment}', [LoanPaymentController::class, 'update'])
-        ->whereNumber('payment')
-        ->name('loan-payments.update');
-
-    Route::delete('loan-payments/{payment}', [LoanPaymentController::class, 'destroy'])
-        ->whereNumber('payment')
-        ->name('loan-payments.destroy');
-
-    Route::get('loan-payments/{payment}/receipt', [LoanPaymentController::class, 'receipt'])
-        ->whereNumber('payment')
-        ->name('loan-payments.receipt');
-});
-  Route::middleware('role:admin|accountant')->group(function () {
-Route::resource('inter-loans', ItemLoanController::class)
-    ->parameters(['inter-loans' => 'itemLoan'])
-    ->names('item-loans');
-
-Route::post('inter-loans/{itemLoan}/return', [ItemLoanController::class, 'recordReturn'])
-    ->name('item-loans.return');
+        Route::post('inter-loans/{itemLoan}/return', [ItemLoanController::class, 'recordReturn'])
+            ->name('item-loans.return');
     });
 
-    // routes
-Route::middleware(['role:admin|manager|accountant'])->group(function () {
-    Route::get('/reports', [ReportsController::class, 'index'])->name('reports.index');
+    /*
+    |--------------------------------------------------------------------------
+    | Reports
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:reports.view')->group(function () {
+        Route::get('/reports', [ReportsController::class, 'index'])
+            ->name('reports.index');
 
-    Route::get('/reports/export/sales.csv', [ReportsController::class, 'exportSalesCsv'])->name('reports.export.sales.csv');
-    Route::get('/reports/export/finance.pdf', [ReportsController::class, 'exportFinancePdf'])->name('reports.export.finance.pdf');
-    Route::get('/reports/export/insights.pdf', [ReportsController::class, 'exportInsightsPdf'])->name('reports.export.insights.pdf');
+        Route::get('/reports/export/sales.csv', [ReportsController::class, 'exportSalesCsv'])
+            ->name('reports.export.sales.csv');
 
-    // NEW: Profit & Loss PDF
-    Route::get('/reports/export/pl.pdf', [ReportsController::class, 'exportProfitLossPdf'])->name('reports.export.pl.pdf');
-});
-;
+        Route::get('/reports/export/finance.pdf', [ReportsController::class, 'exportFinancePdf'])
+            ->name('reports.export.finance.pdf');
 
-    /* Expenses */
-    Route::middleware(['role:admin|manager|accountant'])->group(function () {
-        Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
-        Route::get('/expenses/create', [ExpenseController::class, 'create'])->name('expenses.create');
-        Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
-        Route::get('/expenses/{expense}', [ExpenseController::class, 'show'])->name('expenses.show');
-        Route::get('/expenses/{expense}/edit', [ExpenseController::class, 'edit'])->name('expenses.edit');
-        Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
-        Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
+        Route::get('/reports/export/insights.pdf', [ReportsController::class, 'exportInsightsPdf'])
+            ->name('reports.export.insights.pdf');
+
+        // Profit & Loss PDF
+        Route::get('/reports/export/pl.pdf', [ReportsController::class, 'exportProfitLossPdf'])
+            ->name('reports.export.pl.pdf');
     });
 
-    /* User Profile (Breeze) */
+    /*
+    |--------------------------------------------------------------------------
+    | Expenses
+    |--------------------------------------------------------------------------
+    | For now, we reuse transactions.view (it's part of finance flow).
+    | If you prefer a dedicated "expenses" module, we can add it to PermissionSeeder.
+    */
+    Route::middleware('permission:transactions.view')->group(function () {
+        Route::get('/expenses', [ExpenseController::class, 'index'])
+            ->name('expenses.index');
+
+        Route::get('/expenses/create', [ExpenseController::class, 'create'])
+            ->name('expenses.create');
+
+        Route::post('/expenses', [ExpenseController::class, 'store'])
+            ->name('expenses.store');
+
+        Route::get('/expenses/{expense}', [ExpenseController::class, 'show'])
+            ->name('expenses.show');
+
+        Route::get('/expenses/{expense}/edit', [ExpenseController::class, 'edit'])
+            ->name('expenses.edit');
+
+        Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])
+            ->name('expenses.update');
+
+        Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])
+            ->name('expenses.destroy');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | User Profile (Breeze)
+    |--------------------------------------------------------------------------
+    | Everyone who can log in can manage their own profile.
+    */
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');

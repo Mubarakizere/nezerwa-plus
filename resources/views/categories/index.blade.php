@@ -1,3 +1,4 @@
+{{-- resources/views/categories/index.blade.php --}}
 @extends('layouts.app')
 @section('title', 'Categories')
 
@@ -16,7 +17,7 @@
     $current     = $filterKind ?? request('kind'); // 'product'|'expense'|'both'|'inactive'|'trash'|null
     $isTrashView = ($current === 'trash');
     $tabClass = function($key) use ($current) {
-        $active = ($current === $key) || ($key==='all' && !$current);
+        $active = ($current === $key) || ($key === 'all' && ! $current);
         return $active
             ? 'bg-indigo-600 text-white'
             : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700';
@@ -31,6 +32,16 @@
     $showAll  = request('per_page') === 'all';
     $toggleParams = array_merge(request()->except('page','per_page'), ['per_page' => $showAll ? null : 'all']);
     $toggleHref   = route('categories.index', array_filter($toggleParams, fn($v) => $v !== null));
+
+    // Permissions for actions column
+    $user = auth()->user();
+    $canEdit   = $user?->can('categories.edit');
+    $canDelete = $user?->can('categories.delete');
+    $canManage = $canEdit || $canDelete;
+
+    // Column count for empty state
+    $baseCols = $isTrashView ? 9 : 8; // with Actions
+    $emptyColspan = $canManage ? $baseCols : $baseCols - 1;
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -41,11 +52,13 @@
             {{ session('success') }}
         </div>
     @endif
+
     @if (session('error'))
         <div class="rounded-md bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-200 px-3 py-2 text-sm">
             {{ session('error') }}
         </div>
     @endif
+
     @if ($errors->any())
         <div class="rounded-md bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-3 py-2 text-sm">
             <strong>{{ $errors->count() }} error(s):</strong>
@@ -116,9 +129,12 @@
 
             {{-- Add --}}
             @unless($isTrashView)
-                <a href="{{ route('categories.create') }}" class="btn btn-primary flex items-center gap-1 text-sm">
-                    <i data-lucide="plus" class="w-4 h-4"></i> Add Category
-                </a>
+                @can('categories.create')
+                    <a href="{{ route('categories.create') }}"
+                       class="btn btn-primary flex items-center gap-1 text-sm">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Add Category
+                    </a>
+                @endcan
             @endunless
         </div>
     </div>
@@ -172,7 +188,9 @@
                         @endif
                         <th class="px-4 py-3 text-left">Description</th>
                         <th class="px-4 py-3 text-right">Usage</th>
-                        <th class="px-4 py-3 text-right">Actions</th>
+                        @if($canManage)
+                            <th class="px-4 py-3 text-right">Actions</th>
+                        @endif
                     </tr>
                 </thead>
 
@@ -230,43 +248,63 @@
                             </td>
 
                             {{-- Actions --}}
-                            <td class="px-4 py-3 text-right whitespace-nowrap space-x-1">
-                                @if($isTrashView)
-                                    {{-- Restore --}}
-                                    <form action="{{ route('categories.restore', $category->id) }}" method="POST" class="inline">
-                                        @csrf
-                                        <button type="submit" class="btn btn-success text-xs inline-flex items-center gap-1">
-                                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Restore
-                                        </button>
-                                    </form>
-                                    {{-- Delete Forever --}}
-                                    <form action="{{ route('categories.forceDestroy', $category->id) }}" method="POST" class="inline">
-                                        @csrf @method('DELETE')
-                                        <button type="button"
-                                                class="btn btn-danger text-xs inline-flex items-center gap-1"
-                                                @click="$store.confirm.openWith($el.closest('form'))">
-                                            <i data-lucide="skull" class="w-4 h-4"></i> Delete Forever
-                                        </button>
-                                    </form>
-                                @else
-                                    <a href="{{ route('categories.edit', $category) }}"
-                                       class="btn btn-outline text-xs inline-flex items-center gap-1">
-                                        <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
-                                    </a>
-                                    <form action="{{ route('categories.destroy', $category) }}" method="POST" class="inline">
-                                        @csrf @method('DELETE')
-                                        <button type="button"
-                                                class="btn btn-danger text-xs inline-flex items-center gap-1"
-                                                @click="$store.confirm.openWith($el.closest('form'))">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
-                                        </button>
-                                    </form>
-                                @endif
-                            </td>
+                            @if($canManage)
+                                <td class="px-4 py-3 text-right whitespace-nowrap space-x-1">
+                                    @if($isTrashView)
+                                        @can('categories.delete')
+                                            {{-- Restore --}}
+                                            <form action="{{ route('categories.restore', $category->id) }}"
+                                                  method="POST"
+                                                  class="inline">
+                                                @csrf
+                                                <button type="submit"
+                                                        class="btn btn-success text-xs inline-flex items-center gap-1">
+                                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Restore
+                                                </button>
+                                            </form>
+
+                                            {{-- Delete Forever --}}
+                                            <form action="{{ route('categories.forceDestroy', $category->id) }}"
+                                                  method="POST"
+                                                  class="inline">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button"
+                                                        class="btn btn-danger text-xs inline-flex items-center gap-1"
+                                                        @click="$store.confirm.openWith($el.closest('form'))">
+                                                    <i data-lucide="skull" class="w-4 h-4"></i> Delete Forever
+                                                </button>
+                                            </form>
+                                        @endcan
+                                    @else
+                                        @can('categories.edit')
+                                            <a href="{{ route('categories.edit', $category) }}"
+                                               class="btn btn-outline text-xs inline-flex items-center gap-1">
+                                                <i data-lucide="edit-3" class="w-4 h-4"></i> Edit
+                                            </a>
+                                        @endcan
+
+                                        @can('categories.delete')
+                                            <form action="{{ route('categories.destroy', $category) }}"
+                                                  method="POST"
+                                                  class="inline">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button"
+                                                        class="btn btn-danger text-xs inline-flex items-center gap-1"
+                                                        @click="$store.confirm.openWith($el.closest('form'))">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+                                                </button>
+                                            </form>
+                                        @endcan
+                                    @endif
+                                </td>
+                            @endif
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ $isTrashView ? 9 : 8 }}" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+                            <td colspan="{{ $emptyColspan }}"
+                                class="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                                 @if($q !== '')
                                     No results for “{{ $q }}”.
                                 @else
@@ -288,33 +326,67 @@
     </div>
 </div>
 
-{{-- Global Confirm Modal (delete/force delete) --}}
-<div x-data x-show="$store.confirm.open" x-cloak
+{{-- Global Confirm Modal (delete / force delete) --}}
+@can('categories.delete')
+<div x-data
+     x-show="$store.confirm.open"
+     x-cloak
      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-     @keydown.escape.window="$store.confirm.open=false">
-    <div @click.outside="$store.confirm.open=false"
+     @keydown.escape.window="$store.confirm.close()"
+     x-transition>
+    <div @click.outside="$store.confirm.close()"
          class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
         <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Confirm Action</h2>
         <p class="text-gray-600 dark:text-gray-300 text-sm mb-6">
             Are you sure you want to proceed? This action cannot be undone.
         </p>
         <div class="flex justify-end gap-3">
-            <button type="button" class="btn btn-outline" @click="$store.confirm.open=false">Cancel</button>
-            <button type="button" class="btn btn-danger"
-                    @click="$store.confirm.submitEl?.submit(); $store.confirm.open=false;">
+            <button type="button"
+                    class="btn btn-outline"
+                    @click="$store.confirm.close()">
+                Cancel
+            </button>
+            <button type="button"
+                    class="btn btn-danger"
+                    @click="$store.confirm.confirm()">
                 Confirm
             </button>
         </div>
     </div>
 </div>
+@endcan
 
 @push('scripts')
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => { if (window.lucide) lucide.createIcons(); });
-document.addEventListener('alpine:init', () => {
-    Alpine.store('confirm', { open:false, submitEl:null, openWith(form){ this.submitEl=form; this.open=true; } });
-});
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    });
+
+    document.addEventListener('alpine:init', () => {
+        if (! Alpine.store('confirm')) {
+            Alpine.store('confirm', {
+                open: false,
+                submitEl: null,
+                openWith(form) {
+                    this.submitEl = form;
+                    this.open = true;
+                },
+                close() {
+                    this.open = false;
+                    this.submitEl = null;
+                },
+                confirm() {
+                    if (this.submitEl) {
+                        this.submitEl.submit();
+                    }
+                    this.close();
+                },
+            });
+        }
+    });
 </script>
 @endpush
 @endsection

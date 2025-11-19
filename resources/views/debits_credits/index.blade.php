@@ -37,9 +37,13 @@
             <i data-lucide="wallet" class="w-6 h-6 text-indigo-600 dark:text-indigo-400"></i>
             <span>Debits & Credits</span>
         </h1>
-        <a href="{{ route('debits-credits.create') }}" class="btn btn-primary flex items-center gap-1 text-sm">
-            <i data-lucide="plus" class="w-4 h-4"></i> New Entry
-        </a>
+
+        @can('debits-credits.create')
+            <a href="{{ route('debits-credits.create') }}"
+               class="btn btn-primary flex items-center gap-1 text-sm">
+                <i data-lucide="plus" class="w-4 h-4"></i> New Entry
+            </a>
+        @endcan
     </div>
 
     {{-- Totals Summary (filter-aware) --}}
@@ -161,33 +165,46 @@
 
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
                                 @if($item->transaction_id)
-                                    <a href="{{ route('transactions.show', $item->transaction_id) }}"
-                                       class="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline">
-                                        <i data-lucide="banknote" class="w-4 h-4"></i>
-                                        #{{ $item->transaction_id }}
-                                    </a>
+                                    @can('transactions.view')
+                                        <a href="{{ route('transactions.show', $item->transaction_id) }}"
+                                           class="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline">
+                                            <i data-lucide="banknote" class="w-4 h-4"></i>
+                                            #{{ $item->transaction_id }}
+                                        </a>
+                                    @else
+                                        <span class="text-xs text-gray-500">#{{ $item->transaction_id }}</span>
+                                    @endcan
                                 @else
                                     <span class="text-xs text-gray-500">—</span>
                                 @endif
                             </td>
 
                             <td class="px-4 py-3 text-center">
-                                <div class="flex justify-center gap-2">
-                                    <a href="{{ route('debits-credits.edit', $item->id) }}"
-                                       class="btn btn-outline btn-sm" title="Edit">
-                                        <i data-lucide="edit-3" class="w-4 h-4"></i>
-                                    </a>
+                                @canany(['debits-credits.edit','debits-credits.delete'])
+                                    <div class="flex justify-center gap-2">
+                                        @can('debits-credits.edit')
+                                            <a href="{{ route('debits-credits.edit', $item->id) }}"
+                                               class="btn btn-outline btn-sm" title="Edit">
+                                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                            </a>
+                                        @endcan
 
-                                    <button type="button"
-                                            @click="$store.confirm.openWith($el.nextElementSibling)"
-                                            class="btn btn-danger btn-sm" title="Delete">
-                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                    </button>
+                                        @can('debits-credits.delete')
+                                            <button type="button"
+                                                    @click="$store.confirm.openWith($el.nextElementSibling)"
+                                                    class="btn btn-danger btn-sm" title="Delete">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
 
-                                    <form action="{{ route('debits-credits.destroy', $item->id) }}" method="POST" class="hidden">
-                                        @csrf @method('DELETE')
-                                    </form>
-                                </div>
+                                            <form action="{{ route('debits-credits.destroy', $item->id) }}"
+                                                  method="POST" class="hidden">
+                                                @csrf @method('DELETE')
+                                            </form>
+                                        @endcan
+                                    </div>
+                                @else
+                                    <span class="text-xs text-gray-400">—</span>
+                                @endcanany
                             </td>
                         </tr>
                     @empty
@@ -242,7 +259,9 @@
         </p>
         <div class="flex justify-end gap-3">
             <button type="button" class="btn btn-outline" @click="$store.confirm.close()">Cancel</button>
-            <button type="button" class="btn btn-danger" @click="$store.confirm.confirm()">Delete</button>
+            @can('debits-credits.delete')
+                <button type="button" class="btn btn-danger" @click="$store.confirm.confirm()">Delete</button>
+            @endcan
         </div>
     </div>
 </div>
