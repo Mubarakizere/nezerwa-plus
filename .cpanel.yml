@@ -1,0 +1,13 @@
+---
+deployment:
+  tasks:
+    - echo "Starting cPanel deployment..."
+    - export COMPOSER_HOME=$HOME/.composer || true
+    - if command -v composer >/dev/null 2>&1; then composer install --no-dev --optimize-autoloader || true; else echo "composer not found"; fi
+    - if [ -f .env.example ] && [ ! -f .env ]; then cp .env.example .env || true; fi
+    - if command -v php >/dev/null 2>&1; then php artisan key:generate --force || true; fi
+    - if command -v php >/dev/null 2>&1; then php artisan migrate --force || true; fi
+    - if command -v php >/dev/null 2>&1; then php artisan storage:link || true; fi
+    - chown -R kayatrav:kayatrav storage bootstrap/cache || true
+    - chmod -R 775 storage bootstrap/cache || true
+    - echo "Deployment finished."
