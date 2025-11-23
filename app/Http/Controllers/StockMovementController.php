@@ -8,6 +8,8 @@ use App\Models\Purchase;
 use App\Models\Sale;
 use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
+use App\Models\ItemLoan;
+use App\Models\ItemLoanReturn;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Response;
@@ -42,7 +44,10 @@ class StockMovementController extends Controller
             'out_sales'       => (clone $query)->where('type','out')->where('source_type', Sale::class)->sum('quantity'),
             'out_returns'     => (clone $query)->where('type','out')->where('source_type', PurchaseReturn::class)->sum('quantity'),
             'in_purchases'    => (clone $query)->where('type','in')->where('source_type', Purchase::class)->sum('quantity'),
-            'in_sale_returns' => (clone $query)->where('type','in')->where('source_type', SaleReturn::class)->sum('quantity'), // NEW
+            'in_purchases'    => (clone $query)->where('type','in')->where('source_type', Purchase::class)->sum('quantity'),
+            'in_sale_returns' => (clone $query)->where('type','in')->where('source_type', SaleReturn::class)->sum('quantity'),
+            'out_loans'       => (clone $query)->where('type','out')->where('source_type', ItemLoan::class)->sum('quantity'),
+            'in_loan_returns' => (clone $query)->where('type','in')->where('source_type', ItemLoanReturn::class)->sum('quantity'),
         ];
 
         return view('stock_movements.index', compact('movements', 'products', 'totals', 'breakdown'));
@@ -63,8 +68,10 @@ class StockMovementController extends Controller
                     // These nested eager-loads are best-effort; adjust to match your actual relation names.
                     $m->morphWith([
                         PurchaseReturn::class => ['purchase:id'],
+                        PurchaseReturn::class => ['purchase:id'],
                         SaleReturn::class     => ['sale:id'],
-                        // Purchase::class, Sale::class typically don't need nested loads here.
+                        ItemLoanReturn::class => ['loan:id'],
+                        // Purchase::class, Sale::class, ItemLoan::class typically don't need nested loads here.
                     ]);
                 },
             ])
@@ -96,7 +103,10 @@ class StockMovementController extends Controller
                 'purchase'        => Purchase::class,
                 'sale'            => Sale::class,
                 'purchase_return' => PurchaseReturn::class,
-                'sale_return'     => SaleReturn::class, // NEW
+                'purchase_return' => PurchaseReturn::class,
+                'sale_return'     => SaleReturn::class,
+                'item_loan'       => ItemLoan::class,
+                'item_loan_return'=> ItemLoanReturn::class,
             ];
             $val = $request->origin;
             if (isset($map[$val])) {
@@ -147,8 +157,14 @@ class StockMovementController extends Controller
                     $purchaseId = optional($m->source)->purchase_id ?? null;
                     $source = 'Return to Supplier #' . $m->source_id . ($purchaseId ? " (Purchase #$purchaseId)" : '');
                 } elseif ($m->source_type === SaleReturn::class) {
+                } elseif ($m->source_type === SaleReturn::class) {
                     $saleId = optional($m->source)->sale_id ?? null;
                     $source = 'Customer Return #' . $m->source_id . ($saleId ? " (Sale #$saleId)" : '');
+                } elseif ($m->source_type === ItemLoan::class) {
+                    $source = 'Item Loan #' . $m->source_id;
+                } elseif ($m->source_type === ItemLoanReturn::class) {
+                    $loanId = optional($m->source)->item_loan_id ?? null;
+                    $source = 'Loan Return #' . $m->source_id . ($loanId ? " (Loan #$loanId)" : '');
                 }
 
                 // Reference / Note: prefer movement fields, then source fallbacks
@@ -196,7 +212,10 @@ class StockMovementController extends Controller
             'out_sales'       => (clone $this->buildQuery($request))->where('type','out')->where('source_type', Sale::class)->sum('quantity'),
             'out_returns'     => (clone $this->buildQuery($request))->where('type','out')->where('source_type', PurchaseReturn::class)->sum('quantity'),
             'in_purchases'    => (clone $this->buildQuery($request))->where('type','in')->where('source_type', Purchase::class)->sum('quantity'),
+            'in_purchases'    => (clone $this->buildQuery($request))->where('type','in')->where('source_type', Purchase::class)->sum('quantity'),
             'in_sale_returns' => (clone $this->buildQuery($request))->where('type','in')->where('source_type', SaleReturn::class)->sum('quantity'),
+            'out_loans'       => (clone $this->buildQuery($request))->where('type','out')->where('source_type', ItemLoan::class)->sum('quantity'),
+            'in_loan_returns' => (clone $this->buildQuery($request))->where('type','in')->where('source_type', ItemLoanReturn::class)->sum('quantity'),
         ];
 
         $pdf = Pdf::loadView('stock_movements.report', compact('movements', 'totals', 'breakdown'))

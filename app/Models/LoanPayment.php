@@ -9,7 +9,7 @@ class LoanPayment extends Model
 {
     use HasFactory;
 
-    public const METHODS = ['cash','momo','bank'];
+    public const METHODS = ['cash','momo','bank','mobile_money'];
 
     protected $fillable = [
         'loan_id', 'user_id', 'amount', 'payment_date', 'method', 'notes'

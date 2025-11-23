@@ -34,6 +34,8 @@
         .pill-amber   { background:#fef3c7; color:#92400e; border-color:#fde68a; }   /* Out: Return to Supplier */
         .pill-emerald { background:#dcfce7; color:#166534; border-color:#bbf7d0; }   /* In: Purchases */
         .pill-sky     { background:#e0f2fe; color:#075985; border-color:#bae6fd; }   /* In: Customer Return */
+        .pill-indigo  { background:#e0e7ff; color:#3730a3; border-color:#c7d2fe; }   /* Out: Loans */
+        .pill-purple  { background:#f3e8ff; color:#6b21a8; border-color:#e9d5ff; }   /* In: Loan Returns */
 
         /* ===== Table ===== */
         table {
@@ -127,6 +129,8 @@
         <span class="pill pill-amber">Returns to Supplier: {{ $fmt($b['out_returns'] ?? 0) }}</span>
         <span class="pill pill-emerald">Purchases IN: {{ $fmt($b['in_purchases'] ?? 0) }}</span>
         <span class="pill pill-sky">Customer Return (IN): {{ $fmt($b['in_sale_returns'] ?? 0) }}</span>
+        <span class="pill pill-indigo">Loans OUT: {{ $fmt($b['out_loans'] ?? 0) }}</span>
+        <span class="pill pill-purple">Loan Returns (IN): {{ $fmt($b['in_loan_returns'] ?? 0) }}</span>
     </div>
 
     {{-- 🔸 Table --}}
@@ -175,6 +179,11 @@
                     } elseif (($m->source_type ?? null) === \App\Models\SaleReturn::class) {
                         $sid = optional($m->source)->sale_id ?? null;
                         $source = 'Customer Return #'.($m->source_id ?? '').($sid ? " (Sale #$sid)" : '');
+                    } elseif (($m->source_type ?? null) === \App\Models\ItemLoan::class) {
+                        $source = 'Item Loan #'.($m->source_id ?? '');
+                    } elseif (($m->source_type ?? null) === \App\Models\ItemLoanReturn::class) {
+                        $lid = optional($m->source)->item_loan_id ?? null;
+                        $source = 'Loan Return #'.($m->source_id ?? '').($lid ? " (Loan #$lid)" : '');
                     }
                 @endphp
 

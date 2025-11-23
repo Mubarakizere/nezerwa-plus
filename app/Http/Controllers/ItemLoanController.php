@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use App\Models\StockMovement;
+use App\Models\Product;
 
 class ItemLoanController extends Controller
 {
@@ -62,7 +64,8 @@ class ItemLoanController extends Controller
     public function create()
     {
         $partners = PartnerCompany::orderBy('name')->get(['id','name']);
-        return view('item_loans.create', compact('partners'));
+        $products = Product::orderBy('name')->get(['id','name']);
+        return view('item_loans.create', compact('partners', 'products'));
     }
 
     /**
@@ -73,6 +76,7 @@ class ItemLoanController extends Controller
     {
         $data = $request->validate([
             'partner_id'  => ['required', Rule::exists('partner_companies', 'id')],
+            'product_id'  => ['nullable', Rule::exists('products', 'id')],
             'direction'   => ['required', Rule::in(['given','taken'])],
             'item_name'   => ['required','string','max:255'],
             'unit'        => ['nullable','string','max:20'],
@@ -82,13 +86,37 @@ class ItemLoanController extends Controller
             'notes'       => ['nullable','string'],
         ]);
 
-        $loan = new ItemLoan($data);
-        $loan->quantity_returned = 0;
-        $loan->status = 'pending'; // per spec: keep pending right after create
-        $loan->user_id = Auth::id();
-        $loan->save();
+        return DB::transaction(function () use ($data) {
+            $loan = new ItemLoan($data);
+            $loan->quantity_returned = 0;
+            $loan->status = 'pending';
+            $loan->user_id = Auth::id();
+            $loan->save();
 
-        return redirect()->route('item-loans.show', $loan)->with('success', 'Loan recorded.');
+            // Stock Movement
+            if ($loan->product_id) {
+                $product = Product::find($loan->product_id);
+                $cost    = (float)($product->cost_price ?? 0);
+                $qty     = (float)$loan->quantity;
+
+                // If GIVEN: we lose stock (OUT)
+                // If TAKEN: we gain stock (IN)
+                $type = $loan->direction === 'given' ? 'out' : 'in';
+
+                StockMovement::create([
+                    'product_id'  => $loan->product_id,
+                    'type'        => $type,
+                    'quantity'    => $qty,
+                    'unit_cost'   => $cost,
+                    'total_cost'  => round($qty * $cost, 2),
+                    'source_type' => ItemLoan::class,
+                    'source_id'   => $loan->id,
+                    'user_id'     => Auth::id(),
+                ]);
+            }
+
+            return redirect()->route('item-loans.show', $loan)->with('success', 'Loan recorded.');
+        });
     }
 
     public function show(ItemLoan $itemLoan)
@@ -107,9 +135,12 @@ class ItemLoanController extends Controller
         $partners = PartnerCompany::orderBy('name')->get(['id','name']);
         $hasReturns = $itemLoan->returns()->exists();
 
+        $products = Product::orderBy('name')->get(['id','name']);
+
         return view('item_loans.edit', [
             'loan'       => $itemLoan,
             'partners'   => $partners,
+            'products'   => $products,
             'hasReturns' => $hasReturns,
         ]);
     }
@@ -120,6 +151,7 @@ class ItemLoanController extends Controller
 
         $rules = [
             'partner_id'  => ['required', Rule::exists('partner_companies', 'id')],
+            'product_id'  => ['nullable', Rule::exists('products', 'id')],
             'direction'   => ['required', Rule::in(['given','taken'])],
             'item_name'   => ['required','string','max:255'],
             'unit'        => ['nullable','string','max:20'],
@@ -211,6 +243,27 @@ class ItemLoanController extends Controller
             // Refresh status (may become partial/returned/overdue)
             $loan->refreshStatus();
             $loan->save();
+
+            // Stock Movement for Return
+            if ($loan->product_id) {
+                $product = Product::find($loan->product_id);
+                $cost    = (float)($product->cost_price ?? 0);
+
+                // If loan was GIVEN (stock OUT), return means stock IN
+                // If loan was TAKEN (stock IN), return means stock OUT
+                $type = $loan->direction === 'given' ? 'in' : 'out';
+
+                StockMovement::create([
+                    'product_id'  => $loan->product_id,
+                    'type'        => $type,
+                    'quantity'    => $ret,
+                    'unit_cost'   => $cost,
+                    'total_cost'  => round($ret * $cost, 2),
+                    'source_type' => ItemLoanReturn::class,
+                    'source_id'   => $line->id,
+                    'user_id'     => Auth::id(),
+                ]);
+            }
         });
 
         return back()->with('success', 'Return recorded.');

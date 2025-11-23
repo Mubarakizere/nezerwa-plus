@@ -23,6 +23,8 @@ class PermissionSeeder extends Seeder
             'debits-credits',
             'stock',
             'reports',
+            'expenses',
+            'item-loans',
         ];
 
         $actions = ['view', 'create', 'edit', 'delete'];

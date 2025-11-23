@@ -28,7 +28,7 @@ class PurchaseController extends Controller
             'mtn momo' => 'momo',
         ];
         if (isset($map[$c])) $c = $map[$c];
-        return in_array($c, ['cash','bank','momo'], true) ? $c : 'cash';
+        return in_array($c, ['cash','bank','momo','mobile_money'], true) ? $c : 'cash';
     }
 
     /** Read channel from request. Handles legacy forms that sent channel in "method". */
@@ -37,7 +37,7 @@ class PurchaseController extends Controller
         $in = $request->input('payment_channel');
         if (!$in) {
             $maybe = strtolower(trim((string)$request->input('method')));
-            if (in_array($maybe, ['cash','bank','momo'], true)) {
+            if (in_array($maybe, ['cash','bank','momo','mobile_money'], true)) {
                 $in = $maybe;
             }
         }
@@ -81,7 +81,7 @@ class PurchaseController extends Controller
         $request->validate([
             'supplier_id'             => 'required|exists:suppliers,id',
             'purchase_date'           => 'required|date',
-            'payment_channel'         => 'nullable|in:cash,bank,momo|required_with:amount_paid',
+            'payment_channel'         => 'nullable|in:cash,bank,momo,mobile_money|required_with:amount_paid',
             'method'                  => 'nullable|string|max:120',
             'notes'                   => 'nullable|string|max:500',
             'tax'                     => 'nullable|numeric|min:0|max:100',
@@ -258,7 +258,7 @@ class PurchaseController extends Controller
         $request->validate([
             'supplier_id'             => 'required|exists:suppliers,id',
             'purchase_date'           => 'required|date',
-            'payment_channel'         => 'nullable|in:cash,bank,momo|required_with:amount_paid',
+            'payment_channel'         => 'nullable|in:cash,bank,momo,mobile_money|required_with:amount_paid',
             'method'                  => 'nullable|string|max:120',
             'notes'                   => 'nullable|string|max:500',
             'tax'                     => 'nullable|numeric|min:0|max:100',

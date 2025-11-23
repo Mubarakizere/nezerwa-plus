@@ -19,7 +19,7 @@ class PurchaseReturnController extends Controller
         $c = strtolower(trim((string)$ch));
         $map = ['mo-mo' => 'momo', 'mtn' => 'momo', 'mtn momo' => 'momo'];
         if (isset($map[$c])) $c = $map[$c];
-        return in_array($c, ['cash','bank','momo'], true) ? $c : 'cash';
+        return in_array($c, ['cash','bank','momo','mobile_money'], true) ? $c : 'cash';
     }
 
     public function store(Request $request, Purchase $purchase)
@@ -95,7 +95,7 @@ class PurchaseReturnController extends Controller
 
         $v = Validator::make($request->all(), [
             'return_date'               => 'required|date',
-            'payment_channel'           => 'nullable|in:cash,bank,momo',
+            'payment_channel'           => 'nullable|in:cash,bank,momo,mobile_money',
             'method'                    => 'nullable|string|max:120',
             'notes'                     => 'nullable|string|max:500',
             'refund_amount'             => 'nullable|numeric|min:0',
@@ -112,7 +112,7 @@ class PurchaseReturnController extends Controller
             $refund  = (float) ($request->input('refund_amount', 0));
             $channel = $request->input('payment_channel');
 
-            if ($refund > 0 && !in_array($channel, ['cash','bank','momo'], true)) {
+            if ($refund > 0 && !in_array($channel, ['cash','bank','momo','mobile_money'], true)) {
                 $validator->errors()->add(
                     'payment_channel',
                     'Payment channel is required when refund amount is greater than 0.'

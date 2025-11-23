@@ -58,10 +58,23 @@
             </div>
         </div>
 
-        <div>
-            <label class="block text-sm font-medium mb-1">Item Name <span class="text-red-600">*</span></label>
-            <input type="text" name="item_name" value="{{ old('item_name', $loan->item_name) }}" required
-                   class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900" maxlength="255">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium mb-1">Linked Product <span class="text-xs text-gray-500">(Inventory Tracking)</span></label>
+                <select name="product_id" class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                    <option value="">-- No Link (Manual Item) --</option>
+                    @foreach ($products as $prod)
+                        <option value="{{ $prod->id }}" @selected(old('product_id', $loan->product_id) == $prod->id)>
+                            {{ $prod->name }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">Item Name <span class="text-red-600">*</span></label>
+                <input type="text" name="item_name" value="{{ old('item_name', $loan->item_name) }}" required
+                       class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900" maxlength="255">
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">

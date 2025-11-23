@@ -11,7 +11,7 @@ class PurchaseObserver
     protected function channel(Purchase $purchase): string
     {
         $ch = strtolower((string)($purchase->payment_channel ?? ''));
-        return in_array($ch, ['cash','bank','momo'], true) ? $ch : 'cash';
+        return in_array($ch, ['cash','bank','momo','mobile_money'], true) ? $ch : 'cash';
     }
 
     /** What we store in transactions.method (we keep the channel there). */

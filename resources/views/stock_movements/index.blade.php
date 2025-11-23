@@ -91,6 +91,14 @@
                         <i data-lucide="u-turn-right" class="w-3 h-3"></i>
                         Customer Return (IN): {{ $fmt($breakdown['in_sale_returns'] ?? 0) }}
                     </span>
+                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                        <i data-lucide="arrow-right-circle" class="w-3 h-3"></i>
+                        Loans OUT: {{ $fmt($breakdown['out_loans'] ?? 0) }}
+                    </span>
+                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+                        <i data-lucide="arrow-left-circle" class="w-3 h-3"></i>
+                        Loan Returns (IN): {{ $fmt($breakdown['in_loan_returns'] ?? 0) }}
+                    </span>
                 </div>
             </div>
 
@@ -141,6 +149,8 @@
                     <option value="sale"            @selected(request('origin')==='sale')>Sale (OUT)</option>
                     <option value="purchase_return" @selected(request('origin')==='purchase_return')>Return to Supplier (OUT)</option>
                     <option value="sale_return"     @selected(request('origin')==='sale_return')>Customer Return (IN)</option>
+                    <option value="item_loan"       @selected(request('origin')==='item_loan')>Item Loan (OUT)</option>
+                    <option value="item_loan_return"@selected(request('origin')==='item_loan_return')>Loan Return (IN)</option>
                 </select>
             </div>
 
@@ -218,6 +228,17 @@
                                     $sourceLink  = $saleId ? route('sales.show', $saleId) . '#returns' : null;
                                     $sourceChip  = 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300';
                                     $icon        = 'u-turn-right';
+                                } elseif (($m->source_type ?? null) === \App\Models\ItemLoan::class) {
+                                    $sourceLabel = "Item Loan #".($m->source_id ?? '');
+                                    $sourceLink  = route('item-loans.show', $m->source_id);
+                                    $sourceChip  = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300';
+                                    $icon        = 'arrow-right-circle';
+                                } elseif (($m->source_type ?? null) === \App\Models\ItemLoanReturn::class) {
+                                    $loanId      = data_get($m->source, 'item_loan_id');
+                                    $sourceLabel = "Loan Return #".($m->source_id ?? '');
+                                    $sourceLink  = $loanId ? route('item-loans.show', $loanId) : null;
+                                    $sourceChip  = 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300';
+                                    $icon        = 'arrow-left-circle';
                                 }
 
                                 // Reference / Note (movement first, then source fallbacks)

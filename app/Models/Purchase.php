@@ -11,7 +11,7 @@ class Purchase extends Model
 
     /* ───────────── Constants ───────────── */
     public const STATUSES = ['pending','partial','completed','cancelled'];
-    public const CHANNELS = ['cash','bank','momo'];
+    public const CHANNELS = ['cash','bank','momo','mobile_money'];
 
     /* ───────────── Fillable ───────────── */
     protected $fillable = [

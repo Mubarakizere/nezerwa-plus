@@ -27,7 +27,7 @@ class SaleReturnController extends Controller
             $data = $request->validate([
                 'date'      => ['required','date'],
                 'amount'    => ['required','numeric','min:0.01'],
-                'method'    => ['nullable', Rule::in(['cash','bank','momo'])],
+                'method'    => ['nullable', Rule::in(['cash','bank','momo','mobile_money'])],
                 'reference' => ['nullable','string','max:255'],
                 'reason'    => ['nullable','string','max:2000'],
             ]);
@@ -65,7 +65,7 @@ class SaleReturnController extends Controller
          * =========================== */
         $data = $request->validate([
             'date'        => ['required','date'],
-            'method'      => ['nullable', Rule::in(['cash','bank','momo'])],
+            'method'      => ['nullable', Rule::in(['cash','bank','momo','mobile_money'])],
             'reference'   => ['nullable','string','max:255'],
             'reason'      => ['nullable','string','max:2000'],
             'items'       => ['required','array','min:1'],

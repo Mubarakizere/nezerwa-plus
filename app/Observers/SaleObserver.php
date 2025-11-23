@@ -11,7 +11,7 @@ class SaleObserver
     protected function channel(Sale $sale): string
     {
         $ch = strtolower((string)($sale->payment_channel ?? ''));
-        return in_array($ch, ['cash', 'bank', 'momo'], true) ? $ch : 'cash';
+        return in_array($ch, ['cash', 'bank', 'momo', 'mobile_money'], true) ? $ch : 'cash';
     }
 
     /** Optional external reference (POS ref / MoMo Txn / Cheque). */

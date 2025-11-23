@@ -13,10 +13,10 @@ use Carbon\Carbon;
 class SaleController extends Controller
 {
     /** Old single-channel on Sale (kept for compatibility) */
-    private const CHANNELS = ['cash', 'bank', 'momo','mobile'];
+    private const CHANNELS = ['cash', 'bank', 'momo', 'mobile_money'];
 
     /** New payment methods for split payments */
-    private const PAYMENT_METHODS = ['cash', 'bank', 'momo', 'mobile'];
+    private const PAYMENT_METHODS = ['cash', 'bank', 'momo', 'mobile_money'];
 
     /** ===================== INDEX ===================== */
     public function index(Request $request)
@@ -62,13 +62,13 @@ class SaleController extends Controller
 
         // Legacy single-payment fallback
         'amount_paid'           => 'nullable|numeric|min:0',
-        'payment_channel'       => 'nullable|in:cash,bank,momo,mobile',
+        'payment_channel'       => 'nullable|in:cash,bank,momo,mobile_money',
         'method'                => 'nullable|string|max:50',
         'notes'                 => 'nullable|string|max:500',
 
         // Split payments (optional)
         'payments'              => 'nullable|array|min:1',
-        'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile',
+        'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile_money',
         'payments.*.amount'     => 'required_with:payments|numeric|min:0.01',
         'payments.*.reference'  => 'nullable|string|max:100',
         'payments.*.phone'      => 'nullable|string|max:30',
@@ -257,13 +257,13 @@ class SaleController extends Controller
             'products.*.unit_price' => 'required|numeric|min:0',
 
             'amount_paid'           => 'nullable|numeric|min:0',
-            'payment_channel'       => 'nullable|in:cash,bank,momo,mobile',
+            'payment_channel'       => 'nullable|in:cash,bank,momo,mobile_money',
             'method'                => 'nullable|string|max:50',
             'notes'                 => 'nullable|string|max:500',
 
             // split payments
             'payments'              => 'nullable|array|min:1',
-            'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile',
+            'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile_money',
             'payments.*.amount'     => 'required_with:payments|numeric|min:0.01',
             'payments.*.reference'  => 'nullable|string|max:100',
             'payments.*.phone'      => 'nullable|string|max:30',
@@ -436,13 +436,13 @@ class SaleController extends Controller
                 'sale_date'     => $grp->first()->sale_date,
                 'customer_name' => $grp->first()->customer_name ?? 'Walk-in',
                 'total_amount'  => (float)($grp->first()->total_amount ?? 0),
-                'cash'   => 0, 'bank' => 0, 'momo' => 0, 'mobile' => 0,
+                'cash'   => 0, 'bank' => 0, 'momo' => 0, 'mobile_money' => 0,
             ];
             foreach ($grp as $p) {
                 $m = $p->method;
                 $base[$m] += (float)$p->amount;
             }
-            $base['paid']    = $base['cash'] + $base['bank'] + $base['momo'] + $base['mobile'];
+            $base['paid']    = $base['cash'] + $base['bank'] + $base['momo'] + $base['mobile_money'];
             $base['balance'] = max(0, $base['total_amount'] - $base['paid']);
             return $base;
         })->values();

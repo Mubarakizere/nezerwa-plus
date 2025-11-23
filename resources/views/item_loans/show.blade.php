@@ -58,7 +58,12 @@
         <div class="rounded-xl border dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
             <div class="text-xs text-gray-500">Item</div>
             <div class="font-medium">{{ $loan->item_name }}</div>
-            <div class="text-xs text-gray-500">{{ $fmt($loan->quantity) }} {{ $loan->unit }}</div>
+            @if($loan->product)
+                <div class="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    <i data-lucide="link" class="w-3 h-3 inline"></i> {{ $loan->product->name }}
+                </div>
+            @endif
+            <div class="text-xs text-gray-500 mt-1">{{ $fmt($loan->quantity) }} {{ $loan->unit }}</div>
         </div>
 
         <div class="rounded-xl border dark:border-gray-700 p-4 bg-white dark:bg-gray-800">

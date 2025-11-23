@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SaleReturn extends Model
 {
-    public const METHODS = ['cash','bank','momo'];
+    public const METHODS = ['cash','bank','momo','mobile_money'];
 
     protected $fillable = [
         'sale_id', 'date', 'amount', 'method', 'reference', 'reason', 'created_by',

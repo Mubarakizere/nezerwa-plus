@@ -27,7 +27,13 @@
         @csrf
 
         <div>
-            <label class="block text-sm font-medium mb-1">Partner Company <span class="text-red-600">*</span></label>
+            <div class="flex items-center justify-between mb-1">
+                <label class="block text-sm font-medium">Partner Company <span class="text-red-600">*</span></label>
+                <button type="button" onclick="document.getElementById('createPartnerModal').showModal()" 
+                        class="text-xs text-indigo-600 hover:text-indigo-500 font-medium flex items-center gap-1">
+                    <i data-lucide="plus" class="w-3 h-3"></i> New Partner
+                </button>
+            </div>
             <select name="partner_id" required class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
                 <option value="">Select partner...</option>
                 @foreach ($partners as $p)
@@ -52,10 +58,23 @@
             </div>
         </div>
 
-        <div>
-            <label class="block text-sm font-medium mb-1">Item Name <span class="text-red-600">*</span></label>
-            <input type="text" name="item_name" value="{{ old('item_name') }}" required
-                   class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900" maxlength="255" placeholder="e.g., Plastic Chair">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium mb-1">Linked Product <span class="text-xs text-gray-500">(Inventory Tracking)</span></label>
+                <select name="product_id" class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                    <option value="">-- No Link (Manual Item) --</option>
+                    @foreach ($products as $prod)
+                        <option value="{{ $prod->id }}" @selected(old('product_id') == $prod->id)>
+                            {{ $prod->name }} (Stock: {{ $prod->quantity }})
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">Item Name <span class="text-red-600">*</span></label>
+                <input type="text" name="item_name" value="{{ old('item_name') }}" required
+                       class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900" maxlength="255" placeholder="e.g., Plastic Chair">
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -87,4 +106,79 @@
         </div>
     </form>
 </div>
+
+{{-- Create Partner Modal --}}
+<dialog id="createPartnerModal" class="modal">
+    <div class="modal-box max-w-md bg-white dark:bg-gray-800">
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+        </form>
+        <h3 class="font-bold text-lg mb-4">Add New Partner</h3>
+        <form id="createPartnerForm" class="space-y-4">
+            @csrf
+            <div>
+                <label class="block text-sm font-medium mb-1">Company Name <span class="text-red-600">*</span></label>
+                <input type="text" name="name" required class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">Contact Person</label>
+                <input type="text" name="contact_person" class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">Phone</label>
+                <input type="text" name="phone" class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button type="button" class="btn btn-ghost" onclick="document.getElementById('createPartnerModal').close()">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="savePartnerBtn">Save Partner</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<script>
+    document.getElementById('createPartnerForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('savePartnerBtn');
+        const originalText = btn.innerText;
+        btn.innerText = 'Saving...';
+        btn.disabled = true;
+
+        try {
+            const formData = new FormData(this);
+            const response = await fetch("{{ route('partner-companies.store') }}", {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // Add to select and select it
+                const select = document.querySelector('select[name="partner_id"]');
+                const option = new Option(result.partner.name, result.partner.id, true, true);
+                select.add(option);
+                
+                // Close modal and reset form
+                document.getElementById('createPartnerModal').close();
+                this.reset();
+                
+                // Optional: Show toast/alert
+                // alert('Partner created!'); 
+            } else {
+                alert(result.message || 'Failed to create partner');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while creating the partner.');
+        } finally {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    });
+</script>
 @endsection

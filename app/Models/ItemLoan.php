@@ -12,6 +12,7 @@ class ItemLoan extends Model
 {
     protected $fillable = [
         'partner_id',
+        'product_id',
         'direction',          // 'given' | 'taken'
         'item_name',
         'unit',
@@ -35,6 +36,11 @@ class ItemLoan extends Model
     public function partner(): BelongsTo
     {
         return $this->belongsTo(PartnerCompany::class, 'partner_id');
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
     }
 
     public function returns(): HasMany

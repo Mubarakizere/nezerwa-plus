@@ -349,7 +349,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     |--------------------------------------------------------------------------
     | Re-using loans.view permission for this module.
     */
-    Route::middleware('permission:loans.view')->group(function () {
+    /*
+    |--------------------------------------------------------------------------
+    | Inter-company Item Loans
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:item-loans.view')->group(function () {
         Route::resource('inter-loans', ItemLoanController::class)
             ->parameters(['inter-loans' => 'itemLoan'])
             ->names('item-loans');
@@ -357,6 +362,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('inter-loans/{itemLoan}/return', [ItemLoanController::class, 'recordReturn'])
             ->name('item-loans.return');
     });
+
+    // Partner Companies (for AJAX creation)
+    Route::post('/partner-companies', [App\Http\Controllers\PartnerCompanyController::class, 'store'])
+        ->name('partner-companies.store');
 
     /*
     |--------------------------------------------------------------------------
@@ -388,7 +397,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | For now, we reuse transactions.view (it's part of finance flow).
     | If you prefer a dedicated "expenses" module, we can add it to PermissionSeeder.
     */
-    Route::middleware('permission:transactions.view')->group(function () {
+    /*
+    |--------------------------------------------------------------------------
+    | Expenses
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:expenses.view')->group(function () {
         Route::get('/expenses', [ExpenseController::class, 'index'])
             ->name('expenses.index');
 
