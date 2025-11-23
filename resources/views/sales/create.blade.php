@@ -52,6 +52,13 @@
         </a>
     </div>
 
+    {{-- Shortcuts Legend --}}
+    <div class="hidden sm:flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700">
+        <span class="flex items-center gap-1"><kbd class="font-mono bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1">F2</kbd> Add Item</span>
+        <span class="flex items-center gap-1"><kbd class="font-mono bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1">F4</kbd> Pay</span>
+        <span class="flex items-center gap-1"><kbd class="font-mono bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-1">Ctrl+Enter</kbd> Save</span>
+    </div>
+
     {{-- Flash / Errors --}}
     @if (session('success'))
         <div class="rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-300 px-4 py-3 text-sm">
@@ -424,6 +431,31 @@ function saleCreateForm(productMeta){
 
         init(){
             this.recalc();
+            
+            // Keyboard Shortcuts
+            window.addEventListener('keydown', (e) => {
+                // F2: Add Line
+                if (e.key === 'F2') {
+                    e.preventDefault();
+                    this.addLine();
+                    // Focus the new line's product select (last one)
+                    this.$nextTick(() => {
+                        const selects = document.querySelectorAll('select[name^="products"]');
+                        if (selects.length) selects[selects.length - 1].focus();
+                    });
+                }
+                // F4: Focus Amount Paid
+                if (e.key === 'F4') {
+                    e.preventDefault();
+                    document.getElementById('amount_paid')?.focus();
+                    document.getElementById('amount_paid')?.select();
+                }
+                // Ctrl+Enter: Submit
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    this.$el.closest('form').submit();
+                }
+            });
         },
 
         money(v){ return Number(v || 0).toFixed(2); },

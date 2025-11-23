@@ -7,8 +7,20 @@
     <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-6 relative overflow-hidden">
 
         {{-- Loading Overlay --}}
-        <div id="chart-loader"
-             class="absolute inset-0 bg-gray-100 dark:bg-gray-800 animate-pulse z-10"></div>
+        <div id="chart-loader" class="absolute inset-0 bg-white dark:bg-gray-800 z-10 flex flex-col gap-4 p-4 transition-opacity duration-500">
+            <div class="flex items-center justify-between mb-4">
+                <x-skeleton class="h-6 w-32" />
+                <x-skeleton class="h-6 w-16" />
+            </div>
+            <div class="flex-1 flex items-end gap-2">
+                <x-skeleton class="h-32 w-full" />
+                <x-skeleton class="h-48 w-full" />
+                <x-skeleton class="h-24 w-full" />
+                <x-skeleton class="h-40 w-full" />
+                <x-skeleton class="h-56 w-full" />
+                <x-skeleton class="h-32 w-full" />
+            </div>
+        </div>
 
         {{-- Combined Chart: Sales vs Purchases --}}
         <div class="h-56 sm:h-64">

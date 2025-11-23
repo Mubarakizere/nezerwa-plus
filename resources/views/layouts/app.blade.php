@@ -301,5 +301,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<x-command-palette />
 </body>
 </html>

@@ -6,41 +6,67 @@
 
     {{-- Responsive KPI Grid --}}
     <div id="kpi-section"
-         class="grid gap-4
-                [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]
-                opacity-0 transition-opacity duration-500">
+         class="grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
 
-        <x-stat label="Total Sales"
-                :value="$totalSales"
-                color="text-indigo-600"
-                icon="dollar-sign" />
+        <!-- Total Sales -->
+        <div class="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-sm ring-1 ring-gray-900/5 transition-all hover:shadow-md group">
+            <div class="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 blur-2xl transition-all group-hover:scale-150"></div>
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Sales</dt>
+            <dd class="mt-3 flex items-baseline gap-2">
+                <span class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{{ $totalSales }}</span>
+            </dd>
+            <div class="mt-4 flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
+                <div class="flex items-center justify-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 p-1.5">
+                    <i data-lucide="dollar-sign" class="h-4 w-4"></i>
+                </div>
+                <span class="font-medium">Revenue</span>
+            </div>
+        </div>
 
-        <x-stat label="Total Profit"
-                :value="$totalProfit"
-                color="text-green-600"
-                icon="trending-up" />
+        <!-- Total Profit -->
+        <div class="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-sm ring-1 ring-gray-900/5 transition-all hover:shadow-md group">
+            <div class="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-500/20 blur-2xl transition-all group-hover:scale-150"></div>
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Profit</dt>
+            <dd class="mt-3 flex items-baseline gap-2">
+                <span class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{{ $totalProfit }}</span>
+            </dd>
+            <div class="mt-4 flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                <div class="flex items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 p-1.5">
+                    <i data-lucide="trending-up" class="h-4 w-4"></i>
+                </div>
+                <span class="font-medium">Net Income</span>
+            </div>
+        </div>
 
-        <x-stat label="Pending Balances"
-                :value="$pendingBalances"
-                color="text-red-600"
-                icon="alert-circle" />
+        <!-- Pending Balances -->
+        <div class="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-sm ring-1 ring-gray-900/5 transition-all hover:shadow-md group">
+            <div class="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-gradient-to-br from-rose-500/20 to-orange-500/20 blur-2xl transition-all group-hover:scale-150"></div>
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Pending Balances</dt>
+            <dd class="mt-3 flex items-baseline gap-2">
+                <span class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{{ $pendingBalances }}</span>
+            </dd>
+            <div class="mt-4 flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
+                <div class="flex items-center justify-center rounded-full bg-rose-50 dark:bg-rose-900/30 p-1.5">
+                    <i data-lucide="alert-circle" class="h-4 w-4"></i>
+                </div>
+                <span class="font-medium">Outstanding</span>
+            </div>
+        </div>
 
-        <x-stat label="Total Purchases"
-                :value="$totalPurchases"
-                color="text-pink-600"
-                icon="shopping-bag" />
-
-        <x-stat label="Stock Value"
-                :value="$totalStockValue"
-                color="text-amber-600"
-                icon="package" />
-
-        @if($sections['finance'])
-            <x-stat label="Net Balance"
-                    :value="$netBalance"
-                    :color="$netBalance >= 0 ? 'text-green-600' : 'text-red-600'"
-                    icon="scale" />
-        @endif
+        <!-- Stock Value -->
+        <div class="relative overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-sm ring-1 ring-gray-900/5 transition-all hover:shadow-md group">
+            <div class="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-gradient-to-br from-amber-500/20 to-yellow-500/20 blur-2xl transition-all group-hover:scale-150"></div>
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stock Value</dt>
+            <dd class="mt-3 flex items-baseline gap-2">
+                <span class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{{ $totalStockValue }}</span>
+            </dd>
+            <div class="mt-4 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+                <div class="flex items-center justify-center rounded-full bg-amber-50 dark:bg-amber-900/30 p-1.5">
+                    <i data-lucide="package" class="h-4 w-4"></i>
+                </div>
+                <span class="font-medium">Inventory Asset</span>
+            </div>
+        </div>
     </div>
 
     {{-- Mini Summary Cards --}}
