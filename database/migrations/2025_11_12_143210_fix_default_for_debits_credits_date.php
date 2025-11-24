@@ -6,11 +6,23 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration {
     public function up(): void
     {
-        DB::statement("ALTER TABLE debits_credits ALTER COLUMN \"date\" SET DEFAULT CURRENT_DATE");
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
+            DB::statement('ALTER TABLE debits_credits ALTER COLUMN "date" SET DEFAULT CURRENT_DATE');
+        } elseif ($driver === 'mysql' || $driver === 'mariadb') {
+            DB::statement("ALTER TABLE debits_credits MODIFY COLUMN `date` DATE DEFAULT CURRENT_DATE");
+        }
     }
 
     public function down(): void
     {
-        DB::statement("ALTER TABLE debits_credits ALTER COLUMN \"date\" DROP DEFAULT");
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
+            DB::statement('ALTER TABLE debits_credits ALTER COLUMN "date" DROP DEFAULT');
+        } elseif ($driver === 'mysql' || $driver === 'mariadb') {
+            DB::statement("ALTER TABLE debits_credits MODIFY COLUMN `date` DATE DEFAULT NULL");
+        }
     }
 };
