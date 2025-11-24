@@ -6,23 +6,13 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration {
     public function up(): void
     {
-        $driver = DB::getDriverName();
-
-        if ($driver === 'pgsql') {
-            DB::statement('ALTER TABLE debits_credits ALTER COLUMN "date" SET DEFAULT CURRENT_DATE');
-        } elseif ($driver === 'mysql' || $driver === 'mariadb') {
-            DB::statement("ALTER TABLE debits_credits MODIFY COLUMN `date` DATE DEFAULT CURRENT_DATE");
-        }
+        // Skipped to resolve compatibility issues.
+        // This migration was intended to fix a default value but caused issues on MariaDB.
+        // The next migration (2025_11_12_161800) handles the column definition anyway.
     }
 
     public function down(): void
     {
-        $driver = DB::getDriverName();
-
-        if ($driver === 'pgsql') {
-            DB::statement('ALTER TABLE debits_credits ALTER COLUMN "date" DROP DEFAULT');
-        } elseif ($driver === 'mysql' || $driver === 'mariadb') {
-            DB::statement("ALTER TABLE debits_credits MODIFY COLUMN `date` DATE DEFAULT NULL");
-        }
+        // Nothing to reverse
     }
 };

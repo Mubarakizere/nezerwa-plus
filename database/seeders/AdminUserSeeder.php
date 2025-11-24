@@ -26,24 +26,18 @@ class AdminUserSeeder extends Seeder
         );
 
         // Prefer pivot table role_user if present
-        if (Schema::hasTable('roles') && Schema::hasTable('role_user')) {
-            $roleId = DB::table('roles')->where('name', 'admin')->value('id');
+        // Assign Spatie Role
+        $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin']);
+        
+        // Sync all permissions to the admin role
+        $permissions = \Spatie\Permission\Models\Permission::all();
+        $role->syncPermissions($permissions);
 
-            if ($roleId) {
-                $pivotCols  = Schema::getColumnListing('role_user');
-                $hasCreated = in_array('created_at', $pivotCols, true);
-                $hasUpdated = in_array('updated_at', $pivotCols, true);
+        // Assign role to user
+        $user->assignRole($role);
 
-                $data = ['user_id' => $user->id, 'role_id' => $roleId];
-                if (!DB::table('role_user')->where($data)->exists()) {
-                    if ($hasCreated) $data['created_at'] = now();
-                    if ($hasUpdated) $data['updated_at'] = now();
-                    DB::table('role_user')->insert($data);
-                }
-            }
-        }
-        // Fallback to users.role string column
-        elseif (Schema::hasColumn('users', 'role')) {
+        // Fallback/Legacy: Update 'role' column if it exists
+        if (Schema::hasColumn('users', 'role')) {
             if ($user->role !== 'admin') {
                 $user->role = 'admin';
                 $user->save();
