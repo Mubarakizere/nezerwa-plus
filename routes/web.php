@@ -48,6 +48,8 @@ Route::get('/', function () {
         : redirect()->route('login');
 });
 
+
+
 /* -------- Role-based redirect after login (still fine to keep) -------- */
 Route::get('/redirect-by-role', RoleRedirectController::class)
     ->middleware(['auth'])
@@ -255,9 +257,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:reports.view')->group(function () {
         Route::get('/reports/suppliers/statement', [StatementController::class, 'supplier'])
             ->name('reports.suppliers.statement');
-
+        Route::get('reports/suppliers/statement/pdf', [StatementController::class, 'supplierPdf'])
+            ->name('reports.suppliers.statement.pdf');
         Route::get('/reports/customers/statement', [StatementController::class, 'customer'])
             ->name('reports.customers.statement');
+        Route::get('reports/customers/statement/pdf', [StatementController::class, 'customerPdf'])
+            ->name('reports.customers.statement.pdf');
     });
 
     /*

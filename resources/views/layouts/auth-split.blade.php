@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ config('app.name', 'Nezerwa Plus') }}</title>
+    <title>{{ config('app.name', 'KingWine') }}</title>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,7 +37,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                             </svg>
                         </div>
-                        <span class="text-2xl font-bold tracking-tight">Nezerwa Plus</span>
+                        <span class="text-2xl font-bold tracking-tight">KingWine</span>
                     </div>
                 </div>
                 
@@ -58,7 +58,7 @@
                 </div>
                 
                 <div class="text-indigo-300 text-xs">
-                    &copy; {{ date('Y') }} Nezerwa Plus. All rights reserved.
+                    &copy; {{ date('Y') }} KingWine. All rights reserved.
                 </div>
             </div>
         </div>

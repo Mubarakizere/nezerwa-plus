@@ -99,10 +99,10 @@
 <body>
     <div class="header">
         <div class="header-left">
-            <div class="logo">{{ config('app.name', 'Nezerwa Plus') }}</div>
+            <div class="logo">{{ config('app.name', 'KingWine') }}</div>
             <div class="text-sm text-gray-500 mt-1">
                 {{ config('app.address', '123 Business Road, Kigali, Rwanda') }}<br>
-                {{ config('app.phone', '+250 788 000 000') }} | {{ config('app.email', 'info@nezerwa.com') }}
+                {{ config('app.phone', '+250 788 000 000') }} | {{ config('app.email', 'info@kingwine.com') }}
             </div>
         </div>
         <div class="header-right">

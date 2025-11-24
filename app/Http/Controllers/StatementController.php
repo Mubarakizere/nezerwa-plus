@@ -20,7 +20,27 @@ class StatementController extends Controller
     public function supplier(Request $request)
     {
         $suppliers = Supplier::orderBy('name')->get();
+        $data = $this->getSupplierData($request);
 
+        return view('reports.suppliers.statement', array_merge(['suppliers' => $suppliers], $data));
+    }
+
+    public function supplierPdf(Request $request)
+    {
+        $data = $this->getSupplierData($request);
+        if (!$data['supplierId']) {
+            return back()->withErrors('Please select a supplier to generate PDF.');
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.suppliers.statement_pdf', $data)
+            ->setPaper('a4', 'portrait');
+
+        $filename = 'Supplier_Statement_' . date('Ymd_His') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+    private function getSupplierData(Request $request): array
+    {
         $supplierId = (int) $request->input('supplier_id');
         $from       = $request->input('from'); // Y-m-d
         $to         = $request->input('to');   // Y-m-d
@@ -31,13 +51,17 @@ class StatementController extends Controller
         $events    = collect();
 
         $kpis = [
-            'purchases_total' => 0.0, // net after returns (already recomputed in your system)
-            'paid_total'      => 0.0, // you paid supplier (transactions.type=debit)
-            'refunds_total'   => 0.0, // supplier paid you (transactions.type=credit)
+            'purchases_total' => 0.0,
+            'paid_total'      => 0.0,
+            'refunds_total'   => 0.0,
             'balance'         => 0.0,
         ];
 
+        $supplier = null;
+
         if ($supplierId) {
+            $supplier = Supplier::find($supplierId);
+
             // Purchases
             $purchases = Purchase::query()
                 ->where('supplier_id', $supplierId)
@@ -106,19 +130,36 @@ class StatementController extends Controller
             });
         }
 
-        return view('reports.suppliers.statement', compact(
-            'suppliers','supplierId','from','to','kpis','events','returns'
-        ));
+        return compact('supplierId', 'supplier', 'from', 'to', 'kpis', 'events', 'returns');
     }
 
     /**
      * Customer Statement (AR)
-     * Matches your sale_returns schema: date, amount, method, reference, reason, created_by
      */
     public function customer(Request $request)
     {
         $customers = Customer::orderBy('name')->get();
+        $data = $this->getCustomerData($request);
 
+        return view('reports.customers.statement', array_merge(['customers' => $customers], $data));
+    }
+
+    public function customerPdf(Request $request)
+    {
+        $data = $this->getCustomerData($request);
+        if (!$data['customerId']) {
+            return back()->withErrors('Please select a customer to generate PDF.');
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.customers.statement_pdf', $data)
+            ->setPaper('a4', 'portrait');
+
+        $filename = 'Customer_Statement_' . date('Ymd_His') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+    private function getCustomerData(Request $request): array
+    {
         $customerId = (int) $request->input('customer_id');
         $from       = $request->input('from'); // Y-m-d
         $to         = $request->input('to');   // Y-m-d
@@ -129,13 +170,17 @@ class StatementController extends Controller
         $events  = collect();
 
         $kpis = [
-            'sales_total'   => 0.0, // net after returns (your Sales already recompute)
-            'paid_total'    => 0.0, // customer paid you (transactions.type=credit)
-            'refunds_total' => 0.0, // you refunded customer (transactions.type=debit)
-            'balance'       => 0.0, // AR
+            'sales_total'   => 0.0,
+            'paid_total'    => 0.0,
+            'refunds_total' => 0.0,
+            'balance'       => 0.0,
         ];
 
+        $customer = null;
+
         if ($customerId) {
+            $customer = Customer::find($customerId);
+
             // Sales
             $sales = Sale::query()
                 ->where('customer_id', $customerId)
@@ -249,8 +294,6 @@ class StatementController extends Controller
             });
         }
 
-        return view('reports.customers.statement', compact(
-            'customers','customerId','from','to','kpis','events','returns'
-        ));
+        return compact('customerId', 'customer', 'from', 'to', 'kpis', 'events', 'returns');
     }
 }

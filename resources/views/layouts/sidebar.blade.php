@@ -337,7 +337,7 @@
 
             {{-- Version/Footer --}}
             <p class="text-xs text-center text-gray-400 dark:text-gray-600 mt-4 pb-4">
-                v1.0.0
+                v1.0.0 &bull; Powered by BarakSoftwares
             </p>
         </nav>
     </div>

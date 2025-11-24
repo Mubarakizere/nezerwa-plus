@@ -10,7 +10,7 @@ return new class extends Migration {
         Schema::create('sale_payments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('sale_id')->constrained('sales')->cascadeOnDelete();
-            $table->enum('method', ['cash', 'bank', 'momo', 'mobile']);
+            $table->string('method', 50); // cash, bank, momo, mobile
             $table->decimal('amount', 15, 2);
             $table->string('reference', 100)->nullable(); // POS ref, Txn ID, cheque, etc.
             $table->string('phone', 30)->nullable();      // momo/mobile phone if relevant

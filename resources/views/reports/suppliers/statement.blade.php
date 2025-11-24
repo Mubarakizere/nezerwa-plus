@@ -20,8 +20,8 @@
 
     {{-- Filters --}}
     <form method="GET" action="{{ route('reports.suppliers.statement') }}"
-          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
-        <div class="md:col-span-3">
+          class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+        <div class="md:col-span-6">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Supplier</label>
             <select name="supplier_id" class="form-select w-full">
                 <option value="">Select supplier…</option>
@@ -30,18 +30,21 @@
                 @endforeach
             </select>
         </div>
-        <div>
+        <div class="md:col-span-3">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">From</label>
             <input type="date" name="from" value="{{ $from }}" class="form-input w-full">
         </div>
-        <div>
+        <div class="md:col-span-3">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">To</label>
             <input type="date" name="to" value="{{ $to }}" class="form-input w-full">
         </div>
-        <div class="md:col-span-6 flex justify-end gap-2">
+        <div class="md:col-span-12 flex justify-end gap-2">
             <button class="btn btn-secondary flex items-center gap-1">
                 <i data-lucide="filter" class="w-4 h-4"></i> Apply
             </button>
+            <a href="{{ route('reports.suppliers.statement.pdf', request()->all()) }}" class="btn btn-primary flex items-center gap-1" target="_blank">
+                <i data-lucide="download" class="w-4 h-4"></i> PDF
+            </a>
             <a href="{{ route('reports.suppliers.statement') }}" class="btn btn-outline flex items-center gap-1">
                 <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset
             </a>

@@ -33,60 +33,82 @@
     @endif
 
     @php
-        // Build initial payments for Alpine (prefer old(), then existing split payments, else legacy single)
-        $initialPayments = collect(old('payments', []));
-        if ($initialPayments->isEmpty()) {
-            if ($sale->relationLoaded('payments') || method_exists($sale, 'payments')) {
-                $loaded = $sale->payments ?? collect();
-                if ($loaded->count()) {
-                    $initialPayments = $loaded->map(fn($p) => [
-                        'method'    => $p->method,
-                        'amount'    => (float) $p->amount,
-                        'reference' => $p->reference,
-                        'paid_at'   => optional($p->paid_at)->format('Y-m-d') ?? optional($sale->sale_date)->format('Y-m-d'),
-                    ])->values();
-                }
-            }
-            if ($initialPayments->isEmpty() && (float)($sale->amount_paid ?? 0) > 0) {
-                $initialPayments = collect([[
-                    'method'    => $sale->payment_channel ?? 'cash',
-                    'amount'    => (float) $sale->amount_paid,
-                    'reference' => $sale->method,
-                    'paid_at'   => optional($sale->sale_date)->format('Y-m-d'),
-                ]]);
-            }
+        // 1. Prepare Products Data for Alpine
+        // We pass the full product list so Alpine can look up prices/costs.
+        $productsJson = $products->map(fn($p) => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'price' => (float) $p->price,
+            'cost' => (float) ($p->cost_price ?? 0),
+        ]);
+
+        // 2. Prepare Initial Lines (Products)
+        // Priority: old('products') -> $sale->items -> Empty line
+        $oldProducts = old('products');
+        if ($oldProducts && is_array($oldProducts)) {
+            $initialLines = collect($oldProducts)->map(fn($p) => [
+                'key' => uniqid(),
+                'product_id' => (int) ($p['product_id'] ?? 0),
+                'quantity' => (float) ($p['quantity'] ?? 1),
+                'unit_price' => (float) ($p['unit_price'] ?? 0),
+            ])->values();
+        } else {
+            $initialLines = $sale->items->map(fn($item) => [
+                'key' => uniqid(),
+                'product_id' => (int) $item->product_id,
+                'quantity' => (float) $item->quantity,
+                'unit_price' => (float) $item->unit_price,
+            ])->values();
+        }
+        if ($initialLines->isEmpty()) {
+            $initialLines = [['key' => uniqid(), 'product_id' => '', 'quantity' => 1, 'unit_price' => 0]];
         }
 
-        // Product lines (old() first, then DB items)
-        $mappedItems = old('products')
-            ? collect(old('products'))->map(fn($p) => [
-                'key'        => uniqid(),
-                'product_id' => (int)($p['product_id'] ?? 0),
-                'quantity'   => (float)($p['quantity'] ?? 1),
-                'unit_price' => (float)($p['unit_price'] ?? 0),
-            ])->values()
-            : $sale->items->map(fn($i) => [
-                'key'        => uniqid(),
-                'product_id' => (int) $i->product_id,
-                'quantity'   => (float) $i->quantity,
-                'unit_price' => (float) $i->unit_price,
+        // 3. Prepare Initial Payments
+        // Priority: old('payments') -> $sale->payments -> $sale->amount_paid (legacy) -> Empty
+        $oldPayments = old('payments');
+        if ($oldPayments && is_array($oldPayments)) {
+            $initialPayments = collect($oldPayments)->map(fn($p) => [
+                'key' => uniqid(),
+                'method' => $p['method'] ?? 'cash',
+                'amount' => (float) ($p['amount'] ?? 0),
+                'reference' => $p['reference'] ?? '',
             ])->values();
+        } elseif ($sale->payments && $sale->payments->count() > 0) {
+            $initialPayments = $sale->payments->map(fn($p) => [
+                'key' => uniqid(),
+                'method' => $p->method,
+                'amount' => (float) $p->amount,
+                'reference' => $p->reference,
+            ])->values();
+        } elseif ((float) $sale->amount_paid > 0) {
+            // Fallback for legacy sales with no split payments but an amount_paid
+            $initialPayments = collect([[
+                'key' => uniqid(),
+                'method' => $sale->payment_channel ?? 'cash',
+                'amount' => (float) $sale->amount_paid,
+                'reference' => $sale->method, // legacy method field was used for ref
+            ]]);
+        } else {
+            $initialPayments = collect([]);
+        }
 
-        $custModeInit = old('new_customer_name')
-            ? 'new'
-            : (old('customer_id', $sale->customer_id) ? 'existing' : 'walkin');
-
-        $singlePaidInit = old('amount_paid', $sale->amount_paid ?? 0);
-        $saleDateInit   = old('sale_date', \Illuminate\Support\Carbon::parse($sale->sale_date)->format('Y-m-d'));
+        // 4. Other Init Values
+        $custModeInit = old('new_customer_name') ? 'new' : (old('customer_id', $sale->customer_id) ? 'existing' : 'walkin');
+        $saleDateInit = old('sale_date', $sale->sale_date ? $sale->sale_date->format('Y-m-d') : date('Y-m-d'));
+        $singlePaidInit = old('amount_paid', $sale->amount_paid ?? 0); // Fallback input
     @endphp
 
     {{-- Form --}}
     <form action="{{ route('sales.update', $sale) }}" method="POST"
-          x-data="saleEditForm(@json($mappedItems),
-                               @json($initialPayments->values()),
-                               '{{ $custModeInit }}',
-                               '{{ $saleDateInit }}',
-                               '{{ $singlePaidInit }}')"
+          x-data="saleEditForm({
+              lines: {{ json_encode($initialLines) }},
+              payments: {{ json_encode($initialPayments) }},
+              products: {{ json_encode($productsJson) }},
+              custMode: '{{ $custModeInit }}',
+              saleDate: '{{ $saleDateInit }}',
+              singlePaid: {{ $singlePaidInit }}
+          })"
           x-init="init()">
         @csrf
         @method('PUT')
@@ -184,15 +206,11 @@
                                 <td class="px-4 py-2">
                                     <select :name="`products[${idx}][product_id]`"
                                             x-model.number="row.product_id"
-                                            @change="onProductChange(row, $event)"
+                                            @change="onProductChange(row)"
                                             class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                                         <option value="">Select product</option>
                                         @foreach ($products as $p)
-                                            <option
-                                                value="{{ $p->id }}"
-                                                data-price="{{ (float) $p->price }}"
-                                                data-cost="{{ (float) ($p->cost_price ?? 0) }}"
-                                            >{{ $p->name }}</option>
+                                            <option value="{{ $p->id }}">{{ $p->name }}</option>
                                         @endforeach
                                     </select>
                                     <div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400" x-show="row.product_id">
@@ -350,46 +368,34 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
 
-function saleEditForm(initialLines, initialPays, custInit, dateInit, singlePaidInit){
+function saleEditForm(config){
     const rid = () => (crypto.randomUUID?.() || (Date.now() + Math.random()));
 
-    // Build product meta map from the <option> dataset
-    const productMeta = () => {
-        const map = {};
-        document.querySelectorAll('select[name^="products["] option[value]').forEach(o => {
-            const id = Number(o.value);
-            if (!id) return;
-            map[id] = {
-                price: Number(o.dataset.price || 0),
-                cost:  Number(o.dataset.cost  || 0),
-            };
-        });
-        return map;
-    };
-
     return {
-        // customer
-        custMode: custInit,
-        saleDate: dateInit,
+        // Data from PHP
+        lines: config.lines || [],
+        payments: config.payments || [],
+        products: config.products || [],
+        custMode: config.custMode || 'walkin',
+        saleDate: config.saleDate || '',
+        singlePaid: Number(config.singlePaid || 0),
 
-        // products
-        meta: {},
-        lines: (Array.isArray(initialLines) && initialLines.length) ? initialLines : [{ key: rid(), product_id:'', quantity:1, unit_price:0 }],
-
-        // payments
-        payments: (Array.isArray(initialPays) ? initialPays : []).map(p => ({ key: rid(), method: p.method || 'cash', amount: Number(p.amount||0), reference: p.reference || '' })),
-        singlePaid: Number(singlePaidInit || 0),
-
-        // totals
+        // State
         total: 0,
         totalPaid: 0,
+        productMap: {},
 
-        init(){ this.meta = productMeta(); this.recalc(); },
+        init(){
+            // Index products for fast lookup
+            this.products.forEach(p => this.productMap[p.id] = p);
+            this.recalc();
+        },
+
         money(v){ return Number(v || 0).toFixed(2); },
 
-        // product helpers
-        prodCost(row){ return this.meta[row.product_id]?.cost ?? 0; },
-        prodDefaultPrice(row){ return this.meta[row.product_id]?.price ?? 0; },
+        // Product Helpers
+        prodCost(row){ return this.productMap[row.product_id]?.cost ?? 0; },
+        prodDefaultPrice(row){ return this.productMap[row.product_id]?.price ?? 0; },
         marginPct(row){
             const cost = this.prodCost(row);
             const price = Number(row.unit_price || 0);
@@ -397,20 +403,25 @@ function saleEditForm(initialLines, initialPays, custInit, dateInit, singlePaidI
             const margin = price - cost;
             return (margin / price * 100).toFixed(1);
         },
-        resetToDefaultPrice(row){ const p = this.prodDefaultPrice(row); if (p>0){ row.unit_price = p; this.recalc(); } },
+        resetToDefaultPrice(row){
+            const p = this.prodDefaultPrice(row);
+            if (p > 0) { row.unit_price = p; this.recalc(); }
+        },
 
+        // Actions
         addLine(){ this.lines.push({ key: rid(), product_id:'', quantity:1, unit_price:0 }); },
         clearLines(){ this.lines = []; this.recalc(); },
         removeLine(i){ this.lines.splice(i,1); this.recalc(); },
 
-        onProductChange(row, e){
-            const opt = e.target.options[e.target.selectedIndex];
-            const price = Number(opt?.dataset?.price || 0);
-            if (price > 0 && (!row.unit_price || row.unit_price === 0)) row.unit_price = price;
+        onProductChange(row){
+            const p = this.productMap[row.product_id];
+            if (p && (!row.unit_price || row.unit_price === 0)) {
+                row.unit_price = p.price;
+            }
             this.recalc();
         },
 
-        // payments
+        // Payments
         addPayment(){ this.payments.push({ key: rid(), method: 'cash', amount: 0, reference: '' }); this.recalc(); },
         removePayment(i){ this.payments.splice(i,1); this.recalc(); },
 
@@ -435,12 +446,10 @@ function saleEditForm(initialLines, initialPays, custInit, dateInit, singlePaidI
         },
 
         recalc(){
-            this.total = this.lines.reduce((s, r) =>
-                s + (Number(r.quantity || 0) * Number(r.unit_price || 0)), 0
-            );
+            this.total = this.lines.reduce((s, r) => s + (Number(r.quantity || 0) * Number(r.unit_price || 0)), 0);
             const splitSum = this.payments.reduce((s,p)=> s + Number(p.amount || 0), 0);
             this.totalPaid = splitSum + Number(this.singlePaid || 0);
-        },
+        }
     }
 }
 </script>

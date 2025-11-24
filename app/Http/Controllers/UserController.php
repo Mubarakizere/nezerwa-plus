@@ -63,13 +63,20 @@ class UserController extends Controller
 
         //  Upload profile image if provided
         if ($request->hasFile('profile_image')) {
-            $data['profile_image'] = $request->file('profile_image')->store('profiles', 'public');
+            $data['photo'] = $request->file('profile_image')->store('profile-photos', 'public');
         }
 
         $user = User::create($data);
 
         //  Assign role using Spatie
         $user->syncRoles([$request->role]);
+
+        // Send credentials email
+        try {
+            \Illuminate\Support\Facades\Mail::to($user->email)->send(new \App\Mail\UserCredentialsMail($user, $request->password));
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to send user credentials email: ' . $e->getMessage());
+        }
 
         return redirect()->route('users.index')->with('success', 'User created successfully.');
     }
@@ -104,10 +111,10 @@ class UserController extends Controller
 
         //  Replace existing profile image if new one is uploaded
         if ($request->hasFile('profile_image')) {
-            if ($user->profile_image && Storage::disk('public')->exists($user->profile_image)) {
-                Storage::disk('public')->delete($user->profile_image);
+            if ($user->photo && Storage::disk('public')->exists($user->photo)) {
+                Storage::disk('public')->delete($user->photo);
             }
-            $data['profile_image'] = $request->file('profile_image')->store('profiles', 'public');
+            $data['photo'] = $request->file('profile_image')->store('profile-photos', 'public');
         }
 
         $user->update($data);
@@ -134,8 +141,8 @@ class UserController extends Controller
             return redirect()->route('users.index')->with('error', 'You cannot delete the main admin account.');
         }
 
-        if ($user->profile_image && Storage::disk('public')->exists($user->profile_image)) {
-            Storage::disk('public')->delete($user->profile_image);
+        if ($user->photo && Storage::disk('public')->exists($user->photo)) {
+            Storage::disk('public')->delete($user->photo);
         }
 
         $user->delete();

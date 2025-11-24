@@ -50,6 +50,7 @@
 <body class="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-sans antialiased transition-colors duration-300"
       x-data="{ sidebarOpen: window.innerWidth >= 1024 }"
       @resize.window="sidebarOpen = window.innerWidth >= 1024">
+    <x-loader />
 
 {{-- 🔔 Offline Banner --}}
 <div id="connection-status"

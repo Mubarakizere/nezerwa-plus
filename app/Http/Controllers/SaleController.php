@@ -13,10 +13,10 @@ use Carbon\Carbon;
 class SaleController extends Controller
 {
     /** Old single-channel on Sale (kept for compatibility) */
-    private const CHANNELS = ['cash', 'bank', 'momo', 'mobile_money'];
+    private const CHANNELS = ['cash', 'bank', 'momo', 'mobile', 'mobile_money'];
 
     /** New payment methods for split payments */
-    private const PAYMENT_METHODS = ['cash', 'bank', 'momo', 'mobile_money'];
+    private const PAYMENT_METHODS = ['cash', 'bank', 'momo', 'mobile', 'mobile_money'];
 
     /** ===================== INDEX ===================== */
     public function index(Request $request)
@@ -62,13 +62,13 @@ class SaleController extends Controller
 
         // Legacy single-payment fallback
         'amount_paid'           => 'nullable|numeric|min:0',
-        'payment_channel'       => 'nullable|in:cash,bank,momo,mobile_money',
+        'payment_channel'       => 'nullable|in:cash,bank,momo,mobile,mobile_money',
         'method'                => 'nullable|string|max:50',
         'notes'                 => 'nullable|string|max:500',
 
         // Split payments (optional)
         'payments'              => 'nullable|array|min:1',
-        'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile_money',
+        'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile,mobile_money',
         'payments.*.amount'     => 'required_with:payments|numeric|min:0.01',
         'payments.*.reference'  => 'nullable|string|max:100',
         'payments.*.phone'      => 'nullable|string|max:30',
@@ -201,6 +201,36 @@ class SaleController extends Controller
             'status'          => ($totalAmount <= $sumPaid) ? 'completed' : 'pending',
         ]);
 
+        // -------- Check for Low Stock & Alert Admins --------
+        try {
+            $lowStockProducts = collect();
+            foreach ($request->products as $item) {
+                $product = Product::find($item['product_id']);
+                if ($product && $product->isLowStock()) {
+                    $lowStockProducts->push($product);
+                }
+            }
+
+            if ($lowStockProducts->isNotEmpty()) {
+                // Find admins (users with 'admin' role)
+                // Assuming Spatie Permission: User::role('admin')->get()
+                // Or fallback to checking a specific email or permission if roles aren't strictly named 'admin'
+                $admins = \App\Models\User::role('admin')->get(); 
+                
+                // If no role 'admin', maybe try 'Super Admin' or just the current user if they are admin?
+                // Let's stick to 'admin' role for now, or fallback to a config email.
+                if ($admins->isEmpty()) {
+                     $admins = \App\Models\User::where('email', 'admin@stockmanagement.com')->get();
+                }
+
+                if ($admins->isNotEmpty()) {
+                    \Illuminate\Support\Facades\Mail::to($admins)->send(new \App\Mail\LowStockAlertMail($lowStockProducts));
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to send low stock alert: ' . $e->getMessage());
+        }
+
         DB::commit();
 
         return redirect()->route('sales.show', $sale->id)
@@ -257,13 +287,13 @@ class SaleController extends Controller
             'products.*.unit_price' => 'required|numeric|min:0',
 
             'amount_paid'           => 'nullable|numeric|min:0',
-            'payment_channel'       => 'nullable|in:cash,bank,momo,mobile_money',
+            'payment_channel'       => 'nullable|in:cash,bank,momo,mobile,mobile_money',
             'method'                => 'nullable|string|max:50',
             'notes'                 => 'nullable|string|max:500',
 
             // split payments
             'payments'              => 'nullable|array|min:1',
-            'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile_money',
+            'payments.*.method'     => 'required_with:payments|in:cash,bank,momo,mobile,mobile_money',
             'payments.*.amount'     => 'required_with:payments|numeric|min:0.01',
             'payments.*.reference'  => 'nullable|string|max:100',
             'payments.*.phone'      => 'nullable|string|max:30',
@@ -436,7 +466,7 @@ class SaleController extends Controller
                 'sale_date'     => $grp->first()->sale_date,
                 'customer_name' => $grp->first()->customer_name ?? 'Walk-in',
                 'total_amount'  => (float)($grp->first()->total_amount ?? 0),
-                'cash'   => 0, 'bank' => 0, 'momo' => 0, 'mobile_money' => 0,
+                'cash'   => 0, 'bank' => 0, 'momo' => 0, 'mobile' => 0, 'mobile_money' => 0,
             ];
             foreach ($grp as $p) {
                 $m = $p->method;

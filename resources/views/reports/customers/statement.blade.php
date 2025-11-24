@@ -15,8 +15,8 @@
 
     {{-- Filters --}}
     <form method="GET" action="{{ route('reports.customers.statement') }}"
-          class="rounded-xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-        <div class="md:col-span-2">
+          class="rounded-xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 p-4 grid grid-cols-1 md:grid-cols-12 gap-3">
+        <div class="md:col-span-6">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Customer</label>
             <select name="customer_id" class="form-select w-full">
                 <option value="">Select customer</option>
@@ -25,19 +25,24 @@
                 @endforeach
             </select>
         </div>
-        <div>
+        <div class="md:col-span-3">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">From</label>
             <input type="date" name="from" value="{{ request('from') }}" class="form-input w-full">
         </div>
-        <div>
+        <div class="md:col-span-3">
             <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">To</label>
             <input type="date" name="to" value="{{ request('to') }}" class="form-input w-full">
         </div>
-        <div class="flex items-end">
-            <div class="flex gap-2">
-                <button class="btn btn-secondary"><i data-lucide="filter" class="w-4 h-4"></i> Apply</button>
-                <a href="{{ route('reports.customers.statement') }}" class="btn btn-outline"><i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset</a>
-            </div>
+        <div class="md:col-span-12 flex justify-end gap-2">
+            <button class="btn btn-secondary flex items-center gap-1">
+                <i data-lucide="filter" class="w-4 h-4"></i> Apply
+            </button>
+            <a href="{{ route('reports.customers.statement.pdf', request()->all()) }}" class="btn btn-primary flex items-center gap-1" target="_blank">
+                <i data-lucide="download" class="w-4 h-4"></i> PDF
+            </a>
+            <a href="{{ route('reports.customers.statement') }}" class="btn btn-outline flex items-center gap-1">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset
+            </a>
         </div>
     </form>
 

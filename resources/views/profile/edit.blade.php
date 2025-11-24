@@ -49,6 +49,9 @@
                    focus:ring-indigo-500 focus:border-indigo-500 transition" />
 
         <p class="text-xs text-gray-500 dark:text-gray-400">PNG, JPG, JPEG up to 30 MB</p>
+        @error('photo')
+            <p class="text-sm text-red-600 dark:text-red-400 mt-1">{{ $message }}</p>
+        @enderror
 
         @if($user->photo)
             <button

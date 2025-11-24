@@ -52,14 +52,52 @@ class PurchaseController extends Controller
         return 'partial';
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $purchases = Purchase::with(['supplier', 'user'])
-            ->latest('purchase_date')
-            ->latest('id')
-            ->paginate(10);
+        $perPage = in_array((int)$request->get('per_page'), [10,15,25,50,100]) ? (int)$request->get('per_page') : 10;
 
-        return view('purchases.index', compact('purchases'));
+        $query = Purchase::with(['supplier', 'user'])
+            ->withSum('returns as returns_value_sum', 'total_amount')
+            ->withSum('returns as returns_refund_sum', 'refund_amount');
+
+        // Search
+        if (($search = trim((string) $request->get('search'))) !== '') {
+            $like = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+            $query->where(function ($q) use ($search, $like) {
+                if (is_numeric($search)) { $q->orWhere('id', (int)$search); }
+                $q->orWhere('invoice_number', $like, "%{$search}%")
+                  ->orWhere('payment_channel', $like, "%{$search}%")
+                  ->orWhere('status', $like, "%{$search}%")
+                  ->orWhere('method', $like, "%{$search}%")
+                  ->orWhereHas('supplier', fn($s) => $s->where('name', $like, "%{$search}%"));
+            });
+        }
+
+        // Filters
+        if ($request->filled('supplier_id')) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('payment_channel')) {
+            $query->where('payment_channel', $request->payment_channel);
+        }
+        if ($request->filled('from')) {
+            $query->whereDate('purchase_date', '>=', $request->from);
+        }
+        if ($request->filled('to')) {
+            $query->whereDate('purchase_date', '<=', $request->to);
+        }
+
+        $purchases = $query->latest('purchase_date')
+            ->latest('id')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $suppliers = Supplier::orderBy('name')->get(['id','name']);
+
+        return view('purchases.index', compact('purchases', 'suppliers'));
     }
 
     public function create()

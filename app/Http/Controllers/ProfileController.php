@@ -42,19 +42,24 @@ class ProfileController extends Controller
     // --------------------------------------------------
     // 📸 Handle new upload safely
     // --------------------------------------------------
-    if ($request->hasFile('photo') && $request->file('photo')->isValid()) {
-        // Delete the old one if exists
-        if ($user->photo && Storage::disk('public')->exists($user->photo)) {
-            Storage::disk('public')->delete($user->photo);
+    // --------------------------------------------------
+    // 📸 Handle new upload safely
+    // --------------------------------------------------
+    if ($request->hasFile('photo')) {
+        if ($request->file('photo')->isValid()) {
+            // Delete the old one if exists
+            if ($user->photo && Storage::disk('public')->exists($user->photo)) {
+                Storage::disk('public')->delete($user->photo);
+            }
+
+            // ✅ Force storing inside public/profile-photos/
+            $file = $request->file('photo');
+            $filename = uniqid('user_') . '.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('profile-photos', $filename, 'public');
+
+            // Store relative path only (no temp path)
+            $user->photo = $path;
         }
-
-        // ✅ Force storing inside public/profile-photos/
-        $file = $request->file('photo');
-        $filename = uniqid('user_') . '.' . $file->getClientOriginalExtension();
-        $path = $file->storeAs('profile-photos', $filename, 'public');
-
-        // Store relative path only (no temp path)
-        $user->photo = $path;
     }
 
     // --------------------------------------------------
