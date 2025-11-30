@@ -37,8 +37,10 @@ class ProductImportSeeder extends Seeder
                     'type' => 'in',
                     'quantity' => $item['stock'],
                     'unit_cost' => $item['price'],
-                    'remarks' => 'Initial Import',
-                    'date' => now(),
+                    'total_cost' => $item['stock'] * $item['price'],
+                    'source_type' => 'App\Models\User', // Attributing initial stock to Admin
+                    'source_id' => 1,
+                    'user_id' => 1,
                 ]);
                 
                 // Update product stock cache
