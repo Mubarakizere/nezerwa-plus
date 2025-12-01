@@ -194,9 +194,12 @@
                                         placeholder="Select Product"
                                     />
                                     <div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400" x-show="row.product_id">
+                                        <span class="font-medium text-gray-700 dark:text-gray-300">Price:</span>
+                                        <span x-text="money(row.default_price)"></span>
+                                        <span class="mx-1 text-gray-300">|</span>
                                         <span>Cost:</span>
                                         <span x-text="money(row.cost_price)"></span>
-                                        <span class="mx-1">•</span>
+                                        <span class="mx-1 text-gray-300">|</span>
                                         <span>Margin:</span>
                                         <span :class="row.unit_price >= row.cost_price ? 'text-green-600 dark:text-green-400' : 'text-rose-600 dark:text-rose-400'">
                                             <span x-text="marginPct(row)"></span>%
