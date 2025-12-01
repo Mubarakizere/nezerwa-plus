@@ -376,6 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+const allProducts = @json($products);
+
 function saleCreateForm(){
     const rid = () => (crypto.randomUUID?.() || String(Date.now() + Math.random()));
 
