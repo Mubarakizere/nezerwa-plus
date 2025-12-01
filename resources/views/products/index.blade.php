@@ -288,8 +288,7 @@
 </script>
 @endpush
 
-    @endcannot
-</div>
+
 
 {{-- Global Delete Confirmation Modal --}}
 @can('products.delete')
