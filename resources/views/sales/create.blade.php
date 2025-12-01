@@ -486,8 +486,8 @@ function saleCreateForm(){
             if (!product) return;
             const row = this.lines[index];
             row.product_id = product.id;
-            row.unit_price = Number(product.price || 0);
-            row.default_price = Number(product.price || 0);
+            row.unit_price = Number(product.price) || 0;
+            row.default_price = Number(product.price) || 0;
             row.cost_price = Number(product.cost_price || 0);
             this.recalc();
         },

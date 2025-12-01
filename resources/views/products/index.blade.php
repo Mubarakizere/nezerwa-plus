@@ -86,7 +86,7 @@
         </div>
     @else
 
-    @else
+
         <div x-data="productSearch()" x-init="init()">
             {{-- Filters --}}
             <form
