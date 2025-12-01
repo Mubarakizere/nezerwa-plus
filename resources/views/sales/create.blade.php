@@ -183,13 +183,15 @@
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         <template x-for="(row, idx) in lines" :key="row.key">
                             <tr>
-                                <td class="px-4 py-2 min-w-[250px]">
-                                    <x-product-search
+                                <td class="py-3 pr-4 min-w-[250px]">
+                                    <x-searchable-select
                                         ::name="`products[${idx}][product_id]`"
                                         ::value="row.product_id"
+                                        options-js="allProducts"
+                                        emit="product-selected"
                                         @product-selected="onProductSelected($event.detail, idx)"
-                                        @product-cleared="onProductCleared(idx)"
-                                        required="true"
+                                        @product-selected-cleared="onProductCleared(idx)"
+                                        placeholder="Select Product"
                                     />
                                     <div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400" x-show="row.product_id">
                                         <span>Cost:</span>
@@ -199,6 +201,11 @@
                                         <span :class="row.unit_price >= row.cost_price ? 'text-green-600 dark:text-green-400' : 'text-rose-600 dark:text-rose-400'">
                                             <span x-text="marginPct(row)"></span>%
                                         </span>
+                                    </div>
+                                    <div class="text-[11px] text-gray-400 mt-1" x-show="row.default_price > 0 && row.unit_price != row.default_price && row.product_id">
+                                        <button type="button" class="underline hover:text-indigo-500" @click="resetToDefaultPrice(row)">
+                                            Reset to default (<span x-text="money(row.default_price)"></span>)
+                                        </button>
                                     </div>
                                 </td>
 

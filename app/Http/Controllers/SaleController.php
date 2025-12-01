@@ -34,8 +34,9 @@ class SaleController extends Controller
     public function create()
     {
         $customers = Customer::orderBy('name')->get();
-        // Products are now fetched via AJAX
-        return view('sales.create', compact('customers'));
+        $products  = Product::orderBy('name')->get(['id', 'name', 'price', 'cost_price']);
+        
+        return view('sales.create', compact('customers', 'products'));
     }
 
     /** ===================== STORE ===================== */

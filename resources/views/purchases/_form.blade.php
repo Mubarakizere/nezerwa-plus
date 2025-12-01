@@ -128,12 +128,14 @@
                                     <tr>
                                         <td class="py-3 text-gray-500 text-sm" x-text="idx + 1"></td>
                                         <td class="py-3 pr-4">
-                                            <x-product-search
+                                            <x-searchable-select
                                                 ::name="`products[${idx}][product_id]`"
                                                 ::value="row.product_id"
+                                                options-js="allProducts"
+                                                emit="product-selected"
                                                 @product-selected="onProductSelected($event.detail, idx)"
-                                                @product-cleared="onProductCleared(idx)"
-                                                required="true"
+                                                @product-selected-cleared="onProductCleared(idx)"
+                                                placeholder="Select Product"
                                             />
                                         </td>
                                         <td class="py-3 pr-4">
@@ -256,6 +258,8 @@
 
 @push('scripts')
 <script>
+    const allProducts = @json($products ?? []);
+
     function purchaseForm() {
         const rid = () => (crypto.randomUUID?.() || String(Date.now() + Math.random()));
 

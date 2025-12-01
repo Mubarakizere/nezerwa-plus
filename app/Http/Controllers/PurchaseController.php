@@ -103,8 +103,9 @@ class PurchaseController extends Controller
     public function create()
     {
         $suppliers = Supplier::orderBy('name')->get();
-        // Products fetched via AJAX
-        return view('purchases.create', compact('suppliers'));
+        $products  = Product::orderBy('name')->get(['id', 'name', 'cost_price']);
+
+        return view('purchases.create', compact('suppliers', 'products'));
     }
 
     public function store(Request $request)
@@ -279,8 +280,9 @@ class PurchaseController extends Controller
     public function edit(Purchase $purchase)
     {
         $suppliers = Supplier::orderBy('name')->get();
+        $products  = Product::orderBy('name')->get(['id', 'name', 'cost_price']);
         $purchase->load('items');
-        return view('purchases.edit', compact('purchase', 'suppliers'));
+        return view('purchases.edit', compact('purchase', 'suppliers', 'products'));
     }
 
     public function update(Request $request, Purchase $purchase)
