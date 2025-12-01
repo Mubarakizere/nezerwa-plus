@@ -1,3 +1,34 @@
+@php
+    $isEdit = isset($purchase);
+
+    // Guard against divide-by-zero
+    $taxPct = $discountPct = 0;
+    if ($isEdit && ($purchase->subtotal ?? 0) > 0) {
+        $taxPct      = round((($purchase->tax ?? 0) / $purchase->subtotal) * 100, 2);
+        $discountPct = round((($purchase->discount ?? 0) / $purchase->subtotal) * 100, 2);
+    }
+
+    // Prepare initial state for Alpine
+    $initialItems = old('products', []);
+    if (empty($initialItems) && $isEdit) {
+        $initialItems = $purchase->items->map(function($i) {
+            return [
+                'product_id' => $i->product_id,
+                'quantity' => $i->quantity,
+                'unit_cost' => $i->unit_cost,
+            ];
+        });
+    }
+    // Ensure at least one empty line
+    if (empty($initialItems)) {
+        $initialItems = [['product_id' => '', 'quantity' => 1, 'unit_cost' => 0]];
+    }
+
+    $status = old('status', $isEdit ? ($purchase->status ?? 'received') : 'received');
+    $amountPaid = old('amount_paid', $isEdit ? ($purchase->amount_paid ?? 0) : 0);
+    $paymentChannel = old('payment_channel', $isEdit ? ($purchase->payment_channel ?? 'cash') : 'cash');
+@endphp
+
 <div x-data="purchaseForm()" x-init="init()">
     {{-- Error Display --}}
     @if($errors->any())
@@ -230,30 +261,18 @@
 
         return {
             items: (() => {
-                const old = @json(old('products', []));
-                if (old.length) {
-                    return old.map(i => ({
-                        key: rid(),
-                        product_id: i.product_id,
-                        quantity: i.quantity,
-                        unit_cost: i.unit_cost
-                    }));
-                }
-                @if(isset($purchase))
-                    return @json($purchase->items->map(fn($i) => [
-                        'key' => (string) Str::uuid(),
-                        'product_id' => $i->product_id,
-                        'quantity' => $i->quantity,
-                        'unit_cost' => $i->unit_cost
-                    ]));
-                @else
-                    return [{ key: rid(), product_id: '', quantity: 1, unit_cost: 0 }];
-                @endif
+                const data = @json($initialItems);
+                return data.map(i => ({
+                    key: rid(),
+                    product_id: i.product_id,
+                    quantity: i.quantity,
+                    unit_cost: i.unit_cost
+                }));
             })(),
 
-            status: @json(old('status', $purchase->status ?? 'received')),
-            amountPaid: @json(old('amount_paid', $purchase->amount_paid ?? 0)),
-            paymentChannel: @json(old('payment_channel', $purchase->payment_channel ?? 'cash')),
+            status: @json($status),
+            amountPaid: @json($amountPaid),
+            paymentChannel: @json($paymentChannel),
 
             init() {
                 //
