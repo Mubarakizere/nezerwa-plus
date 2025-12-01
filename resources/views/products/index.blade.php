@@ -87,10 +87,9 @@
     @else
 
 
-        <div x-data="productSearch()" x-init="init()">
+        <div>
             {{-- Filters --}}
-            <form
-                @submit.prevent="fetchResults()"
+            <form method="GET" action="{{ route('products.index') }}"
                 class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm space-y-3"
             >
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
@@ -100,8 +99,9 @@
                         <div class="relative">
                             <i data-lucide="search" class="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400"></i>
                             <input
-                                x-model.debounce.300ms="params.search"
-                                @input="fetchResults()"
+                                type="text"
+                                name="search"
+                                value="{{ request('search') }}"
                                 placeholder="Name, SKU…"
                                 class="form-input w-full pl-8 text-sm">
                         </div>
@@ -110,38 +110,11 @@
                     {{-- Category --}}
                     <div class="md:col-span-2">
                         <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Category</label>
-
-                        <div class="relative mb-1">
-                            <i data-lucide="search" class="w-4 h-4 absolute left-2.5 top-2.5 text-gray-400"></i>
-                            <input
-                                x-model="qcat"
-                                type="text"
-                                placeholder="Filter categories…"
-                                class="form-input w-full pl-8 text-xs"
-                                aria-label="Filter categories">
-                        </div>
-
-                        <select
-                            x-model="params.category_id"
-                            @change="fetchResults()"
-                            class="form-select w-full text-sm"
-                            x-effect="
-                                const k = (qcat || '').toLowerCase();
-                                $el.querySelectorAll('option[data-name]').forEach(o => {
-                                    o.hidden = !o.dataset.name.includes(k) && o.value !== '';
-                                });
-                            "
-                        >
+                        <select name="category_id" class="form-select w-full text-sm" onchange="this.form.submit()">
                             <option value="">All categories</option>
                             @foreach($usableCategories as $c)
-                                @php
-                                    $label = trim($c->name.' '.($c->code ? "({$c->code})" : ''));
-                                @endphp
-                                <option
-                                    value="{{ $c->id }}"
-                                    data-name="{{ Str::lower($label) }}"
-                                >
-                                    {{ $label }}
+                                <option value="{{ $c->id }}" {{ request('category_id') == $c->id ? 'selected' : '' }}>
+                                    {{ $c->name }} {{ $c->code ? "({$c->code})" : '' }}
                                 </option>
                             @endforeach
                         </select>
@@ -150,143 +123,60 @@
                     {{-- Stock status --}}
                     <div>
                         <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Stock Status</label>
-                        <select x-model="params.stock_status" @change="fetchResults()" class="form-select w-full text-sm">
+                        <select name="stock_status" class="form-select w-full text-sm" onchange="this.form.submit()">
                             <option value="">Any</option>
-                            <option value="in">In stock</option>
-                            <option value="low">Low (≤ {{ $threshold }})</option>
-                            <option value="out">Out of stock</option>
+                            <option value="in" {{ request('stock_status') == 'in' ? 'selected' : '' }}>In stock</option>
+                            <option value="low" {{ request('stock_status') == 'low' ? 'selected' : '' }}>Low (≤ {{ $threshold }})</option>
+                            <option value="out" {{ request('stock_status') == 'out' ? 'selected' : '' }}>Out of stock</option>
                         </select>
                     </div>
 
                     {{-- Per page --}}
                     <div>
                         <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Per page</label>
-                        <select x-model="params.per_page" @change="fetchResults()" class="form-select w-full text-sm">
+                        <select name="per_page" class="form-select w-full text-sm" onchange="this.form.submit()">
                             @foreach([10,20,50,100] as $pp)
-                                <option value="{{ $pp }}">{{ $pp }}</option>
+                                <option value="{{ $pp }}" {{ request('per_page') == $pp ? 'selected' : '' }}>{{ $pp }}</option>
                             @endforeach
                         </select>
                     </div>
                 </div>
 
                 <div class="flex flex-wrap gap-2 justify-end pt-2">
-                    <button type="button" @click="resetFilters()"
+                    <a href="{{ route('products.index') }}"
                        class="btn btn-outline text-sm flex items-center gap-1">
                         <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                         <span>Reset</span>
+                    </a>
+                    <button type="submit" class="btn btn-primary text-sm flex items-center gap-1">
+                        <i data-lucide="search" class="w-4 h-4"></i>
+                        <span>Search</span>
                     </button>
                 </div>
             </form>
 
             {{-- Page stats --}}
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-6">
-                <x-stat-card title="Products (page)" x-bind:value="stats.page_count" color="indigo" />
-                <x-stat-card title="Units in stock (page)" x-bind:value="stats.units" color="blue" />
-                <x-stat-card title="Stock value @ cost (page)" x-bind:value="'RWF ' + stats.value" color="emerald" />
-                <x-stat-card title="Potential revenue (page)" x-bind:value="'RWF ' + stats.revenue" color="amber" />
+                <x-stat-card title="Products (page)" value="{{ $pageCount }}" color="indigo" />
+                <x-stat-card title="Units in stock (page)" value="{{ $fmt0($pageUnits) }}" color="blue" />
+                <x-stat-card title="Stock value @ cost (page)" value="RWF {{ $fmt2($pageValue) }}" color="emerald" />
+                <x-stat-card title="Potential revenue (page)" value="RWF {{ $fmt2($pageRevenue) }}" color="amber" />
             </div>
 
-            <div class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-show="stats.count > 0">
-                Showing <span x-text="stats.page_count"></span> of <span x-text="stats.count"></span> matching products.
+            <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Showing {{ $pageCount }} of {{ $totalCount }} matching products.
             </div>
 
             {{-- Table --}}
             <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-x-auto mt-4 relative">
-                <div x-show="loading" class="absolute inset-0 bg-white/50 dark:bg-gray-900/50 z-10 flex items-center justify-center backdrop-blur-sm">
-                    <i data-lucide="loader-2" class="w-8 h-8 text-indigo-600 animate-spin"></i>
-                </div>
-                <div x-html="html">
-                    @include('products._table')
-                </div>
+                @include('products._table')
             </div>
 
             {{-- Pagination --}}
-            <div class="mt-4" x-html="pagination" @click.prevent="handlePagination($event)">
+            <div class="mt-4">
                 {{ $products->withQueryString()->links() }}
             </div>
         </div>
-    @endcannot
-</div>
-
-@push('scripts')
-<script>
-    function productSearch() {
-        return {
-            params: {
-                search: '{{ request('search') }}',
-                category_id: '{{ request('category_id') }}',
-                stock_status: '{{ request('stock_status') }}',
-                per_page: '{{ request('per_page', 20) }}',
-            },
-            qcat: '',
-            loading: false,
-            html: '',
-            pagination: '',
-            stats: {
-                count: '{{ $totalCount }}',
-                page_count: '{{ $pageCount }}',
-                units: '{{ $fmt0($pageUnits) }}',
-                value: '{{ $fmt2($pageValue) }}',
-                revenue: '{{ $fmt2($pageRevenue) }}',
-            },
-
-            init() {
-                // Initial load handled by server-side render, but we set up listeners
-            },
-
-            async fetchResults(url = null) {
-                this.loading = true;
-                const endpoint = url || '{{ route('products.index') }}';
-                const query = new URLSearchParams(this.params).toString();
-                const target = url ? url : `${endpoint}?${query}`;
-
-                try {
-                    const res = await fetch(target, {
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json',
-                        }
-                    });
-                    if (!res.ok) throw new Error('Network response was not ok');
-                    const data = await res.json();
-
-                    this.html = data.html;
-                    this.pagination = data.pagination;
-                    this.stats = data.stats;
-
-                    // Re-init icons
-                    this.$nextTick(() => {
-                        if (window.lucide) lucide.createIcons();
-                    });
-                    
-                    // Update URL without reload
-                    window.history.pushState({}, '', target);
-
-                } catch (error) {
-                    console.error('Fetch error:', error);
-                } finally {
-                    this.loading = false;
-                }
-            },
-
-            resetFilters() {
-                this.params.search = '';
-                this.params.category_id = '';
-                this.params.stock_status = '';
-                this.params.per_page = '20';
-                this.qcat = '';
-                this.fetchResults();
-            },
-
-            handlePagination(e) {
-                const link = e.target.closest('a');
-                if (!link) return;
-                this.fetchResults(link.href);
-            }
-        }
-    }
-</script>
-@endpush
 
 
 
