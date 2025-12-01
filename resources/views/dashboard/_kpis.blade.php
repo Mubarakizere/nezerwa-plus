@@ -58,7 +58,7 @@
             <div class="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-gradient-to-br from-amber-500/20 to-yellow-500/20 blur-2xl transition-all group-hover:scale-150"></div>
             <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stock Value</dt>
             <dd class="mt-3 flex items-baseline gap-2">
-                <span class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{{ $totalStockValue }}</span>
+                <span class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{{ $totalStockValue }} RWF</span>
             </dd>
             <div class="mt-4 flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
                 <div class="flex items-center justify-center rounded-full bg-amber-50 dark:bg-amber-900/30 p-1.5">
