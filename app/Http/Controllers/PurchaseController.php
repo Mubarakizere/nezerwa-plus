@@ -102,9 +102,9 @@ class PurchaseController extends Controller
 
     public function create()
     {
-        $suppliers = Supplier::orderBy('name')->get(['id','name']);
-        $products  = Product::orderBy('name')->get(['id','name','cost_price']);
-        return view('purchases.create', compact('suppliers', 'products'));
+        $suppliers = Supplier::orderBy('name')->get();
+        // Products fetched via AJAX
+        return view('purchases.create', compact('suppliers'));
     }
 
     public function store(Request $request)

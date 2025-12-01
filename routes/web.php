@@ -158,6 +158,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('permission:categories.view');
 
     // Products
+    Route::get('products/search/json', [ProductController::class, 'searchJson'])
+        ->name('products.search.json')
+        ->middleware('permission:products.view');
+
     Route::resource('products', ProductController::class)
         ->middleware('permission:products.view');
 

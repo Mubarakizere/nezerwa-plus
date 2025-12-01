@@ -72,6 +72,26 @@ class ProductController extends Controller
 
         $products = $query->orderBy('name')->paginate($perPage)->appends($request->query());
 
+        if ($request->wantsJson()) {
+            return response()->json([
+                'html' => view('products._table', compact('products', 'threshold'))->render(),
+                'pagination' => $products->links()->toHtml(),
+                'stats' => [
+                    'count' => $products->total(),
+                    'page_count' => $products->count(),
+                    'units' => number_format($products->getCollection()->sum(fn($p) => max(0, (int)($p->qty_in ?? 0) - (int)($p->qty_out ?? 0)))),
+                    'value' => number_format($products->getCollection()->sum(function($p){
+                        $units = max(0, (int)($p->qty_in ?? 0) - (int)($p->qty_out ?? 0));
+                        return $units * (float)($p->cost_price ?? 0);
+                    }), 2),
+                    'revenue' => number_format($products->getCollection()->sum(function($p){
+                        $units = max(0, (int)($p->qty_in ?? 0) - (int)($p->qty_out ?? 0));
+                        return $units * (float)($p->price ?? 0);
+                    }), 2),
+                ]
+            ]);
+        }
+
         return view('products.index', compact('products', 'categories', 'threshold'));
     }
 
@@ -224,5 +244,25 @@ class ProductController extends Controller
             Log::error('Product delete failed', ['error' => $e->getMessage()]);
             return back()->withErrors(['error' => 'Failed to delete product: ' . $e->getMessage()]);
         }
+    }
+
+    /** JSON Search for Autocomplete */
+    public function searchJson(Request $request)
+    {
+        $query = Product::query()
+            ->select(['id', 'name', 'sku', 'price', 'cost_price', 'stock']) // Select only needed fields
+            ->limit(20);
+
+        if ($s = trim((string) $request->input('q'))) {
+            $op = DB::connection()->getDriverName() === 'pgsql' ? 'ILIKE' : 'LIKE';
+            $pattern = "%{$s}%";
+            $query->where(function ($w) use ($op, $pattern, $s) {
+                $w->where('name', $op, $pattern)
+                  ->orWhere('sku', $op, $pattern);
+                if (is_numeric($s)) $w->orWhere('id', (int) $s);
+            });
+        }
+
+        return response()->json($query->get());
     }
 }

@@ -161,11 +161,14 @@ class DashboardController extends Controller
     private function calculateStockValue(): float
     {
         try {
-            return (float) Product::all()->sum(function ($product) {
-                $qty = (float) ($product->quantity ?? 0);
-                $cost = (float) ($product->cost_price ?? 0);
-                return $qty * $cost;
-            });
+            // Calculate stock value: sum((in - out) * cost_price)
+            // We use a direct DB query for performance
+            $value = DB::table('stock_movements')
+                ->join('products', 'stock_movements.product_id', '=', 'products.id')
+                ->selectRaw('SUM(CASE WHEN stock_movements.type = ? THEN stock_movements.quantity ELSE -stock_movements.quantity END * products.cost_price) as total', ['in'])
+                ->value('total');
+
+            return (float) max(0, $value);
         } catch (\Exception $e) {
             Log::warning('Stock value calculation failed: ' . $e->getMessage());
             return 0.0;
