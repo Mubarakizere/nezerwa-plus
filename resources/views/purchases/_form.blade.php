@@ -8,325 +8,423 @@
         $discountPct = round((($purchase->discount ?? 0) / $purchase->subtotal) * 100, 2);
     }
 
-    // Prepare initial state for Alpine
-    $initialItems = old('products', []);
-    if (empty($initialItems) && $isEdit) {
-        $initialItems = $purchase->items->map(function($i) {
-            return [
-                'product_id' => $i->product_id,
-                'quantity' => $i->quantity,
-                'unit_cost' => $i->unit_cost,
-            ];
-        });
-    }
-    // Ensure at least one empty line
-    if (empty($initialItems)) {
-        $initialItems = [['product_id' => '', 'quantity' => 1, 'unit_cost' => 0]];
+    // Initial line items
+    $initialLines = collect(old('products',
+        $isEdit
+            ? $purchase->items->map(fn($i) => [
+                'product_id' => (int)   $i->product_id,
+                'quantity'   => (float) $i->quantity,
+                'unit_cost'  => (float) $i->unit_cost,
+            ])->values()->all()
+            : []
+    ));
+
+    if ($initialLines->isEmpty()) {
+        $initialLines = collect([[
+            'product_id' => '',
+            'quantity'   => 1,
+            'unit_cost'  => 0,
+        ]]);
     }
 
-    $status = old('status', $isEdit ? ($purchase->status ?? 'received') : 'received');
-    $amountPaid = old('amount_paid', $isEdit ? ($purchase->amount_paid ?? 0) : 0);
-    $paymentChannel = old('payment_channel', $isEdit ? ($purchase->payment_channel ?? 'cash') : 'cash');
+    $initialState = [
+        'supplier_id'     => old('supplier_id', $isEdit ? $purchase->supplier_id : ''),
+        'purchase_date'   => old('purchase_date', $isEdit
+            ? ($purchase->purchase_date?->format('Y-m-d') ?? now()->format('Y-m-d'))
+            : now()->format('Y-m-d')),
+        'payment_channel' => old('payment_channel', $isEdit ? ($purchase->payment_channel ?? 'cash') : 'cash'),
+        'method'          => old('method',   $isEdit ? ($purchase->method ?? '')   : ''), // reference
+        'notes'           => old('notes',    $isEdit ? ($purchase->notes  ?? '')   : ''),
+        'tax'             => (float) old('tax',      $isEdit ? $taxPct      : 0),
+        'discount'        => (float) old('discount', $isEdit ? $discountPct : 0),
+        'amount_paid'     => (float) old('amount_paid', $isEdit ? ($purchase->amount_paid ?? 0) : 0),
+        'lines'           => $initialLines->all(),
+    ];
 @endphp
 
-<div x-data="purchaseForm()" x-init="init()">
-    {{-- Error Display --}}
-    @if($errors->any())
-        <div class="mb-6 bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 p-4 rounded-r-lg">
-            <div class="flex">
-                <div class="flex-shrink-0">
-                    <i data-lucide="alert-circle" class="h-5 w-5 text-red-400"></i>
-                </div>
-                <div class="ml-3">
-                    <h3 class="text-sm font-medium text-red-800 dark:text-red-200">
-                        There were errors with your submission
-                    </h3>
-                    <div class="mt-2 text-sm text-red-700 dark:text-red-300">
-                        <ul class="list-disc pl-5 space-y-1">
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                </div>
-            </div>
+<div x-data="purchaseForm(@js($initialState))" x-init="init()" class="space-y-6">
+    {{-- Top: supplier, date, channel, reference --}}
+    <section class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 grid grid-cols-1 md:grid-cols-4 gap-5">
+        <div>
+            <x-label value="Supplier" />
+            <select name="supplier_id" x-model="state.supplier_id" class="form-select" required>
+                <option value="">-- Select Supplier --</option>
+                @foreach($suppliers as $s)
+                    <option value="{{ $s->id }}">{{ $s->name }}</option>
+                @endforeach
+            </select>
+            @error('supplier_id')
+                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+            @enderror
         </div>
-    @endif
 
-    <form action="{{ isset($purchase) ? route('purchases.update', $purchase) : route('purchases.store') }}"
-          method="POST"
-          @submit.prevent="submitForm">
-        @csrf
-        @if(isset($purchase))
-            @method('PUT')
-        @endif
+        <div>
+            <x-label value="Purchase Date" />
+            <input type="date" name="purchase_date" x-model="state.purchase_date" class="form-input" required>
+            @error('purchase_date')
+                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+            @enderror
+        </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {{-- Left Column: Supplier & Products --}}
-            <div class="lg:col-span-2 space-y-6">
-
-                {{-- Supplier Selection --}}
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                        <i data-lucide="truck" class="w-5 h-5 text-indigo-500"></i>
-                        Supplier Details
-                    </h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="form-label">Supplier <span class="text-red-500">*</span></label>
-                            <select name="supplier_id" class="form-select w-full" required>
-                                <option value="">Select Supplier</option>
-                                @foreach($suppliers as $s)
-                                    <option value="{{ $s->id }}" @selected(isset($purchase) && $purchase->supplier_id == $s->id)>
-                                        {{ $s->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div>
-                            <label class="form-label">Purchase Date</label>
-                            <input type="date" name="purchase_date"
-                                   value="{{ old('purchase_date', isset($purchase) ? $purchase->purchase_date->format('Y-m-d') : date('Y-m-d')) }}"
-                                   class="form-input w-full">
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="form-label">Reference (Invoice #)</label>
-                            <input type="text" name="reference_number"
-                                   value="{{ old('reference_number', $purchase->reference_number ?? '') }}"
-                                   class="form-input w-full"
-                                   placeholder="e.g. INV-2023-001">
-                        </div>
-                    </div>
-                </div>
-
-                {{-- Products Table --}}
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                            <i data-lucide="shopping-cart" class="w-5 h-5 text-indigo-500"></i>
-                            Items
-                        </h2>
-                        <button type="button" @click="addItem()" class="btn btn-secondary text-sm flex items-center gap-1">
-                            <i data-lucide="plus" class="w-4 h-4"></i> Add Item
-                        </button>
-                    </div>
-
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                                    <th class="py-2 w-10">#</th>
-                                    <th class="py-2 min-w-[250px]">Product</th>
-                                    <th class="py-2 w-24">Qty</th>
-                                    <th class="py-2 w-32">Unit Cost</th>
-                                    <th class="py-2 w-32 text-right">Total</th>
-                                    <th class="py-2 w-10"></th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                                <template x-for="(row, idx) in items" :key="row.key">
-                                    <tr>
-                                        <td class="py-3 text-gray-500 text-sm" x-text="idx + 1"></td>
-                                        <td class="py-3 pr-4">
-                                            <x-searchable-select
-                                                ::name="`products[${idx}][product_id]`"
-                                                ::value="row.product_id"
-                                                options-js="allProducts"
-                                                emit="product-selected"
-                                                @product-selected="onProductSelected($event.detail, idx)"
-                                                @product-selected-cleared="onProductCleared(idx)"
-                                                placeholder="Select Product"
-                                            />
-                                        </td>
-                                        <td class="py-3 pr-4">
-                                            <input type="number" :name="`products[${idx}][quantity]`"
-                                                   x-model.number="row.quantity"
-                                                   min="1"
-                                                   class="form-input w-full text-center"
-                                                   required>
-                                        </td>
-                                        <td class="py-3 pr-4">
-                                            <input type="number" :name="`products[${idx}][unit_cost]`"
-                                                   x-model.number="row.unit_cost"
-                                                   step="0.01"
-                                                   class="form-input w-full text-right"
-                                                   required>
-                                        </td>
-                                        <td class="py-3 text-right font-medium text-gray-900 dark:text-gray-100">
-                                            <span x-text="formatMoney(row.quantity * row.unit_cost)"></span>
-                                        </td>
-                                        <td class="py-3 text-right">
-                                            <button type="button" @click="removeItem(idx)" class="text-red-500 hover:text-red-700 p-1">
-                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                            <tfoot>
-                                <tr>
-                                    <td colspan="4" class="py-4 text-right font-bold text-gray-700 dark:text-gray-300">Grand Total:</td>
-                                    <td class="py-4 text-right font-bold text-xl text-indigo-600 dark:text-indigo-400">
-                                        <span x-text="formatMoney(grandTotal)"></span>
-                                    </td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
+        <div>
+            <x-label value="Payment Channel" />
+            {{-- This is what the controller uses --}}
+            <select name="payment_channel" x-model="state.payment_channel" class="form-select">
+                <option value="cash">Cash</option>
+                <option value="bank">Bank</option>
+                <option value="momo">MoMo</option>
+            </select>
+            <div class="flex gap-2 mt-2">
+                <button type="button"
+                        @click="setChannel('cash')"
+                        class="px-2 py-1 rounded-md border"
+                        :class="badgeClass('cash')">
+                    Cash
+                </button>
+                <button type="button"
+                        @click="setChannel('bank')"
+                        class="px-2 py-1 rounded-md border"
+                        :class="badgeClass('bank')">
+                    Bank
+                </button>
+                <button type="button"
+                        @click="setChannel('momo')"
+                        class="px-2 py-1 rounded-md border"
+                        :class="badgeClass('momo')">
+                    MoMo
+                </button>
             </div>
+            @error('payment_channel')
+                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+            @enderror
+        </div>
 
-            {{-- Right Column: Payment & Notes --}}
-            <div class="space-y-6">
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                        <i data-lucide="credit-card" class="w-5 h-5 text-indigo-500"></i>
-                        Payment & Status
-                    </h2>
+        <div>
+            <x-label value="Reference (optional)" />
+            {{-- Stored in purchases.method (reference/cheque/txn id) --}}
+            <input type="text"
+                   name="method"
+                   x-model="state.method"
+                   class="form-input"
+                   placeholder="Invoice # / Txn ID / Cheque no.">
+            @error('method')
+                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+            @enderror
+        </div>
+    </section>
 
-                    <div class="space-y-4">
-                        <div>
-                            <label class="form-label">Status</label>
-                            <select name="status" class="form-select w-full" x-model="status">
-                                <option value="received">Received</option>
-                                <option value="pending">Pending</option>
-                                <option value="ordered">Ordered</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="form-label">Amount Paid</label>
-                            <div class="flex gap-2">
-                                <input type="number" name="amount_paid"
-                                       x-model.number="amountPaid"
-                                       step="0.01"
-                                       class="form-input w-full">
-                                <button type="button" @click="payFull()" class="btn btn-outline px-3">Full</button>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="form-label">Payment Channel</label>
-                            <div class="flex flex-wrap gap-2 mt-1">
-                                <template x-for="channel in ['cash', 'bank', 'momo', 'mobile']">
-                                    <button type="button"
-                                            @click="paymentChannel = channel"
-                                            :class="paymentChannel === channel
-                                                ? 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700'
-                                                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'"
-                                            class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors capitalize">
-                                        <span x-text="channel"></span>
-                                    </button>
-                                </template>
-                                <input type="hidden" name="payment_channel" x-model="paymentChannel">
-                            </div>
-                        </div>
-
-                        <div class="pt-4 border-t border-gray-100 dark:border-gray-700">
-                            <div class="flex justify-between text-sm mb-1">
-                                <span class="text-gray-500">Total Payable:</span>
-                                <span class="font-medium" x-text="formatMoney(grandTotal)"></span>
-                            </div>
-                            <div class="flex justify-between text-sm mb-1">
-                                <span class="text-gray-500">Paid:</span>
-                                <span class="font-medium text-emerald-600" x-text="formatMoney(amountPaid)"></span>
-                            </div>
-                            <div class="flex justify-between text-sm font-bold">
-                                <span class="text-gray-700 dark:text-gray-300">Balance Due:</span>
-                                <span :class="balanceDue > 0 ? 'text-red-600' : 'text-gray-500'"
-                                      x-text="formatMoney(balanceDue)"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                    <label class="form-label">Notes</label>
-                    <textarea name="notes" rows="3" class="form-textarea w-full mt-1">{{ old('notes', $purchase->notes ?? '') }}</textarea>
-                </div>
-
-                <button type="submit"
-                        class="w-full btn btn-primary py-3 text-base flex justify-center items-center gap-2 shadow-lg shadow-indigo-500/20">
-                    <i data-lucide="check-circle" class="w-5 h-5"></i>
-                    {{ isset($purchase) ? 'Update Purchase' : 'Create Purchase' }}
+    {{-- Items --}}
+    <section class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <h3 class="font-medium text-gray-800 dark:text-gray-100">Products</h3>
+            <div class="flex gap-2">
+                <button type="button"
+                        class="btn btn-outline text-xs sm:text-sm"
+                        @click="addLine()">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    Add Product
+                </button>
+                <button type="button"
+                        class="btn btn-outline text-xs sm:text-sm"
+                        @click="clearLines()">
+                    Clear All
                 </button>
             </div>
         </div>
-    </form>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 uppercase text-xs font-medium">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Product</th>
+                        <th class="px-4 py-2 text-right">Qty</th>
+                        <th class="px-4 py-2 text-right">Unit Cost</th>
+                        <th class="px-4 py-2 text-right">Subtotal</th>
+                        <th class="px-4 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                    <template x-for="(row, idx) in state.lines" :key="row.key">
+                        <tr>
+                            {{-- Product --}}
+                            <td class="px-4 py-2">
+                                <select :name="`products[${idx}][product_id]`"
+                                        x-model.number="row.product_id"
+                                        @change="onProductChange(row, $event)"
+                                        class="form-select">
+                                    <option value="">Select product</option>
+                                    @foreach ($products as $p)
+                                        <option value="{{ $p->id }}" data-cost="{{ $p->cost_price ?? 0 }}">
+                                            {{ $p->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </td>
+
+                            {{-- Qty --}}
+                            <td class="px-4 py-2 text-right">
+                                <input type="number"
+                                       step="1"
+                                       min="1"
+                                       class="form-input text-right w-20"
+                                       x-model.number="row.quantity"
+                                       :name="`products[${idx}][quantity]`"
+                                       @input="recalc()">
+                            </td>
+
+                            {{-- Unit cost --}}
+                            <td class="px-4 py-2 text-right">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       class="form-input text-right w-28"
+                                       x-model.number="row.unit_cost"
+                                       :name="`products[${idx}][unit_cost]`"
+                                       @input="recalc()">
+                            </td>
+
+                            {{-- Line total --}}
+                            <td class="px-4 py-2 text-right font-medium">
+                                <input type="hidden"
+                                       :name="`products[${idx}][total_cost]`"
+                                       :value="lineTotal(row).toFixed(2)">
+                                <span x-text="formatMoney(lineTotal(row))"></span>
+                            </td>
+
+                            {{-- Remove --}}
+                            <td class="px-4 py-2 text-right">
+                                <button type="button"
+                                        class="btn btn-danger text-xs px-2 py-1"
+                                        @click="removeLine(idx)">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="!state.lines.length">
+                        <td colspan="5" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                            No items yet. Add your first product.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        {{-- Generic line validation help (optional) --}}
+        @if ($errors->has('products'))
+            <div class="px-5 py-3 text-xs text-red-600 dark:text-red-400 border-t border-red-200/60 dark:border-red-700/60 bg-red-50/40 dark:bg-red-900/10">
+                Some product lines are invalid. Please check quantities, unit costs and selected products.
+            </div>
+        @endif
+    </section>
+
+    {{-- Notes + Totals --}}
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {{-- Notes --}}
+        <div class="md:col-span-2">
+            <x-label value="Notes (optional)" />
+            <textarea name="notes"
+                      x-model="state.notes"
+                      rows="4"
+                      class="form-textarea"
+                      placeholder="Any remarks about this purchase..."></textarea>
+            @error('notes')
+                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+            @enderror
+        </div>
+
+        {{-- Totals --}}
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-4 space-y-3">
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-600 dark:text-gray-400">Subtotal</span>
+                <span class="font-medium" x-text="formatMoney(subtotal)"></span>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 text-sm">
+                <label class="text-gray-600 dark:text-gray-400">Tax (%)</label>
+                <input type="number"
+                       step="0.01"
+                       min="0"
+                       max="100"
+                       name="tax"
+                       class="form-input text-right w-24"
+                       x-model.number="state.tax"
+                       @input="recalc()">
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-600 dark:text-gray-400">Tax Value</span>
+                <span x-text="formatMoney(taxValue)"></span>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 text-sm">
+                <label class="text-gray-600 dark:text-gray-400">Discount (%)</label>
+                <input type="number"
+                       step="0.01"
+                       min="0"
+                       max="100"
+                       name="discount"
+                       class="form-input text-right w-24"
+                       x-model.number="state.discount"
+                       @input="recalc()">
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-600 dark:text-gray-400">Discount Value</span>
+                <span x-text="formatMoney(discountValue)"></span>
+            </div>
+
+            <div class="flex justify-between font-semibold border-t pt-2">
+                <span>Total</span>
+                <span x-text="formatMoney(grand)"></span>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 text-sm">
+                <label for="amount_paid" class="font-medium">Amount Paid</label>
+                <div class="flex items-center gap-2">
+                    <input type="number"
+                           step="0.01"
+                           min="0"
+                           id="amount_paid"
+                           name="amount_paid"
+                           class="form-input text-right w-32"
+                           x-model.number="state.amount_paid"
+                           @input="recalc()">
+                    <button type="button"
+                            class="btn btn-outline text-xs px-2 py-1"
+                            @click="payFull()">
+                        Full
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex justify-between font-semibold border-t pt-2">
+                <span>Balance Due</span>
+                <span x-text="formatMoney(balance)"></span>
+            </div>
+        </div>
+    </section>
+
+    {{-- Actions --}}
+    <div class="pt-2 flex flex-col sm:flex-row gap-2">
+        <button type="submit"
+                class="btn btn-success flex-1 flex items-center justify-center gap-1">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            {{ $isEdit ? 'Update Purchase' : 'Save Purchase' }}
+        </button>
+
+        <a href="{{ $isEdit ? route('purchases.show', $purchase) : route('purchases.index') }}"
+           class="btn btn-outline flex-1 flex items-center justify-center gap-1">
+            <i data-lucide="x" class="w-4 h-4"></i>
+            Cancel
+        </a>
+    </div>
 </div>
 
 @push('scripts')
+<script src="https://unpkg.com/lucide@latest"></script>
 <script>
-    const allProducts = @json($products ?? []);
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) lucide.createIcons();
+});
 
-    function purchaseForm() {
-        const rid = () => (crypto.randomUUID?.() || String(Date.now() + Math.random()));
+function purchaseForm(initial){
+    const withKeys = (arr) =>
+        arr.map(r => ({
+            key: (crypto?.randomUUID?.() || (Date.now() + Math.random())),
+            ...r
+        }));
 
-        return {
-            items: (() => {
-                const data = @json($initialItems);
-                return data.map(i => ({
-                    key: rid(),
-                    product_id: i.product_id,
-                    quantity: i.quantity,
-                    unit_cost: i.unit_cost
-                }));
-            })(),
+    return {
+        state: {
+            supplier_id:     initial.supplier_id     ?? '',
+            purchase_date:   initial.purchase_date   ?? '',
+            payment_channel: initial.payment_channel ?? 'cash',
+            method:          initial.method          ?? '',
+            notes:           initial.notes           ?? '',
+            tax:             Number(initial.tax      || 0),
+            discount:        Number(initial.discount || 0),
+            amount_paid:     Number(initial.amount_paid || 0),
+            lines:           withKeys(Array.isArray(initial.lines) && initial.lines.length
+                                ? initial.lines
+                                : [{ product_id:'', quantity:1, unit_cost:0 }]),
+        },
 
-            status: @json($status),
-            amountPaid: @json($amountPaid),
-            paymentChannel: @json($paymentChannel),
+        subtotal: 0,
+        taxValue: 0,
+        discountValue: 0,
+        grand: 0,
+        balance: 0,
 
-            init() {
-                //
-            },
+        init() {
+            this.recalc();
+        },
 
-            addItem() {
-                this.items.push({ key: rid(), product_id: '', quantity: 1, unit_cost: 0 });
-            },
+        setChannel(c) {
+            this.state.payment_channel = c;
+        },
 
-            removeItem(index) {
-                if (this.items.length > 1) {
-                    this.items.splice(index, 1);
-                } else {
-                    this.items[0] = { key: rid(), product_id: '', quantity: 1, unit_cost: 0 };
-                }
-            },
+        badgeClass(c) {
+            const active = this.state.payment_channel === c;
+            const base = 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200';
+            const on = {
+                cash: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 border-green-300 dark:border-green-700',
+                bank: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-700',
+                momo: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700',
+            }[c] || base;
 
-            onProductSelected(product, index) {
-                if (!product) return;
-                this.items[index].product_id = product.id;
-                this.items[index].unit_cost = parseFloat(product.cost_price || 0);
-            },
+            return active ? on : base;
+        },
 
-            onProductCleared(index) {
-                this.items[index].product_id = '';
-                this.items[index].unit_cost = 0;
-            },
+        addLine() {
+            this.state.lines.push({
+                key: (crypto?.randomUUID?.() || (Date.now() + Math.random())),
+                product_id: '',
+                quantity: 1,
+                unit_cost: 0,
+            });
+            this.recalc();
+        },
 
-            get grandTotal() {
-                return this.items.reduce((sum, item) => {
-                    return sum + (item.quantity * item.unit_cost);
-                }, 0);
-            },
+        clearLines() {
+            this.state.lines = [];
+            this.recalc();
+        },
 
-            get balanceDue() {
-                return Math.max(0, this.grandTotal - this.amountPaid);
-            },
+        removeLine(i) {
+            this.state.lines.splice(i, 1);
+            this.recalc();
+        },
 
-            payFull() {
-                this.amountPaid = this.grandTotal;
-            },
-
-            formatMoney(amount) {
-                return 'RWF ' + Number(amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            },
-
-            submitForm(e) {
-                e.target.submit();
+        onProductChange(row, e) {
+            const opt  = e.target.options[e.target.selectedIndex];
+            const cost = Number(opt?.dataset?.cost || 0);
+            if (cost > 0 && (!row.unit_cost || row.unit_cost === 0)) {
+                row.unit_cost = cost;
             }
-        }
+            this.recalc();
+        },
+
+        lineTotal(r) {
+            return Number(r.quantity || 0) * Number(r.unit_cost || 0);
+        },
+
+        recalc() {
+            this.subtotal = this.state.lines.reduce((s, r) => s + this.lineTotal(r), 0);
+            this.taxValue = (this.subtotal * Number(this.state.tax || 0)) / 100;
+            this.discountValue = (this.subtotal * Number(this.state.discount || 0)) / 100;
+            this.grand = Math.max(this.subtotal + this.taxValue - this.discountValue, 0);
+            this.balance = Math.max(this.grand - Number(this.state.amount_paid || 0), 0);
+        },
+
+        payFull() {
+            this.state.amount_paid = this.grand;
+            this.recalc();
+        },
+
+        formatMoney(v) {
+            return Number(v || 0).toFixed(2);
+        },
     }
+}
 </script>
 @endpush
