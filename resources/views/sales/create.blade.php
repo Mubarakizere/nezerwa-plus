@@ -1,8 +1,20 @@
+{{-- resources/views/sales/create.blade.php --}}
 @extends('layouts.app')
-
 @section('title', 'New Sale')
 
 @section('content')
+@php
+    // Build meta for JS: product id => [price, cost]
+    $productMeta = collect($products ?? [])->mapWithKeys(function ($p) {
+        return [
+            $p->id => [
+                'price' => (float) ($p->price ?? 0),
+                'cost'  => (float) ($p->cost_price ?? 0),
+            ],
+        ];
+    });
+@endphp
+
 @cannot('sales.create')
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6">
@@ -67,7 +79,7 @@
 
     {{-- Form --}}
     <form action="{{ route('sales.store') }}" method="POST"
-          x-data="saleCreateForm()"
+          x-data="saleCreateForm(@js($productMeta))"
           x-init="init()">
         @csrf
 
@@ -183,32 +195,24 @@
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         <template x-for="(row, idx) in lines" :key="row.key">
                             <tr>
-                                <td class="py-3 pr-4 min-w-[250px]">
-                                    <x-searchable-select
-                                        ::name="`products[${idx}][product_id]`"
-                                        ::value="row.product_id"
-                                        options-js="allProducts"
-                                        emit="product-selected"
-                                        @product-selected="onProductSelected($event.detail, idx)"
-                                        @product-selected-cleared="onProductCleared(idx)"
-                                        placeholder="Select Product"
-                                    />
+                                <td class="px-4 py-2">
+                                    <select :name="`products[${idx}][product_id]`"
+                                            x-model.number="row.product_id"
+                                            @change="onProductChange(row)"
+                                            class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <option value="">Select product</option>
+                                        @foreach ($products as $p)
+                                            <option value="{{ $p->id }}">{{ $p->name }}</option>
+                                        @endforeach
+                                    </select>
                                     <div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400" x-show="row.product_id">
-                                        <span class="font-medium text-gray-700 dark:text-gray-300">Price:</span>
-                                        <span x-text="money(row.default_price)"></span>
-                                        <span class="mx-1 text-gray-300">|</span>
                                         <span>Cost:</span>
-                                        <span x-text="money(row.cost_price)"></span>
-                                        <span class="mx-1 text-gray-300">|</span>
+                                        <span x-text="money(prodCost(row))"></span>
+                                        <span class="mx-1">•</span>
                                         <span>Margin:</span>
-                                        <span :class="row.unit_price >= row.cost_price ? 'text-green-600 dark:text-green-400' : 'text-rose-600 dark:text-rose-400'">
+                                        <span :class="row.unit_price >= prodCost(row) ? 'text-green-600 dark:text-green-400' : 'text-rose-600 dark:text-rose-400'">
                                             <span x-text="marginPct(row)"></span>%
                                         </span>
-                                    </div>
-                                    <div class="text-[11px] text-gray-400 mt-1" x-show="row.default_price > 0 && row.unit_price != row.default_price && row.product_id">
-                                        <button type="button" class="underline hover:text-indigo-500" @click="resetToDefaultPrice(row)">
-                                            Reset to default (<span x-text="money(row.default_price)"></span>)
-                                        </button>
                                     </div>
                                 </td>
 
@@ -226,10 +230,8 @@
                                            x-model.number="row.unit_price"
                                            :name="`products[${idx}][unit_price]`"
                                            @input="recalc()">
-                                    <div class="text-[11px] text-gray-400 mt-1" x-show="row.default_price > 0 && row.unit_price != row.default_price">
-                                        <button type="button" class="underline" @click="resetToDefaultPrice(row)">
-                                            reset (<span x-text="money(row.default_price)"></span>)
-                                        </button>
+                                    <div class="text-[11px] text-gray-400 mt-1">
+                                        <button type="button" class="underline" @click="resetToDefaultPrice(row)">use default</button>
                                     </div>
                                 </td>
 
@@ -379,9 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-const allProducts = @json($products);
-
-function saleCreateForm(){
+function saleCreateForm(productMeta){
     const rid = () => (crypto.randomUUID?.() || String(Date.now() + Math.random()));
 
     return {
@@ -394,19 +394,20 @@ function saleCreateForm(){
 
         saleDate: @json(old('sale_date', now()->format('Y-m-d'))),
 
+        // product meta: {id: {price, cost}}
+        meta: productMeta || {},
+
         // product lines
         lines: (() => {
             const raw = @json(old('products', []));
             if (!Array.isArray(raw) || raw.length === 0) {
-                return [{ key: rid(), product_id: '', quantity: 1, unit_price: 0, cost_price: 0, default_price: 0 }];
+                return [{ key: rid(), product_id: '', quantity: 1, unit_price: 0 }];
             }
             return raw.map(p => ({
                 key: rid(),
                 product_id: Number(p?.product_id ?? 0) || '',
                 quantity:   Number(p?.quantity ?? 1) || 1,
                 unit_price: Number(p?.unit_price ?? 0) || 0,
-                cost_price: 0, // We don't have this on old input, but it's fine
-                default_price: 0
             }));
         })(),
 
@@ -437,6 +438,11 @@ function saleCreateForm(){
                 if (e.key === 'F2') {
                     e.preventDefault();
                     this.addLine();
+                    // Focus the new line's product select (last one)
+                    this.$nextTick(() => {
+                        const selects = document.querySelectorAll('select[name^="products"]');
+                        if (selects.length) selects[selects.length - 1].focus();
+                    });
                 }
                 // F4: Focus Amount Paid
                 if (e.key === 'F4') {
@@ -454,16 +460,24 @@ function saleCreateForm(){
 
         money(v){ return Number(v || 0).toFixed(2); },
 
+        // product helpers
+        prodCost(row){
+            const meta = this.meta[row.product_id] || {};
+            return Number(meta.cost || 0);
+        },
+        prodDefaultPrice(row){
+            const meta = this.meta[row.product_id] || {};
+            return Number(meta.price || 0);
+        },
         marginPct(row){
-            const cost  = Number(row.cost_price || 0);
+            const cost  = this.prodCost(row);
             const price = Number(row.unit_price || 0);
             if (price <= 0) return 0;
             const margin = price - cost;
             return (margin / price * 100).toFixed(1);
         },
-        
         resetToDefaultPrice(row){
-            const p = Number(row.default_price || 0);
+            const p = this.prodDefaultPrice(row);
             if (p > 0) {
                 row.unit_price = p;
                 this.recalc();
@@ -471,7 +485,7 @@ function saleCreateForm(){
         },
 
         addLine(){
-            this.lines.push({ key: rid(), product_id: '', quantity: 1, unit_price: 0, cost_price: 0, default_price: 0 });
+            this.lines.push({ key: rid(), product_id: '', quantity: 1, unit_price: 0 });
         },
         clearLines(){
             this.lines = [];
@@ -482,22 +496,11 @@ function saleCreateForm(){
             this.recalc();
         },
 
-        onProductSelected(product, index){
-            if (!product) return;
-            const row = this.lines[index];
-            row.product_id = product.id;
-            row.unit_price = Number(product.price) || 0;
-            row.default_price = Number(product.price) || 0;
-            row.cost_price = Number(product.cost_price || 0);
-            this.recalc();
-        },
-
-        onProductCleared(index){
-            const row = this.lines[index];
-            row.product_id = '';
-            row.unit_price = 0;
-            row.default_price = 0;
-            row.cost_price = 0;
+        onProductChange(row){
+            const defPrice = this.prodDefaultPrice(row);
+            if (defPrice > 0 && (!row.unit_price || row.unit_price === 0)) {
+                row.unit_price = defPrice;
+            }
             this.recalc();
         },
 
