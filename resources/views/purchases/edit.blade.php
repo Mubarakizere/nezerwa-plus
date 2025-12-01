@@ -25,7 +25,6 @@
 
             @include('purchases._form', [
                 'suppliers' => $suppliers,
-                'products'  => $products,
                 'purchase'  => $purchase,
             ])
         </form>

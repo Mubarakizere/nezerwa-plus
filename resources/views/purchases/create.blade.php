@@ -21,7 +21,6 @@
             @csrf
             @include('purchases._form', [
                 'suppliers' => $suppliers,
-                'products'  => $products,
             ])
         </form>
     @else

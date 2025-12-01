@@ -278,10 +278,9 @@ class PurchaseController extends Controller
 
     public function edit(Purchase $purchase)
     {
-        $suppliers = Supplier::orderBy('name')->get(['id','name']);
-        $products  = Product::orderBy('name')->get(['id','name','cost_price']);
+        $suppliers = Supplier::orderBy('name')->get();
         $purchase->load('items');
-        return view('purchases.edit', compact('purchase', 'suppliers', 'products'));
+        return view('purchases.edit', compact('purchase', 'suppliers'));
     }
 
     public function update(Request $request, Purchase $purchase)
