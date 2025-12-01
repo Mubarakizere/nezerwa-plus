@@ -37,8 +37,7 @@ class ProductController extends Controller
         if ($s = trim((string) ($request->input('q', $request->input('search', ''))))) {
             $pattern = "%{$s}%";
             $query->where(function ($w) use ($op, $pattern, $s) {
-                $w->where('name', $op, $pattern)
-                  ->orWhere('sku', $op, $pattern);
+                $w->where('name', $op, $pattern);
                 if (is_numeric($s)) $w->orWhere('id', (int) $s);
             });
         }
@@ -250,15 +249,14 @@ class ProductController extends Controller
     public function searchJson(Request $request)
     {
         $query = Product::query()
-            ->select(['id', 'name', 'sku', 'price', 'cost_price', 'stock']) // Select only needed fields
+            ->select(['id', 'name', 'price', 'cost_price', 'stock']) // Select only needed fields
             ->limit(20);
 
         if ($s = trim((string) $request->input('q'))) {
             $op = DB::connection()->getDriverName() === 'pgsql' ? 'ILIKE' : 'LIKE';
             $pattern = "%{$s}%";
             $query->where(function ($w) use ($op, $pattern, $s) {
-                $w->where('name', $op, $pattern)
-                  ->orWhere('sku', $op, $pattern);
+                $w->where('name', $op, $pattern);
                 if (is_numeric($s)) $w->orWhere('id', (int) $s);
             });
         }

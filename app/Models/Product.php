@@ -14,11 +14,9 @@ class Product extends Model
 
     /**
      * Mass-assignable fields.
-     * (Include sku only if you have the column; harmless if unused.)
      */
     protected $fillable = [
         'name',
-        'sku',
         'category_id',
         'price',
         'cost_price',
@@ -69,8 +67,7 @@ class Product extends Model
         if (!($term = trim((string) $term))) return $q;
 
         return $q->where(function ($w) use ($term) {
-            $w->where('name', 'like', "%{$term}%")
-              ->orWhere('sku',  'like', "%{$term}%");
+            $w->where('name', 'like', "%{$term}%");
         });
     }
 
