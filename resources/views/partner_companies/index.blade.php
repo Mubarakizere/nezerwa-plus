@@ -96,4 +96,51 @@
         {{ $partners->links() }}
     </div>
 </div>
+
+{{-- Global Delete Confirmation Modal (Alpine Store) --}}
+<div x-data
+     x-show="$store.confirm.open"
+     x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+     @keydown.escape.window="$store.confirm.close()"
+     x-transition>
+    <div @click.outside="$store.confirm.close()"
+         class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Confirm Deletion</h2>
+        <p class="text-gray-600 dark:text-gray-300 text-sm mb-6">
+            Are you sure you want to delete this partner company? This action cannot be undone.
+        </p>
+        <div class="flex justify-end gap-3">
+            <button type="button" class="btn btn-outline" @click="$store.confirm.close()">Cancel</button>
+            <button type="button" class="btn btn-danger" @click="$store.confirm.confirm()">
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.store('confirm', {
+            open: false,
+            submitEl: null,
+            openWith(form) {
+                this.submitEl = form;
+                this.open = true;
+            },
+            close() {
+                this.open = false;
+                this.submitEl = null;
+            },
+            confirm() {
+                if (this.submitEl) this.submitEl.submit();
+                this.close();
+            },
+        });
+    });
+</script>
+@endpush
 @endsection

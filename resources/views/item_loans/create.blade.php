@@ -144,7 +144,7 @@
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                         <i data-lucide="briefcase" class="w-4 h-4"></i>
                     </div>
-                    <input type="text" name="name" required placeholder="e.g. Acme Corp"
+                    <input type="text" name="name" required 
                            class="input input-bordered w-full pl-10 bg-white dark:bg-gray-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                 </div>
             </div>
@@ -156,7 +156,7 @@
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                             <i data-lucide="user" class="w-4 h-4"></i>
                         </div>
-                        <input type="text" name="contact_person" placeholder="John Doe"
+                        <input type="text" name="contact_person" 
                                class="input input-bordered w-full pl-10 bg-white dark:bg-gray-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                     </div>
                 </div>
@@ -166,7 +166,7 @@
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                             <i data-lucide="phone" class="w-4 h-4"></i>
                         </div>
-                        <input type="text" name="phone" placeholder="+250..."
+                        <input type="text" name="phone" 
                                class="input input-bordered w-full pl-10 bg-white dark:bg-gray-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                     </div>
                 </div>
