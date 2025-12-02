@@ -29,7 +29,7 @@
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label class="block text-sm font-medium">Partner Company <span class="text-red-600">*</span></label>
-                <button type="button" onclick="document.getElementById('createPartnerModal').showModal()" 
+                <button type="button" @click="$dispatch('open-partner-modal')" 
                         class="text-xs text-indigo-600 hover:text-indigo-500 font-medium flex items-center gap-1">
                     <i data-lucide="plus" class="w-3 h-3"></i> New Partner
                 </button>
@@ -108,20 +108,29 @@
 </div>
 
 {{-- Create Partner Modal --}}
-{{-- Create Partner Modal --}}
-<dialog id="createPartnerModal" class="modal modal-bottom sm:modal-middle">
-    <div class="modal-box bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-2xl border dark:border-gray-700 p-0 overflow-hidden">
+{{-- Create Partner Modal (Alpine) --}}
+<div x-data="{ open: false }"
+     @open-partner-modal.window="open = true"
+     @close-partner-modal.window="open = false"
+     x-show="open"
+     x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+     x-transition>
+    
+    <div @click.outside="open = false"
+         class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+        
         {{-- Header --}}
         <div class="bg-gray-50 dark:bg-gray-900/50 px-6 py-4 border-b dark:border-gray-700 flex items-center justify-between">
-            <h3 class="font-bold text-lg flex items-center gap-2">
+            <h3 class="font-bold text-lg flex items-center gap-2 text-gray-800 dark:text-gray-100">
                 <div class="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
                     <i data-lucide="building-2" class="w-5 h-5"></i>
                 </div>
                 Add New Partner
             </h3>
-            <form method="dialog">
-                <button class="btn btn-sm btn-circle btn-ghost text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
-            </form>
+            <button @click="open = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
         </div>
 
         {{-- Body --}}
@@ -166,7 +175,7 @@
             {{-- Footer --}}
             <div class="flex justify-end gap-3 mt-8 pt-2">
                 <button type="button" class="btn btn-ghost text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" 
-                        onclick="document.getElementById('createPartnerModal').close()">
+                        @click="open = false">
                     Cancel
                 </button>
                 <button type="submit" class="btn btn-primary px-6" id="savePartnerBtn">
@@ -178,10 +187,7 @@
             </div>
         </form>
     </div>
-    <form method="dialog" class="modal-backdrop bg-gray-900/50 backdrop-blur-sm">
-        <button>close</button>
-    </form>
-</dialog>
+</div>
 
 <script>
     document.getElementById('createPartnerForm').addEventListener('submit', async function(e) {
@@ -215,7 +221,7 @@
                 select.add(option);
                 
                 // Close modal and reset form
-                document.getElementById('createPartnerModal').close();
+                window.dispatchEvent(new CustomEvent('close-partner-modal'));
                 this.reset();
                 
                 // Optional: Show toast/alert
