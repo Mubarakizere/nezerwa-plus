@@ -108,8 +108,9 @@
 </div>
 
 {{-- Create Partner Modal --}}
-<dialog id="createPartnerModal" class="modal">
-    <div class="modal-box max-w-md bg-white dark:bg-gray-800">
+{{-- Create Partner Modal --}}
+<dialog id="createPartnerModal" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-xl border dark:border-gray-700">
         <form method="dialog">
             <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
         </form>
@@ -118,15 +119,15 @@
             @csrf
             <div>
                 <label class="block text-sm font-medium mb-1">Company Name <span class="text-red-600">*</span></label>
-                <input type="text" name="name" required class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                <input type="text" name="name" required class="input input-bordered w-full bg-white dark:bg-gray-900">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Contact Person</label>
-                <input type="text" name="contact_person" class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                <input type="text" name="contact_person" class="input input-bordered w-full bg-white dark:bg-gray-900">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Phone</label>
-                <input type="text" name="phone" class="w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900">
+                <input type="text" name="phone" class="input input-bordered w-full bg-white dark:bg-gray-900">
             </div>
             <div class="flex justify-end gap-2 mt-6">
                 <button type="button" class="btn btn-ghost" onclick="document.getElementById('createPartnerModal').close()">Cancel</button>
@@ -134,6 +135,9 @@
             </div>
         </form>
     </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
 </dialog>
 
 <script>

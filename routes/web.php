@@ -372,9 +372,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('item-loans.return');
     });
 
-    // Partner Companies (for AJAX creation)
-    Route::post('/partner-companies', [App\Http\Controllers\PartnerCompanyController::class, 'store'])
-        ->name('partner-companies.store');
+    // Partner Companies
+    Route::resource('partner-companies', App\Http\Controllers\PartnerCompanyController::class)
+        ->except(['create', 'show']); // We use modal for create, and no show view yet
 
     /*
     |--------------------------------------------------------------------------

@@ -20,10 +20,16 @@
             <span>Inter-Company Item Lending</span>
         </h1>
 
-        <a href="{{ route('item-loans.create') }}" class="btn btn-primary inline-flex items-center gap-2">
-            <i data-lucide="plus" class="w-4 h-4"></i>
-            New Loan
-        </a>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('partner-companies.index') }}" class="btn btn-outline inline-flex items-center gap-2">
+                <i data-lucide="users" class="w-4 h-4"></i>
+                Manage Partners
+            </a>
+            <a href="{{ route('item-loans.create') }}" class="btn btn-primary inline-flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                New Loan
+            </a>
+        </div>
     </div>
 
     {{-- Filters --}}
