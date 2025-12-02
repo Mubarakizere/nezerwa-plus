@@ -144,6 +144,10 @@
         btn.innerText = 'Saving...';
         btn.disabled = true;
 
+        // Clear previous errors
+        document.querySelectorAll('.error-msg').forEach(el => el.remove());
+        document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+
         try {
             const formData = new FormData(this);
             const response = await fetch("{{ route('partner-companies.store') }}", {
@@ -157,7 +161,7 @@
 
             const result = await response.json();
 
-            if (result.success) {
+            if (response.ok && result.success) {
                 // Add to select and select it
                 const select = document.querySelector('select[name="partner_id"]');
                 const option = new Option(result.partner.name, result.partner.id, true, true);
@@ -170,7 +174,21 @@
                 // Optional: Show toast/alert
                 // alert('Partner created!'); 
             } else {
-                alert(result.message || 'Failed to create partner');
+                // Handle Validation Errors
+                if (result.errors) {
+                    for (const [key, messages] of Object.entries(result.errors)) {
+                        const input = this.querySelector(`[name="${key}"]`);
+                        if (input) {
+                            input.classList.add('input-error'); // Add error class if using DaisyUI or similar
+                            const errorDiv = document.createElement('div');
+                            errorDiv.className = 'text-red-500 text-xs mt-1 error-msg';
+                            errorDiv.innerText = messages[0];
+                            input.parentNode.appendChild(errorDiv);
+                        }
+                    }
+                } else {
+                    alert(result.message || 'Failed to create partner');
+                }
             }
         } catch (error) {
             console.error('Error:', error);
