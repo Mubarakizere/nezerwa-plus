@@ -110,32 +110,75 @@
 {{-- Create Partner Modal --}}
 {{-- Create Partner Modal --}}
 <dialog id="createPartnerModal" class="modal modal-bottom sm:modal-middle">
-    <div class="modal-box bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-xl border dark:border-gray-700">
-        <form method="dialog">
-            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-        </form>
-        <h3 class="font-bold text-lg mb-4">Add New Partner</h3>
-        <form id="createPartnerForm" class="space-y-4">
+    <div class="modal-box bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-2xl border dark:border-gray-700 p-0 overflow-hidden">
+        {{-- Header --}}
+        <div class="bg-gray-50 dark:bg-gray-900/50 px-6 py-4 border-b dark:border-gray-700 flex items-center justify-between">
+            <h3 class="font-bold text-lg flex items-center gap-2">
+                <div class="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-indigo-600 dark:text-indigo-400">
+                    <i data-lucide="building-2" class="w-5 h-5"></i>
+                </div>
+                Add New Partner
+            </h3>
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
+            </form>
+        </div>
+
+        {{-- Body --}}
+        <form id="createPartnerForm" class="p-6 space-y-5">
             @csrf
             <div>
-                <label class="block text-sm font-medium mb-1">Company Name <span class="text-red-600">*</span></label>
-                <input type="text" name="name" required class="input input-bordered w-full bg-white dark:bg-gray-900">
+                <label class="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
+                    Company Name <span class="text-red-500">*</span>
+                </label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                        <i data-lucide="briefcase" class="w-4 h-4"></i>
+                    </div>
+                    <input type="text" name="name" required placeholder="e.g. Acme Corp"
+                           class="input input-bordered w-full pl-10 bg-white dark:bg-gray-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium mb-1">Contact Person</label>
-                <input type="text" name="contact_person" class="input input-bordered w-full bg-white dark:bg-gray-900">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">Contact Person</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                        </div>
+                        <input type="text" name="contact_person" placeholder="John Doe"
+                               class="input input-bordered w-full pl-10 bg-white dark:bg-gray-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">Phone</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                            <i data-lucide="phone" class="w-4 h-4"></i>
+                        </div>
+                        <input type="text" name="phone" placeholder="+250..."
+                               class="input input-bordered w-full pl-10 bg-white dark:bg-gray-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    </div>
+                </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium mb-1">Phone</label>
-                <input type="text" name="phone" class="input input-bordered w-full bg-white dark:bg-gray-900">
-            </div>
-            <div class="flex justify-end gap-2 mt-6">
-                <button type="button" class="btn btn-ghost" onclick="document.getElementById('createPartnerModal').close()">Cancel</button>
-                <button type="submit" class="btn btn-primary" id="savePartnerBtn">Save Partner</button>
+
+            {{-- Footer --}}
+            <div class="flex justify-end gap-3 mt-8 pt-2">
+                <button type="button" class="btn btn-ghost text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" 
+                        onclick="document.getElementById('createPartnerModal').close()">
+                    Cancel
+                </button>
+                <button type="submit" class="btn btn-primary px-6" id="savePartnerBtn">
+                    <span class="flex items-center gap-2">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        Save Partner
+                    </span>
+                </button>
             </div>
         </form>
     </div>
-    <form method="dialog" class="modal-backdrop">
+    <form method="dialog" class="modal-backdrop bg-gray-900/50 backdrop-blur-sm">
         <button>close</button>
     </form>
 </dialog>

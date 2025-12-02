@@ -66,13 +66,9 @@
                         </a>
                         
                         @if($partner->item_loans_count === 0)
-                            <form action="{{ route('partner-companies.destroy', $partner) }}" method="POST" onsubmit="return confirm('Are you sure?');">
-                                @csrf
-                                @method('DELETE')
-                                <button class="btn btn-sm btn-ghost text-red-600">
-                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                </button>
-                            </form>
+                            <button onclick="confirmDelete('{{ route('partner-companies.destroy', $partner) }}')" class="btn btn-sm btn-ghost text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
                         @else
                             <button disabled class="btn btn-sm btn-ghost text-gray-400 cursor-not-allowed" title="Cannot delete partner with loans">
                                 <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -93,5 +89,38 @@
     <div>
         {{ $partners->links() }}
     </div>
+
+    {{-- Delete Confirmation Modal --}}
+    <dialog id="deletePartnerModal" class="modal modal-bottom sm:modal-middle">
+        <div class="modal-box bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+            <h3 class="font-bold text-lg text-red-600 flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                Confirm Deletion
+            </h3>
+            <p class="py-4">Are you sure you want to delete this partner company? This action cannot be undone.</p>
+            <div class="modal-action">
+                <form method="dialog">
+                    <button class="btn btn-ghost">Cancel</button>
+                </form>
+                <form id="deletePartnerForm" method="POST" action="">
+                    @csrf
+                    @method('DELETE')
+                    <button class="btn btn-error text-white">Delete Partner</button>
+                </form>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop bg-gray-900/50 backdrop-blur-sm">
+            <button>close</button>
+        </form>
+    </dialog>
+
+    <script>
+        function confirmDelete(actionUrl) {
+            const modal = document.getElementById('deletePartnerModal');
+            const form = document.getElementById('deletePartnerForm');
+            form.action = actionUrl;
+            modal.showModal();
+        }
+    </script>
 </div>
 @endsection
