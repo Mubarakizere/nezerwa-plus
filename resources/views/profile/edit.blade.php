@@ -110,6 +110,7 @@
 
         <form method="POST" action="{{ route('password.update') }}" class="space-y-5">
             @csrf
+            @method('PUT')
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -120,6 +121,9 @@
                         class="form-input bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-700
                                text-gray-800 dark:text-gray-200"
                         required>
+                    @error('current_password', 'updatePassword')
+                        <p class="text-sm text-red-600 dark:text-red-400 mt-1">{{ $message }}</p>
+                    @enderror
                 </div>
                 <div>
                     <label class="form-label text-gray-700 dark:text-gray-300">New Password</label>
@@ -129,6 +133,9 @@
                         class="form-input bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-700
                                text-gray-800 dark:text-gray-200"
                         required>
+                    @error('password', 'updatePassword')
+                        <p class="text-sm text-red-600 dark:text-red-400 mt-1">{{ $message }}</p>
+                    @enderror
                 </div>
             </div>
 
@@ -140,6 +147,9 @@
                     class="form-input bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-700
                            text-gray-800 dark:text-gray-200"
                     required>
+                @error('password_confirmation', 'updatePassword')
+                    <p class="text-sm text-red-600 dark:text-red-400 mt-1">{{ $message }}</p>
+                @enderror
             </div>
 
             <div class="flex justify-end">
