@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class Expense extends Model
 {
-    public const METHODS = ['cash','bank','momo','mobile_money'];
+    // public const METHODS = ['cash','bank','momo','mobile_money']; // Deprecated for dynamic channels
 
     protected $fillable = [
         'date','amount','category_id','supplier_id',

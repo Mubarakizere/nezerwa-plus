@@ -148,7 +148,7 @@ class ExpenseController extends Controller
                 ),
             ],
             'supplier_id' => ['nullable','integer','exists:suppliers,id'],
-            'method'      => ['required', Rule::in(Expense::METHODS)],
+            'method'      => ['required', 'string'], // Allow dynamic channels
             'reference'   => ['nullable','string','max:100'],
             'note'        => ['nullable','string'],
         ]);

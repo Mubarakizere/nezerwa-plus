@@ -13,6 +13,8 @@ use App\Observers\PurchaseObserver;
 use App\Observers\LoanObserver;
 use App\Observers\LoanPaymentObserver;
 use App\Observers\SaleReturnObserver;
+use App\Models\Expense;
+use App\Observers\ExpenseObserver;
 class AppServiceProvider extends ServiceProvider
 {
     /**
@@ -34,5 +36,6 @@ class AppServiceProvider extends ServiceProvider
         Loan::observe(LoanObserver::class);
         LoanPayment::observe(LoanPaymentObserver::class);
         SaleReturn::observe(SaleReturnObserver::class);
+        Expense::observe(ExpenseObserver::class);
     }
 }
