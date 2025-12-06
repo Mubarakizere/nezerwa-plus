@@ -275,24 +275,20 @@
                             {{ strtoupper($slug) }}
                         </span>
                     </div>
-                    <div class="mt-1 grid grid-cols-3 gap-3 text-sm">
-                        <div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400">Total</div>
-                            <div class="font-medium text-gray-900 dark:text-gray-100">
-                                {{ $fmt($total) }}
-                            </div>
+                    <div class="mt-2 space-y-2">
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="text-gray-500 dark:text-gray-400">Total</span>
+                            <span class="font-medium text-gray-900 dark:text-gray-100">{{ $fmt($total) }}</span>
                         </div>
-                        <div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400">Paid</div>
-                            <div class="font-medium text-emerald-700 dark:text-emerald-300">
-                                {{ $fmt($paid) }}
-                            </div>
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="text-gray-500 dark:text-gray-400">Paid</span>
+                            <span class="font-medium text-emerald-700 dark:text-emerald-300">{{ $fmt($paid) }}</span>
                         </div>
-                        <div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400">Balance</div>
-                            <div class="font-medium {{ $balance>0 ? 'text-rose-600 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
+                        <div class="border-t border-gray-100 dark:border-gray-800 pt-2 flex justify-between items-center text-sm">
+                            <span class="text-gray-500 dark:text-gray-400">Balance</span>
+                            <span class="font-medium {{ $balance>0 ? 'text-rose-600 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
                                 {{ $fmt($balance) }}
-                            </div>
+                            </span>
                         </div>
                     </div>
                 </div>
