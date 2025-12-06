@@ -59,6 +59,21 @@
                 </a>
             @endcan
 
+            @can('products.view')
+                <div x-data="{ open: false }" class="relative">
+                    <button @click="open = !open" @click.outside="open = false" class="btn btn-outline text-sm flex items-center gap-1">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Export Report</span>
+                        <i data-lucide="chevron-down" class="w-3 h-3 ml-1"></i>
+                    </button>
+                    <div x-show="open" x-cloak class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1 z-50">
+                        <a href="{{ route('products.export.stock.pdf', ['filter' => 'all']) }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">All Products</a>
+                        <a href="{{ route('products.export.stock.pdf', ['filter' => 'low']) }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Low Stock (≤ {{ $threshold }})</a>
+                        <a href="{{ route('products.export.stock.pdf', ['filter' => 'out']) }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Out of Stock</a>
+                    </div>
+                </div>
+            @endcan
+
             @can('stock.view')
                 <a href="{{ route('stock.history', request()->only('product_id')) }}"
                    class="btn btn-outline text-sm flex items-center gap-1">

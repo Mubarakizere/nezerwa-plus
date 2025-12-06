@@ -6,6 +6,7 @@ use App\Models\Loan;
 use App\Models\LoanPayment;
 use App\Models\Transaction;
 use App\Models\DebitCredit;
+use App\Models\PaymentChannel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -28,7 +29,9 @@ class LoanPaymentController extends Controller
                 ->with('error', 'This loan is already marked as paid. You cannot add more payments.');
         }
 
-        return view('loan_payments.create', compact('loan'));
+        $paymentChannels = PaymentChannel::where('is_active', true)->get();
+
+        return view('loan_payments.create', compact('loan', 'paymentChannels'));
     }
 
     /**
@@ -44,7 +47,7 @@ class LoanPaymentController extends Controller
     $validated = $request->validate([
         'amount'       => ['required','numeric','min:0.01'],
         'payment_date' => ['required','date'],
-        'method'       => ['required','string', \Illuminate\Validation\Rule::in(\App\Models\LoanPayment::METHODS)],
+        'method'       => ['required','string'],
         'notes'        => ['nullable','string'],
     ]);
 

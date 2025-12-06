@@ -122,6 +122,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/transactions', [TransactionController::class, 'store'])
             ->name('transactions.store');
 
+        // Withdrawals (Send to Boss)
+        Route::get('/transactions/withdrawal', [TransactionController::class, 'withdrawal'])
+            ->name('transactions.withdrawal');
+
+        Route::post('/transactions/withdrawal', [TransactionController::class, 'storeWithdrawal'])
+            ->name('transactions.withdrawal.store');
+
+        // Internal Transfers
+        Route::get('/transactions/transfer', [TransactionController::class, 'transfer'])
+            ->name('transactions.transfer');
+
+        Route::post('/transactions/transfer', [TransactionController::class, 'storeTransfer'])
+            ->name('transactions.transfer.store');
+
         // Parameterized routes LAST with whereNumber constraint
         Route::get('/transactions/{transaction}', [TransactionController::class, 'show'])
             ->whereNumber('transaction')
@@ -162,7 +176,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('products.search.json')
         ->middleware('permission:products.view');
 
+    Route::get('products/export/stock/pdf', [ProductController::class, 'exportStockPdf'])
+        ->name('products.export.stock.pdf')
+        ->middleware('permission:products.view');
+
     Route::resource('products', ProductController::class)
+        ->middleware('permission:products.view');
+
+    // Stock Adjustment
+    Route::get('products/{product}/adjust', [App\Http\Controllers\StockAdjustmentController::class, 'create'])
+        ->name('products.adjust.create')
+        ->middleware('permission:products.view'); // Re-using product permission
+    Route::post('products/{product}/adjust', [App\Http\Controllers\StockAdjustmentController::class, 'store'])
+        ->name('products.adjust.store')
         ->middleware('permission:products.view');
 
     // Suppliers
@@ -172,6 +198,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Customers
     Route::resource('customers', CustomerController::class)
         ->middleware('permission:customers.view');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Payment Channels
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('payment-channels', App\Http\Controllers\PaymentChannelController::class);
 
     /*
     |--------------------------------------------------------------------------

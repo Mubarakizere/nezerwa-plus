@@ -8,10 +8,16 @@
     $dateVal = old('transaction_date', now()->format('Y-m-d'));
 
     // Method select + "Other" handling
-    $methods    = ['cash','bank','momo'];
+    // We assume $channels is passed from controller
+    $knownSlugs = $channels->pluck('slug')->toArray();
     $oldMethod  = strtolower((string) old('method', ''));
-    $isKnown    = in_array($oldMethod, $methods, true);
-    $methodSel  = $isKnown ? $oldMethod : ($oldMethod ? 'other' : 'cash');
+    
+    // Default to first channel if available and no old input, else 'other' or empty
+    $defaultMethod = $channels->first()?->slug ?? 'other';
+    
+    $isKnown    = in_array($oldMethod, $knownSlugs, true);
+    // If old input exists and is known, use it. If no old input, use default. If old input is unknown, use 'other'.
+    $methodSel  = $oldMethod ? ($isKnown ? $oldMethod : 'other') : $defaultMethod;
     $otherValue = $isKnown ? '' : $oldMethod;
 @endphp
 
@@ -99,13 +105,13 @@
                     @error('amount') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
 
-                {{-- Method (select + Other) --}}
+                {{-- Method (Dynamic) --}}
                 <div>
                     <label class="form-label">Method</label>
                     <select name="method" class="form-select" x-model="methodSel">
-                        <option value="cash">Cash</option>
-                        <option value="bank">Bank</option>
-                        <option value="momo">MoMo</option>
+                        @foreach($channels as $ch)
+                            <option value="{{ $ch->slug }}">{{ $ch->name }}</option>
+                        @endforeach
                         <option value="other">Other…</option>
                     </select>
                     @error('method') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror

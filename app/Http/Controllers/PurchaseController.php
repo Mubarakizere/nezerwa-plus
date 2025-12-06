@@ -10,7 +10,8 @@ use App\Models\{
     StockMovement,
     Loan,
     Transaction,
-    DebitCredit
+    DebitCredit,
+    PaymentChannel
 };
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Auth, Log};
@@ -28,7 +29,9 @@ class PurchaseController extends Controller
             'mtn momo' => 'momo',
         ];
         if (isset($map[$c])) $c = $map[$c];
-        return in_array($c, ['cash','bank','momo','mobile_money'], true) ? $c : 'cash';
+        
+        $exists = PaymentChannel::where('slug', $c)->orWhere('name', $c)->exists();
+        return $exists ? $c : 'cash';
     }
 
     /** Read channel from request. Handles legacy forms that sent channel in "method". */
@@ -96,16 +99,18 @@ class PurchaseController extends Controller
             ->withQueryString();
 
         $suppliers = Supplier::orderBy('name')->get(['id','name']);
+        $paymentChannels = PaymentChannel::where('is_active', true)->get();
 
-        return view('purchases.index', compact('purchases', 'suppliers'));
+        return view('purchases.index', compact('purchases', 'suppliers', 'paymentChannels'));
     }
 
     public function create()
     {
         $suppliers = Supplier::orderBy('name')->get();
         $products  = Product::orderBy('name')->get(['id', 'name', 'cost_price']);
+        $paymentChannels = PaymentChannel::where('is_active', true)->get();
 
-        return view('purchases.create', compact('suppliers', 'products'));
+        return view('purchases.create', compact('suppliers', 'products', 'paymentChannels'));
     }
 
     public function store(Request $request)
@@ -120,7 +125,7 @@ class PurchaseController extends Controller
         $request->validate([
             'supplier_id'             => 'required|exists:suppliers,id',
             'purchase_date'           => 'required|date',
-            'payment_channel'         => 'nullable|in:cash,bank,momo,mobile_money|required_with:amount_paid',
+            'payment_channel'         => 'nullable|string|required_with:amount_paid',
             'method'                  => 'nullable|string|max:120',
             'notes'                   => 'nullable|string|max:500',
             'tax'                     => 'nullable|numeric|min:0|max:100',
@@ -210,34 +215,8 @@ class PurchaseController extends Controller
                 $affectedIds[] = $pid;
             }
 
-            // 4) Financials
-            if ($amountPaid > 0.009) {
-                $notes = "Auto-generated from Purchase #{$purchase->id} (channel: " . strtoupper($channel) . ")";
-                if ($purchase->method) {
-                    $notes .= " • Ref: {$purchase->method}";
-                }
+            // 4) Financials (Handled by PurchaseObserver)
 
-                $txn = Transaction::create([
-                    'type'             => 'debit',
-                    'user_id'          => $purchase->user_id,
-                    'supplier_id'      => $purchase->supplier_id ?? null,
-                    'purchase_id'      => $purchase->id,
-                    'amount'           => $amountPaid,
-                    'transaction_date' => $purchase->purchase_date,
-                    'method'           => $channel,
-                    'notes'            => $notes,
-                ]);
-
-                DebitCredit::create([
-                    'type'           => 'debit',
-                    'amount'         => $amountPaid,
-                    'description'    => "Supplier payment – Purchase #{$purchase->id}",
-                    'date'           => now()->toDateString(),
-                    'user_id'        => $purchase->user_id,
-                    'supplier_id'    => $purchase->supplier_id ?? null,
-                    'transaction_id' => $txn->id,
-                ]);
-            }
 
             // 5) Loan when not fully paid
             if ($balanceDue > 0.009) {
@@ -282,7 +261,8 @@ class PurchaseController extends Controller
         $suppliers = Supplier::orderBy('name')->get();
         $products  = Product::orderBy('name')->get(['id', 'name', 'cost_price']);
         $purchase->load('items');
-        return view('purchases.edit', compact('purchase', 'suppliers', 'products'));
+        $paymentChannels = PaymentChannel::where('is_active', true)->get();
+        return view('purchases.edit', compact('purchase', 'suppliers', 'products', 'paymentChannels'));
     }
 
     public function update(Request $request, Purchase $purchase)
@@ -395,70 +375,8 @@ class PurchaseController extends Controller
                 'status'          => $status,
             ]);
 
-            // 5) Sync Transaction
-            $txn = $purchase->transaction;
-            if ($amountPaid <= 0.009) {
-                if ($txn) {
-                    DebitCredit::where('transaction_id', $txn->id)->delete();
-                    $txn->delete();
-                }
-            } else {
-                $notes = "Updated from Purchase #{$purchase->id} (channel: " . strtoupper($channel) . ")";
-                if ($purchase->method) {
-                    $notes .= " • Ref: {$purchase->method}";
-                }
+            // 5) Sync Transaction (Handled by PurchaseObserver)
 
-                if ($txn) {
-                    $txn->update([
-                        'amount'           => $amountPaid,
-                        'transaction_date' => $purchase->purchase_date,
-                        'method'           => $channel,
-                        'notes'            => $notes,
-                    ]);
-
-                    $dc = DebitCredit::where('transaction_id', $txn->id)->first();
-                    if ($dc) {
-                        $dc->update([
-                            'amount'      => $amountPaid,
-                            'description' => "Supplier payment – Purchase #{$purchase->id}",
-                            'date'        => now()->toDateString(),
-                            'user_id'     => $purchase->user_id,
-                            'supplier_id' => $purchase->supplier_id ?? null,
-                        ]);
-                    } else {
-                        DebitCredit::create([
-                            'type'           => 'debit',
-                            'amount'         => $amountPaid,
-                            'description'    => "Supplier payment – Purchase #{$purchase->id}",
-                            'date'           => now()->toDateString(),
-                            'user_id'        => $purchase->user_id,
-                            'supplier_id'    => $purchase->supplier_id ?? null,
-                            'transaction_id' => $txn->id,
-                        ]);
-                    }
-                } else {
-                    $txn = Transaction::create([
-                        'type'             => 'debit',
-                        'user_id'          => $purchase->user_id,
-                        'supplier_id'      => $purchase->supplier_id ?? null,
-                        'purchase_id'      => $purchase->id,
-                        'amount'           => $amountPaid,
-                        'transaction_date' => $purchase->purchase_date,
-                        'method'           => $channel,
-                        'notes'            => $notes,
-                    ]);
-
-                    DebitCredit::create([
-                        'type'           => 'debit',
-                        'amount'         => $amountPaid,
-                        'description'    => "Supplier payment – Purchase #{$purchase->id}",
-                        'date'           => now()->toDateString(),
-                        'user_id'        => $purchase->user_id,
-                        'supplier_id'    => $purchase->supplier_id ?? null,
-                        'transaction_id' => $txn->id,
-                    ]);
-                }
-            }
 
             // 6) Loan sync
             if ($balanceDue <= 0.009) {
@@ -503,11 +421,8 @@ class PurchaseController extends Controller
             // Capture product ids first
             $affectedIds = $purchase->items()->pluck('product_id')->all();
 
-            if ($purchase->transaction) {
-                DebitCredit::where('transaction_id', $purchase->transaction->id)->delete();
-                $purchase->transaction->delete();
-            }
-            Loan::where('purchase_id', $purchase->id)->delete();
+            // Transaction/DebitCredit/Loan cleanup handled by PurchaseObserver
+
 
             StockMovement::where('source_type', Purchase::class)
                 ->where('source_id', $purchase->id)

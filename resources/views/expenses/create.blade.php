@@ -2,10 +2,7 @@
 @section('title', 'New Expense')
 
 @section('content')
-@php
-    // Fallback if controller forgot to pass methods
-    $methods = $methods ?? ['cash','bank','momo'];
-@endphp
+
 
 <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
@@ -119,9 +116,9 @@
                 <div>
                     <label class="form-label" for="method">Method <span class="text-red-500">*</span></label>
                     <select id="method" name="method" class="form-select w-full" required>
-                        @foreach($methods as $m)
-                            <option value="{{ $m }}" @selected(old('method') == $m)>
-                                {{ strtoupper($m) }}
+                        @foreach($channels as $ch)
+                            <option value="{{ $ch->slug }}" @selected(old('method') == $ch->slug)>
+                                {{ $ch->name }}
                             </option>
                         @endforeach
                     </select>

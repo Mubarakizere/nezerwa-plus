@@ -68,6 +68,10 @@
                     <i data-lucide="edit-3" class="w-4 h-4"></i>
                     Edit
                 </a>
+                <a href="{{ route('products.adjust.create', $product) }}" class="btn btn-warning text-sm flex items-center gap-1">
+                    <i data-lucide="sliders" class="w-4 h-4"></i>
+                    Adjust Stock
+                </a>
             @endcan
 
             @can('stock.view')

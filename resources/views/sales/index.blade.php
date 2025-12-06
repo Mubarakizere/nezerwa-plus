@@ -117,6 +117,18 @@
         </div>
     @else
 
+        {{-- SUMMARY CARDS (Page Level) --}}
+        @php
+            // Calculate page-level stats
+            $rows = $sales instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator
+                ? $sales->getCollection()
+                : collect($sales);
+
+            $fmt = fn($n) => number_format((float)$n, 2);
+        @endphp
+
+        
+
         {{-- Filters --}}
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-4">
             <form method="GET" action="{{ route('sales.index') }}" class="flex flex-col md:flex-row flex-wrap items-end gap-3">
@@ -138,9 +150,11 @@
                     <select name="channel"
                             class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
                         <option value="">All</option>
-                        <option value="cash" {{ request('channel')==='cash' ? 'selected' : '' }}>Cash</option>
-                        <option value="bank" {{ request('channel')==='bank' ? 'selected' : '' }}>Bank</option>
-                        <option value="momo" {{ request('channel')==='momo' ? 'selected' : '' }}>MoMo</option>
+                        @foreach($paymentChannels as $ch)
+                            <option value="{{ $ch->slug }}" {{ request('channel')===$ch->slug ? 'selected' : '' }}>
+                                {{ $ch->name }}
+                            </option>
+                        @endforeach
                     </select>
                 </div>
 
@@ -229,7 +243,62 @@
                 </div>
             </form>
         </div>
+         
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            @foreach ($paymentChannels as $channel)
+                @php
+                    $slug = $channel->slug;
+                    $label = $channel->name;
+                    $color = match($slug) {
+                        'cash' => 'green',
+                        'bank' => 'blue',
+                        'momo', 'mobile_money' => 'purple',
+                        default => 'gray'
+                    };
 
+                    // Filter rows for this channel
+                    $filtered = $rows->filter(fn($s) => strtolower($s->payment_channel ?? 'cash') === $slug);
+                    $count    = $filtered->count();
+                    
+                    // Sums
+                    $total    = $filtered->sum(fn($s) => (float)($s->total_amount ?? 0));
+                    $paid     = $filtered->sum(fn($s) => (float)($s->amount_paid ?? 0));
+                    // Net after returns logic if needed, but keeping simple for now matching purchases
+                    $balance  = max(0, $total - $paid);
+                @endphp
+                <div class="rounded-xl p-4 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                            {{ $label }} ({{ $count }})
+                        </span>
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold bg-{{ $color }}-100 text-{{ $color }}-800 dark:bg-{{ $color }}-900/40 dark:text-{{ $color }}-300">
+                            {{ strtoupper($slug) }}
+                        </span>
+                    </div>
+                    <div class="mt-1 grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">Total</div>
+                            <div class="font-medium text-gray-900 dark:text-gray-100">
+                                {{ $fmt($total) }}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">Paid</div>
+                            <div class="font-medium text-emerald-700 dark:text-emerald-300">
+                                {{ $fmt($paid) }}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">Balance</div>
+                            <div class="font-medium {{ $balance>0 ? 'text-rose-600 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
+                                {{ $fmt($balance) }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+        
         {{-- Table --}}
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-x-auto">
             <table class="w-full text-sm text-left min-w-[1150px]">

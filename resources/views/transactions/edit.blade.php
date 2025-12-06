@@ -12,8 +12,9 @@
     $isLinked  = (bool) ($transaction->sale_id || $transaction->purchase_id);
     $methodVal = strtolower((string) ($transaction->method ?? ''));
 
-    $methods = ['cash','bank','momo','other'];
-    $isKnown = in_array($methodVal, $methods, true);
+    // We assume $channels is passed from controller
+    $knownSlugs = $channels->pluck('slug')->toArray();
+    $isKnown    = in_array($methodVal, $knownSlugs, true);
 @endphp
 
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -126,9 +127,10 @@
                     <div>
                         <label class="form-label">Method</label>
                         <select name="method" class="form-select" x-model="methodSel">
-                            <template x-for="m in ['cash','bank','momo','other']" :key="m">
-                                <option :value="m" x-text="m === 'momo' ? 'MoMo' : m.charAt(0).toUpperCase()+m.slice(1)"></option>
-                            </template>
+                            @foreach($channels as $ch)
+                                <option value="{{ $ch->slug }}">{{ $ch->name }}</option>
+                            @endforeach
+                            <option value="other">Other…</option>
                         </select>
                         @error('method') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 

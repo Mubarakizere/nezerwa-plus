@@ -8,10 +8,12 @@ use Illuminate\Support\Facades\{Auth, DB, Log};
 class SaleObserver
 {
     /** Normalize channel from sale; fallback to 'cash'. */
+    /** Normalize channel from sale; fallback to 'cash'. */
     protected function channel(Sale $sale): string
     {
+        // Allow dynamic slugs from database (e.g. zigama-css, equity-bank, etc.)
         $ch = strtolower((string)($sale->payment_channel ?? ''));
-        return in_array($ch, ['cash', 'bank', 'momo', 'mobile_money'], true) ? $ch : 'cash';
+        return $ch ?: 'cash';
     }
 
     /** Optional external reference (POS ref / MoMo Txn / Cheque). */

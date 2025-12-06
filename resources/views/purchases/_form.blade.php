@@ -70,29 +70,21 @@
             <x-label value="Payment Channel" />
             {{-- This is what the controller uses --}}
             <select name="payment_channel" x-model="state.payment_channel" class="form-select">
-                <option value="cash">Cash</option>
-                <option value="bank">Bank</option>
-                <option value="momo">MoMo</option>
+                @foreach($paymentChannels as $channel)
+                    <option value="{{ $channel->slug }}">{{ $channel->name }}</option>
+                @endforeach
             </select>
-            <div class="flex gap-2 mt-2">
+            <div class="flex gap-2 mt-2 flex-wrap">
+                @foreach($paymentChannels as $channel)
                 <button type="button"
-                        @click="setChannel('cash')"
-                        class="px-2 py-1 rounded-md border"
-                        :class="badgeClass('cash')">
-                    Cash
+                        @click="setChannel('{{ $channel->slug }}')"
+                        class="px-2 py-1 rounded-md border text-sm"
+                        :class="state.payment_channel === '{{ $channel->slug }}' 
+                            ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700' 
+                            : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'">
+                    {{ $channel->name }}
                 </button>
-                <button type="button"
-                        @click="setChannel('bank')"
-                        class="px-2 py-1 rounded-md border"
-                        :class="badgeClass('bank')">
-                    Bank
-                </button>
-                <button type="button"
-                        @click="setChannel('momo')"
-                        class="px-2 py-1 rounded-md border"
-                        :class="badgeClass('momo')">
-                    MoMo
-                </button>
+                @endforeach
             </div>
             @error('payment_channel')
                 <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
@@ -363,17 +355,7 @@ function purchaseForm(initial){
             this.state.payment_channel = c;
         },
 
-        badgeClass(c) {
-            const active = this.state.payment_channel === c;
-            const base = 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200';
-            const on = {
-                cash: 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 border-green-300 dark:border-green-700',
-                bank: 'bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-700',
-                momo: 'bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 border-purple-300 dark:border-purple-700',
-            }[c] || base;
 
-            return active ? on : base;
-        },
 
         addLine() {
             this.state.lines.push({

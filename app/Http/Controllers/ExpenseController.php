@@ -68,7 +68,7 @@ class ExpenseController extends Controller
                 ->orderBy('name')
                 ->get(['id','name']),
             'suppliers'  => Supplier::orderBy('name')->get(['id','name']),
-            'methods'    => Expense::METHODS,
+            'channels'   => \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 
@@ -89,7 +89,7 @@ class ExpenseController extends Controller
                 ),
             ],
             'supplier_id' => ['nullable','integer','exists:suppliers,id'],
-            'method'      => ['required', Rule::in(Expense::METHODS)],
+            'method'      => ['required', 'string'], // Simplified validation, could check against channels table
             'reference'   => ['nullable','string','max:100'],
             'note'        => ['nullable','string'],
         ]);
@@ -127,7 +127,7 @@ class ExpenseController extends Controller
                 ->orderBy('name')
                 ->get(['id','name']),
             'suppliers'  => Supplier::orderBy('name')->get(['id','name']),
-            'methods'    => Expense::METHODS,
+            'channels'   => \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 

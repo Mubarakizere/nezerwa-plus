@@ -263,4 +263,39 @@ class ProductController extends Controller
 
         return response()->json($query->get());
     }
+    /** Export Stock PDF */
+    public function exportStockPdf(Request $request)
+    {
+        $filter    = $request->input('filter', 'all'); // all, low, out
+        $threshold = (int) config('inventory.low_stock', 5);
+        
+        $stockExpr = "
+            (
+                SELECT
+                    COALESCE(SUM(CASE WHEN type = 'in'  THEN quantity ELSE 0 END), 0)
+                  - COALESCE(SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END), 0)
+                FROM stock_movements sm
+                WHERE sm.product_id = products.id
+            )
+        ";
+
+        $query = Product::query()
+            ->select('products.*')
+            ->selectRaw("$stockExpr AS computed_stock")
+            ->with(['category' => fn($q) => $q->withTrashed()])
+            ->orderBy('name');
+
+        if ($filter === 'out') {
+            $query->whereRaw("$stockExpr <= 0");
+        } elseif ($filter === 'low') {
+            $query->whereRaw("$stockExpr > 0 AND $stockExpr <= ?", [$threshold]);
+        }
+
+        $products = $query->get();
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('products.pdf.stock-report', compact('products', 'filter', 'threshold'))
+            ->setPaper('a4', 'portrait');
+
+        return $pdf->download("stock-report-{$filter}-" . now()->format('Y-m-d') . ".pdf");
+    }
 }

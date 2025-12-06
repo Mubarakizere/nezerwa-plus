@@ -97,6 +97,20 @@
         .chip.credit { color:#065f46; background:#d1fae5; }
         .chip.debit  { color:#991b1b; background:#fee2e2; }
 
+        /* Special Rows */
+        tr.row-withdrawal td { background: #ffe4e6 !important; } /* rose-100ish */
+        tr.row-transfer td { background: #dbeafe !important; }   /* blue-100ish */
+        
+        .label-extra {
+            display: block;
+            margin-top: 3px;
+            font-size: 9px;
+            text-transform: uppercase;
+            font-weight: 800;
+        }
+        .text-rose { color: #be123c; }
+        .text-blue { color: #1d4ed8; }
+
         /* ===== FOOTER ===== */
         .footer {
             margin-top: 10px;
@@ -148,6 +162,29 @@
         </tr>
     </table>
 
+    {{-- Channel Balances Table --}}
+    @if(isset($channelBalances) && count($channelBalances) > 0)
+        <div style="margin-bottom: 14px;">
+            <table style="width: auto; border: 1px solid #d1d5db;">
+                <thead>
+                    <tr>
+                        <th colspan="2" style="background: #f3f4f6; text-align: center;">Current Holdings (All Time)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($channelBalances as $name => $bal)
+                        <tr>
+                            <td style="padding: 3px 8px; font-weight: 600; color: #555;">{{ $name }}</td>
+                            <td style="padding: 3px 8px; text-align: right; color: {{ $bal < 0 ? '#991b1b' : '#111' }};">
+                                {{ number_format($bal, 2) }} RWF
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+
     {{-- Transactions --}}
     <table>
         <thead>
@@ -164,12 +201,22 @@
         </thead>
         <tbody>
             @foreach($transactions as $t)
-                <tr>
+                @php
+                    $trClass = '';
+                    if ($t->is_withdrawal) $trClass = 'row-withdrawal';
+                    elseif ($t->is_transfer) $trClass = 'row-transfer';
+                @endphp
+                <tr class="{{ $trClass }}">
                     <td>{{ \Carbon\Carbon::parse($t->transaction_date)->format('d M Y') }}</td>
                     <td>
                         <span class="chip {{ $t->type === 'credit' ? 'credit' : 'debit' }}">
                             {{ ucfirst($t->type) }}
                         </span>
+                        @if($t->is_withdrawal)
+                            <span class="label-extra text-rose">BOSS OUT</span>
+                        @elseif($t->is_transfer)
+                            <span class="label-extra text-blue">TRANSFER</span>
+                        @endif
                     </td>
                     <td class="ta-right">{{ $fmt($t->amount) }} RWF</td>
                     <td>{{ $t->method ?? '—' }}</td>

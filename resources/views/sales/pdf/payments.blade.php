@@ -8,7 +8,7 @@
     $fmt = fn($n) => number_format((float)$n, 2);
 
     // Ensure we have numeric totals for each method
-    $methods = ['cash','bank','momo','mobile'];
+    // $methods is passed from controller
     $methodTotals = [];
     foreach ($methods as $m) {
         $methodTotals[$m] = (float) ($totalsByMethod[$m] ?? 0);
@@ -118,7 +118,7 @@
             </tr>
         </thead>
         <tbody>
-            @php $paidTotal = max(0.0, $methodTotals['cash'] + $methodTotals['bank'] + $methodTotals['momo'] + $methodTotals['mobile']); @endphp
+            @php $paidTotal = 0; foreach($methods as $m) $paidTotal += $methodTotals[$m]; @endphp
             @foreach ($methods as $m)
                 @php
                     $amt = $methodTotals[$m];
@@ -153,10 +153,9 @@
                     <th>Date</th>
                     <th>Customer</th>
                     <th class="right">Total</th>
-                    <th class="right">Cash</th>
-                    <th class="right">Bank</th>
-                    <th class="right">MoMo</th>
-                    <th class="right">Mobile</th>
+                    @foreach($methods as $m)
+                        <th class="right">{{ ucfirst($m) }}</th>
+                    @endforeach
                     <th class="right">Paid</th>
                     <th class="right">Balance</th>
                 </tr>
@@ -173,10 +172,9 @@
                             @endif
                         </td>
                         <td class="right">{{ $fmt($r['total_amount'] ?? 0) }}</td>
-                        <td class="right">{{ $fmt($r['cash']   ?? 0) }}</td>
-                        <td class="right">{{ $fmt($r['bank']   ?? 0) }}</td>
-                        <td class="right">{{ $fmt($r['momo']   ?? 0) }}</td>
-                        <td class="right">{{ $fmt($r['mobile'] ?? 0) }}</td>
+                        @foreach($methods as $m)
+                            <td class="right">{{ $fmt($r[$m] ?? 0) }}</td>
+                        @endforeach
                         <td class="right">{{ $fmt($r['paid']   ?? 0) }}</td>
                         <td class="right">{{ $fmt($r['balance']?? 0) }}</td>
                     </tr>
@@ -186,10 +184,9 @@
                 <tr>
                     <td colspan="3">Totals</td>
                     <td class="right">{{ $fmt($grandTotal) }}</td>
-                    <td class="right">{{ $fmt($methodTotals['cash']) }}</td>
-                    <td class="right">{{ $fmt($methodTotals['bank']) }}</td>
-                    <td class="right">{{ $fmt($methodTotals['momo']) }}</td>
-                    <td class="right">{{ $fmt($methodTotals['mobile']) }}</td>
+                    @foreach($methods as $m)
+                        <td class="right">{{ $fmt($methodTotals[$m] ?? 0) }}</td>
+                    @endforeach
                     <td class="right">{{ $fmt($grandPaid) }}</td>
                     <td class="right">{{ $fmt($grandBalance) }}</td>
                 </tr>

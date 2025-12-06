@@ -307,6 +307,16 @@
                                 Categories
                             </a>
                         @endcan
+
+                        {{-- Payment Channels (Admin only for now, reusing roles.view or similar if no specific permission yet) --}}
+                        @can('payment-channels.view')
+                            <a href="{{ route('payment-channels.index') }}"
+                               class="block px-3 py-2 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-gray-700
+                                      {{ request()->routeIs('payment-channels.*') ? 'bg-gray-100 dark:bg-gray-700 font-medium' : '' }}">
+                                <i data-lucide="credit-card" class="w-3.5 h-3.5 inline mr-2"></i>
+                                Payment Channels
+                            </a>
+                        @endcan
                     </div>
                 </div>
             @endcanany

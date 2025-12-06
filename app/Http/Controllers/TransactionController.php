@@ -71,8 +71,18 @@ class TransactionController extends Controller
             $pageCredits = $transactions->getCollection()->where('type','credit')->sum('amount');
             $pageDebits  = $transactions->getCollection()->where('type','debit')->sum('amount');
 
+            // --- Channel Balances (All Time) ---
+            $channels = \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get();
+            $channelBalances = [];
+            foreach($channels as $ch) {
+                // We use raw queries for speed on large datasets, but Eloquent is fine for now
+                $in  = Transaction::where('method', $ch->slug)->where('type', 'credit')->sum('amount');
+                $out = Transaction::where('method', $ch->slug)->where('type', 'debit')->sum('amount');
+                $channelBalances[$ch->name] = $in - $out;
+            }
+
             return view('transactions.index', compact(
-                'transactions','totalCredits','totalDebits','pageCredits','pageDebits'
+                'transactions','totalCredits','totalDebits','pageCredits','pageDebits','channelBalances'
             ));
         } catch (Throwable $e) {
             Log::error('Transactions@index failed', ['rid' => $rid, 'error' => $e->getMessage()]);
@@ -88,7 +98,8 @@ class TransactionController extends Controller
         try {
             $customers = Customer::select('id','name')->orderBy('name')->get();
             $suppliers = Supplier::select('id','name')->orderBy('name')->get();
-            return view('transactions.create', compact('customers','suppliers'));
+            $channels  = \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get();
+            return view('transactions.create', compact('customers','suppliers','channels'));
         } catch (Throwable $e) {
             Log::error('Transactions@create failed', ['error' => $e->getMessage()]);
             return back()->with('error', 'Failed to open create form.');
@@ -140,7 +151,8 @@ class TransactionController extends Controller
         try {
             $customers = Customer::select('id','name')->orderBy('name')->get();
             $suppliers = Supplier::select('id','name')->orderBy('name')->get();
-            return view('transactions.edit', compact('transaction','customers','suppliers'));
+            $channels  = \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get();
+            return view('transactions.edit', compact('transaction','customers','suppliers','channels'));
         } catch (Throwable $e) {
             Log::error('Transactions@edit failed', ['id' => $transaction->id, 'error' => $e->getMessage()]);
             return back()->with('error', 'Failed to open edit form.');
@@ -184,6 +196,44 @@ class TransactionController extends Controller
         } catch (Throwable $e) {
             Log::error('Transactions@destroy failed', ['rid' => $rid, 'id' => $transaction->id, 'error' => $e->getMessage()]);
             return back()->with('error', 'Failed to delete transaction. Ref: '.$rid);
+        }
+    }
+
+    /**
+     * Helper for filters
+     */
+    protected function applyFilters($query, Request $request)
+    {
+        $isPg = DB::getDriverName() === 'pgsql';
+        $like = $isPg ? 'ilike' : 'like';
+
+        if ($request->filled('type')) {
+            $query->where('type', $request->type);
+        }
+        if ($request->filled('method')) {
+            $query->where('method', $request->method);
+        }
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+        if ($request->filled('supplier_id')) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('transaction_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('transaction_date', '<=', $request->date_to);
+        }
+        if ($request->filled('q')) {
+            $term = trim($request->q);
+            $query->where(function($sub) use ($term, $like) {
+                $sub->where('notes', $like, "%{$term}%")
+                    ->orWhere('method', $like, "%{$term}%")
+                    ->orWhereHas('user', fn($u) => $u->where('name', $like, "%{$term}%"))
+                    ->orWhereHas('customer', fn($c) => $c->where('name', $like, "%{$term}%"))
+                    ->orWhereHas('supplier', fn($s) => $s->where('name', $like, "%{$term}%"));
+            });
         }
     }
 
@@ -290,12 +340,121 @@ class TransactionController extends Controller
                 ->orderBy('id')
                 ->get();
 
-            $pdf  = Pdf::loadView('transactions.export-pdf', compact('transactions'));
+            // --- Channel Balances (All Time) ---
+            $channels = \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get();
+            $channelBalances = [];
+            foreach($channels as $ch) {
+                $in  = Transaction::where('method', $ch->slug)->where('type', 'credit')->sum('amount');
+                $out = Transaction::where('method', $ch->slug)->where('type', 'debit')->sum('amount');
+                $channelBalances[$ch->name] = $in - $out;
+            }
+
+            $pdf  = Pdf::loadView('transactions.export-pdf', compact('transactions', 'channelBalances'));
             $name = 'transactions_' . now()->format('Y-m-d_H-i-s') . '.pdf';
             return $pdf->download($name);
         } catch (Throwable $e) {
             Log::error('Transactions@exportPdf failed', ['rid' => $rid, 'error' => $e->getMessage()]);
             return back()->with('error', 'Failed to export PDF. Ref: '.$rid);
+        }
+    }
+
+    /* =========================
+     |  WITHDRAWAL (Send to Boss)
+     |=========================*/
+    public function withdrawal()
+    {
+        try {
+            $channels = \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get();
+            return view('transactions.withdrawal', compact('channels'));
+        } catch (Throwable $e) {
+            Log::error('Transactions@withdrawal failed', ['error' => $e->getMessage()]);
+            return back()->with('error', 'Failed to open withdrawal form.');
+        }
+    }
+
+    public function storeWithdrawal(Request $request)
+    {
+        $rid = uniqid('tx_wd_');
+        try {
+            $validated = $request->validate([
+                'amount'           => 'required|numeric|min:0.01',
+                'transaction_date' => 'required|date',
+                'method'           => 'required|string|exists:payment_channels,slug',
+                'notes'            => 'nullable|string|max:1000',
+            ]);
+
+            Transaction::create([
+                'type'             => 'debit',
+                'amount'           => $validated['amount'],
+                'transaction_date' => $validated['transaction_date'],
+                'method'           => $validated['method'],
+                'notes'            => "Withdrawal (Send to Boss): " . ($validated['notes'] ?? ''),
+                'user_id'          => Auth::id(),
+            ]);
+
+            return redirect()->route('transactions.index')->with('success', 'Withdrawal recorded successfully.');
+        } catch (ValidationException $ve) {
+            throw $ve;
+        } catch (Throwable $e) {
+            Log::error('Transactions@storeWithdrawal failed', ['rid' => $rid, 'error' => $e->getMessage()]);
+            return back()->withInput()->with('error', 'Failed to record withdrawal. Ref: '.$rid);
+        }
+    }
+
+    /* =========================
+     |  INTERNAL TRANSFER
+     |=========================*/
+    public function transfer()
+    {
+        try {
+            $channels = \App\Models\PaymentChannel::where('is_active', true)->orderBy('name')->get();
+            return view('transactions.transfer', compact('channels'));
+        } catch (Throwable $e) {
+            Log::error('Transactions@transfer failed', ['error' => $e->getMessage()]);
+            return back()->with('error', 'Failed to open transfer form.');
+        }
+    }
+
+    public function storeTransfer(Request $request)
+    {
+        $rid = uniqid('tx_tr_');
+        try {
+            $validated = $request->validate([
+                'amount'           => 'required|numeric|min:0.01',
+                'transaction_date' => 'required|date',
+                'from_method'      => 'required|string|exists:payment_channels,slug',
+                'to_method'        => 'required|string|exists:payment_channels,slug|different:from_method',
+                'notes'            => 'nullable|string|max:1000',
+            ]);
+
+            DB::transaction(function () use ($validated) {
+                // Debit Source
+                Transaction::create([
+                    'type'             => 'debit',
+                    'amount'           => $validated['amount'],
+                    'transaction_date' => $validated['transaction_date'],
+                    'method'           => $validated['from_method'],
+                    'notes'            => "Transfer OUT to " . ucfirst($validated['to_method']) . ". " . ($validated['notes'] ?? ''),
+                    'user_id'          => Auth::id(),
+                ]);
+
+                // Credit Destination
+                Transaction::create([
+                    'type'             => 'credit',
+                    'amount'           => $validated['amount'],
+                    'transaction_date' => $validated['transaction_date'],
+                    'method'           => $validated['to_method'],
+                    'notes'            => "Transfer IN from " . ucfirst($validated['from_method']) . ". " . ($validated['notes'] ?? ''),
+                    'user_id'          => Auth::id(),
+                ]);
+            });
+
+            return redirect()->route('transactions.index')->with('success', 'Transfer recorded successfully.');
+        } catch (ValidationException $ve) {
+            throw $ve;
+        } catch (Throwable $e) {
+            Log::error('Transactions@storeTransfer failed', ['rid' => $rid, 'error' => $e->getMessage()]);
+            return back()->withInput()->with('error', 'Failed to record transfer. Ref: '.$rid);
         }
     }
 }

@@ -293,10 +293,9 @@
                             <div class="col-span-5">
                                 <select :name="`payments[${i}][method]`" x-model="p.method"
                                         class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm">
-                                    <option value="cash">Cash</option>
-                                    <option value="bank">Bank</option>
-                                    <option value="momo">MoMo</option>
-                                    <option value="mobile">Mobile</option>
+                                    @foreach($paymentChannels as $channel)
+                                        <option value="{{ $channel->slug }}">{{ $channel->name }}</option>
+                                    @endforeach
                                 </select>
                             </div>
                             <div class="col-span-4">

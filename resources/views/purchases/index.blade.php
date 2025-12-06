@@ -229,41 +229,51 @@
 
         {{-- PER-CHANNEL SUMMARY --}}
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            @php
-                $chStyle = [
-                    'cash' => ['label'=>'Cash','clr'=>'green'],
-                    'bank' => ['label'=>'Bank','clr'=>'blue'],
-                    'momo' => ['label'=>'MoMo','clr'=>'purple'],
-                ];
-            @endphp
-            @foreach ($byChannel as $key => $agg)
-                @php $s = $chStyle[$key]; @endphp
+            @foreach ($paymentChannels as $channel)
+                @php
+                    $slug = $channel->slug;
+                    $label = $channel->name;
+                    // Define colors based on slug or fallback
+                    $color = match($slug) {
+                        'cash' => 'green',
+                        'bank' => 'blue',
+                        'momo', 'mobile_money' => 'purple',
+                        default => 'gray'
+                    };
+
+                    // Filter rows for this channel
+                    $filtered = $rows->filter(fn($p) => strtolower($p->payment_channel ?? 'cash') === $slug);
+                    $count    = $filtered->count();
+                    $total    = $filtered->sum(fn($p) => $calcTotal($p));
+                    $paid     = $filtered->sum(fn($p) => (float)($p->amount_paid ?? 0));
+                    $balance  = max(0, $total - $paid);
+                @endphp
                 <div class="rounded-xl p-4 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
                     <div class="flex items-center justify-between">
                         <span class="text-xs text-gray-500 dark:text-gray-400">
-                            {{ $s['label'] }} ({{ $agg['count'] }})
+                            {{ $label }} ({{ $count }})
                         </span>
-                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold bg-{{ $s['clr'] }}-100 text-{{ $s['clr'] }}-800 dark:bg-{{ $s['clr'] }}-900/40 dark:text-{{ $s['clr'] }}-300">
-                            {{ strtoupper($key) }}
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold bg-{{ $color }}-100 text-{{ $color }}-800 dark:bg-{{ $color }}-900/40 dark:text-{{ $color }}-300">
+                            {{ strtoupper($slug) }}
                         </span>
                     </div>
                     <div class="mt-1 grid grid-cols-3 gap-3 text-sm">
                         <div>
                             <div class="text-xs text-gray-500 dark:text-gray-400">Total</div>
                             <div class="font-medium text-gray-900 dark:text-gray-100">
-                                RWF {{ $fmt($agg['total']) }}
+                                {{ $fmt($total) }}
                             </div>
                         </div>
                         <div>
                             <div class="text-xs text-gray-500 dark:text-gray-400">Paid</div>
                             <div class="font-medium text-emerald-700 dark:text-emerald-300">
-                                RWF {{ $fmt($agg['paid']) }}
+                                {{ $fmt($paid) }}
                             </div>
                         </div>
                         <div>
                             <div class="text-xs text-gray-500 dark:text-gray-400">Balance</div>
-                            <div class="font-medium {{ $agg['balance']>0 ? 'text-rose-600 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
-                                RWF {{ $fmt($agg['balance']) }}
+                            <div class="font-medium {{ $balance>0 ? 'text-rose-600 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
+                                {{ $fmt($balance) }}
                             </div>
                         </div>
                     </div>

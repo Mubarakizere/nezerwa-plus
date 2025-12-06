@@ -13,15 +13,14 @@
     $isOverdue  = $dueDate && $dueDate->isPast() && ($loan->status !== 'paid');
     $overdueDays= $isOverdue ? $dueDate->diffInDays(today()) : 0;
 
-    /** Allowed payment methods (keep in sync with LoanPayment::METHODS) */
-    $methods    = \App\Models\LoanPayment::METHODS ?? ['cash','bank','momo'];
+
 @endphp
 
 <div
     x-data="paymentForm({
         remaining: {{ json_encode($remaining) }},
         initialAmount: {{ json_encode((float) old('amount', 0)) }},
-        methods: {{ json_encode($methods) }},
+        methods: {{ json_encode($paymentChannels->pluck('slug')) }},
         initialMethod: {{ json_encode(old('method', 'cash')) }}
     })"
     class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -160,10 +159,10 @@
             <div>
                 <label for="method" class="form-label">Payment Method <span class="text-rose-500">*</span></label>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    @foreach($methods as $m)
+                    @foreach($paymentChannels as $channel)
                         @php
-                            $label = strtoupper($m);
-                            $icon  = match($m) {
+                            $label = strtoupper($channel->name);
+                            $icon  = match($channel->slug) {
                                 'cash' => 'banknote',
                                 'bank' => 'landmark',
                                 'momo' => 'smartphone',
@@ -171,10 +170,10 @@
                             };
                         @endphp
                         <label class="flex items-center gap-2 rounded-lg ring-1 ring-gray-200 dark:ring-gray-700 bg-white/70 dark:bg-gray-900/60 px-3 py-2 cursor-pointer hover:ring-indigo-300">
-                            <input type="radio" name="method" value="{{ $m }}"
+                            <input type="radio" name="method" value="{{ $channel->slug }}"
                                    x-model="method"
                                    class="accent-indigo-600"
-                                   @checked(old('method','cash')===$m)>
+                                   @checked(old('method','cash')===$channel->slug)>
                             <i data-lucide="{{ $icon }}" class="w-4 h-4 text-indigo-500"></i>
                             <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ $label }}</span>
                         </label>

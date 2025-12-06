@@ -53,7 +53,24 @@ class Transaction extends Model
         return $this->belongsTo(Purchase::class);
     }
     public function loan()
-{
-    return $this->belongsTo(\App\Models\Loan::class);
-}
+    {
+        return $this->belongsTo(\App\Models\Loan::class);
+    }
+
+    /**
+     * Check if this is a "Send to Boss" withdrawal.
+     */
+    public function getIsWithdrawalAttribute()
+    {
+        return str_contains($this->notes ?? '', 'Withdrawal (Send to Boss)');
+    }
+
+    /**
+     * Check if this is an internal transfer.
+     */
+    public function getIsTransferAttribute()
+    {
+        return str_contains($this->notes ?? '', 'Transfer OUT to') 
+            || str_contains($this->notes ?? '', 'Transfer IN from');
+    }
 }

@@ -52,8 +52,8 @@
         <x-stat-card title="Total Credits" value="{{ number_format($creditsTotal, 2) }}" color="green" />
         <x-stat-card
             title="Net Balance"
-            value="{{ number_format($creditsTotal - $debitsTotal, 2) }}"
-            color="{{ ($creditsTotal - $debitsTotal) > 0 ? 'green' : (($creditsTotal - $debitsTotal) < 0 ? 'red' : 'gray') }}" />
+            value="{{ number_format($net, 2) }}"
+            color="{{ $net > 0 ? 'green' : ($net < 0 ? 'red' : 'gray') }}" />
     </div>
 
     {{-- Filters --}}

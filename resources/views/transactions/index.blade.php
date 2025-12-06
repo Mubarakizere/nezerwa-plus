@@ -46,6 +46,12 @@
                 <a href="{{ route('transactions.create') }}" class="btn btn-primary text-sm flex items-center gap-1">
                     <i data-lucide="plus" class="w-4 h-4"></i> New Transaction
                 </a>
+                <a href="{{ route('transactions.withdrawal') }}" class="btn btn-danger text-sm flex items-center gap-1">
+                    <i data-lucide="send" class="w-4 h-4"></i> Send to Boss
+                </a>
+                <a href="{{ route('transactions.transfer') }}" class="btn btn-secondary text-sm flex items-center gap-1">
+                    <i data-lucide="arrow-right-left" class="w-4 h-4"></i> Transfer
+                </a>
             @endcan
 
             {{-- Exports keep current filters (query string) --}}
@@ -168,6 +174,19 @@
         />
     </div>
 
+    @if(isset($channelBalances) && count($channelBalances) > 0)
+    <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+        @foreach($channelBalances as $name => $bal)
+            <div class="p-3 bg-white dark:bg-gray-800 border {{ $bal < 0 ? 'border-red-200 dark:border-red-900/50' : 'border-gray-200 dark:border-gray-700' }} rounded-xl shadow-sm">
+                <div class="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">{{ $name }}</div>
+                <div class="text-sm font-bold {{ $bal < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">
+                    {{ number_format($bal, 0) }} RWF
+                </div>
+            </div>
+        @endforeach
+    </div>
+    @endif
+
     {{-- Table --}}
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
@@ -192,8 +211,16 @@
 
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     @forelse($transactions as $transaction)
-                        @php $id = data_get($transaction, 'id'); @endphp
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-all">
+                        @php 
+                            $id = data_get($transaction, 'id'); 
+                            $rowClass = 'hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-all';
+                            if ($transaction->is_withdrawal) {
+                                $rowClass = 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/10 dark:hover:bg-rose-900/20';
+                            } elseif ($transaction->is_transfer) {
+                                $rowClass = 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/10 dark:hover:bg-blue-900/20';
+                            }
+                        @endphp
+                        <tr class="{{ $rowClass }}">
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                 {{ \Carbon\Carbon::parse($transaction->transaction_date)->format('Y-m-d H:i') }}
                             </td>
@@ -232,7 +259,17 @@
 
                             {{-- Source --}}
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                                @if($transaction->sale_id && !$transaction->purchase_id)
+                                @if($transaction->is_withdrawal)
+                                    <span class="inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400 uppercase text-xs">
+                                        <i data-lucide="send" class="w-4 h-4"></i>
+                                        Boss Withdrawal
+                                    </span>
+                                @elseif($transaction->is_transfer)
+                                    <span class="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400 uppercase text-xs">
+                                        <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
+                                        Internal Transfer
+                                    </span>
+                                @elseif($transaction->sale_id && !$transaction->purchase_id)
                                     <span class="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
                                         <i data-lucide="shopping-cart" class="w-4 h-4"></i>
                                         Sale #{{ $transaction->sale_id }}

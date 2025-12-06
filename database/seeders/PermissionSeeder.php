@@ -26,6 +26,7 @@ class PermissionSeeder extends Seeder
             'expenses',
             'item-loans',
             'partner-companies',
+            'payment-channels',
         ];
 
         $actions = ['view', 'create', 'edit', 'delete'];
