@@ -180,13 +180,84 @@ class ItemLoanController extends Controller
             }
         }
 
-        $itemLoan->fill($data);
+        return DB::transaction(function () use ($data, $itemLoan) {
+            // Track changes for stock movement update
+            $oldProductId = $itemLoan->product_id;
+            $oldDirection = $itemLoan->direction;
+            $oldQuantity = (float)$itemLoan->quantity;
 
-        // Recalculate status on update (now we can mark overdue if applicable)
-        $itemLoan->refreshStatus();
-        $itemLoan->save();
+            $itemLoan->fill($data);
 
-        return redirect()->route('item-loans.show', $itemLoan)->with('success', 'Loan updated.');
+            // Recalculate status on update (now we can mark overdue if applicable)
+            $itemLoan->refreshStatus();
+            $itemLoan->save();
+
+            // Update stock movement if product_id or direction changed
+            if ($oldProductId && ($oldProductId != $itemLoan->product_id || $oldDirection != $itemLoan->direction || $oldQuantity != (float)$itemLoan->quantity)) {
+                // Find the original stock movement
+                $stockMovement = StockMovement::where('source_type', ItemLoan::class)
+                    ->where('source_id', $itemLoan->id)
+                    ->first();
+
+                if ($stockMovement) {
+                    // If product changed, delete old movement and create new one
+                    if ($oldProductId != $itemLoan->product_id) {
+                        $stockMovement->delete();
+
+                        // Create new stock movement if new product exists
+                        if ($itemLoan->product_id) {
+                            $product = Product::find($itemLoan->product_id);
+                            $cost = (float)($product->cost_price ?? 0);
+                            $qty = (float)$itemLoan->quantity;
+                            $type = $itemLoan->direction === 'given' ? 'out' : 'in';
+
+                            StockMovement::create([
+                                'product_id'  => $itemLoan->product_id,
+                                'type'        => $type,
+                                'quantity'    => $qty,
+                                'unit_cost'   => $cost,
+                                'total_cost'  => round($qty * $cost, 2),
+                                'source_type' => ItemLoan::class,
+                                'source_id'   => $itemLoan->id,
+                                'user_id'     => Auth::id(),
+                            ]);
+                        }
+                    } else {
+                        // Just update the type and quantity if direction or quantity changed
+                        $type = $itemLoan->direction === 'given' ? 'out' : 'in';
+                        $product = Product::find($itemLoan->product_id);
+                        $cost = (float)($product->cost_price ?? 0);
+                        $qty = (float)$itemLoan->quantity;
+
+                        $stockMovement->update([
+                            'type'        => $type,
+                            'quantity'    => $qty,
+                            'unit_cost'   => $cost,
+                            'total_cost'  => round($qty * $cost, 2),
+                        ]);
+                    }
+                }
+            } elseif (!$oldProductId && $itemLoan->product_id) {
+                // Product was added where there was none before
+                $product = Product::find($itemLoan->product_id);
+                $cost = (float)($product->cost_price ?? 0);
+                $qty = (float)$itemLoan->quantity;
+                $type = $itemLoan->direction === 'given' ? 'out' : 'in';
+
+                StockMovement::create([
+                    'product_id'  => $itemLoan->product_id,
+                    'type'        => $type,
+                    'quantity'    => $qty,
+                    'unit_cost'   => $cost,
+                    'total_cost'  => round($qty * $cost, 2),
+                    'source_type' => ItemLoan::class,
+                    'source_id'   => $itemLoan->id,
+                    'user_id'     => Auth::id(),
+                ]);
+            }
+
+            return redirect()->route('item-loans.show', $itemLoan)->with('success', 'Loan updated.');
+        });
     }
 
     /**
@@ -199,9 +270,17 @@ class ItemLoanController extends Controller
             return back()->withErrors(['delete' => 'Cannot delete a loan that has returns.']);
         }
 
-        $itemLoan->delete();
+        return DB::transaction(function () use ($itemLoan) {
+            // Delete associated stock movements
+            StockMovement::where('source_type', ItemLoan::class)
+                ->where('source_id', $itemLoan->id)
+                ->delete();
 
-        return redirect()->route('item-loans.index')->with('success', 'Loan deleted.');
+            // Delete the loan
+            $itemLoan->delete();
+
+            return redirect()->route('item-loans.index')->with('success', 'Loan deleted.');
+        });
     }
 
     /**

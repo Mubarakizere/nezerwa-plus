@@ -220,6 +220,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/stock-history/export/pdf', [StockMovementController::class, 'exportPdf'])
             ->name('stock.history.export.pdf');
+
+        // Admin-only: delete, restore, and force delete stock movements
+        Route::delete('/stock-history/{movement}', [StockMovementController::class, 'destroy'])
+            ->name('stock.history.destroy')
+            ->middleware('permission:stock.delete');
+
+        Route::post('/stock-history/{id}/restore', [StockMovementController::class, 'restore'])
+            ->name('stock.history.restore')
+            ->middleware('permission:stock.delete');
+
+        Route::delete('/stock-history/{id}/force', [StockMovementController::class, 'forceDestroy'])
+            ->name('stock.history.forceDestroy')
+            ->middleware('permission:stock.delete');
     });
 
     /*

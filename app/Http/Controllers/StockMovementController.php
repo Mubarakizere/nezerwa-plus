@@ -59,9 +59,15 @@ class StockMovementController extends Controller
     private function buildQuery(Request $request)
     {
         // Eager-load morph source safely. If your PurchaseReturn has `purchase()`
-        // or SaleReturn has `sale()`, morphWith will try to preload them; if not, it’s still safe.
-        $query = StockMovement::query()
-            ->with([
+        // or SaleReturn has `sale()`, morphWith will try to preload them; if not, it's still safe.
+        $query = StockMovement::query();
+
+        // Include trashed records if requested
+        if ($request->boolean('show_deleted')) {
+            $query->withTrashed();
+        }
+
+        $query->with([
                 'product:id,name',
                 'user:id,name',
                 'source' => function (MorphTo $m) {
@@ -231,5 +237,36 @@ class StockMovementController extends Controller
     {
         $movements = $this->buildQuery($request)->paginate(50);
         return response()->json($movements);
+    }
+
+    /**
+     * Soft delete a stock movement (admin only).
+     * This will mark the movement as deleted but keep it in the database.
+     */
+    public function destroy(StockMovement $movement)
+    {
+        $movement->delete();
+        return back()->with('success', 'Stock movement deleted successfully. You can restore it from the trash.');
+    }
+
+    /**
+     * Restore a soft-deleted stock movement (admin only).
+     */
+    public function restore($id)
+    {
+        $movement = StockMovement::withTrashed()->findOrFail($id);
+        $movement->restore();
+        return back()->with('success', 'Stock movement restored successfully.');
+    }
+
+    /**
+     * Permanently delete a stock movement (admin only).
+     * WARNING: This cannot be undone!
+     */
+    public function forceDestroy($id)
+    {
+        $movement = StockMovement::withTrashed()->findOrFail($id);
+        $movement->forceDelete();
+        return back()->with('success', 'Stock movement permanently deleted.');
     }
 }

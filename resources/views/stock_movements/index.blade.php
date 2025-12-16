@@ -164,6 +164,15 @@
                 <input type="date" name="to_date" value="{{ request('to_date') }}" class="form-input">
             </div>
 
+            @can('stock.delete')
+            <div class="md:col-span-6">
+                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" name="show_deleted" value="1" @checked(request('show_deleted')) class="rounded border-gray-300 dark:border-gray-600">
+                    <span>Show deleted movements</span>
+                </label>
+            </div>
+            @endcan
+
             <div class="md:col-span-6 flex justify-end mt-1">
                 <button type="submit" class="btn btn-secondary flex items-center gap-1">
                     <i data-lucide="filter" class="w-4 h-4"></i>
@@ -187,6 +196,9 @@
                             <th class="px-4 py-3 text-left">Reference / Note</th>
                             <th class="px-4 py-3 text-left">Recorded By</th>
                             <th class="px-4 py-3 text-left">Source</th>
+                            @can('stock.delete')
+                            <th class="px-4 py-3 text-center">Actions</th>
+                            @endcan
                         </tr>
                     </thead>
 
@@ -256,9 +268,12 @@
                                 $createdAt   = $m->created_at ?? null;
                             @endphp
 
-                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-all">
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-all {{ $m->trashed() ? 'bg-red-50 dark:bg-red-900/10' : '' }}">
                                 <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                     {{ $createdAt ? $createdAt->format('d M Y, H:i') : '—' }}
+                                    @if($m->trashed())
+                                        <span class="block text-xs text-red-600 dark:text-red-400 font-semibold">DELETED</span>
+                                    @endif
                                 </td>
 
                                 <td class="px-4 py-3 text-gray-900 dark:text-gray-100">
@@ -307,10 +322,43 @@
                                         @endif
                                     </span>
                                 </td>
+
+                                @can('stock.delete')
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center justify-center gap-1">
+                                        @if($m->trashed())
+                                            {{-- Restore button --}}
+                                            <form action="{{ route('stock.history.restore', $m->id) }}" method="POST" class="inline">
+                                                @csrf
+                                                <button type="submit" class="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Restore">
+                                                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                                </button>
+                                            </form>
+                                            {{-- Permanent delete button --}}
+                                            <form action="{{ route('stock.history.forceDestroy', $m->id) }}" method="POST" class="inline" onsubmit="return confirm('Permanently delete this movement? This cannot be undone!')">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete Permanently">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                </button>
+                                            </form>
+                                        @else
+                                            {{-- Soft delete button --}}
+                                            <form action="{{ route('stock.history.destroy', $m->id) }}" method="POST" class="inline" onsubmit="return confirm('Delete this stock movement?')">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete">
+                                                    <i data-lucide="trash" class="w-4 h-4"></i>
+                                                </button>
+                                            </form>
+                                        @endif
+                                    </div>
+                                </td>
+                                @endcan
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                                <td colspan="{{ auth()->user()->can('stock.delete') ? '10' : '9' }}" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
                                     No movements found for the selected filters.
                                 </td>
                             </tr>
