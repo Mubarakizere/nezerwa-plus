@@ -335,19 +335,35 @@
                                                 </button>
                                             </form>
                                             {{-- Permanent delete button --}}
-                                            <form action="{{ route('stock.history.forceDestroy', $m->id) }}" method="POST" class="inline" onsubmit="return confirm('Permanently delete this movement? This cannot be undone!')">
+                                            <form action="{{ route('stock.history.forceDestroy', $m->id) }}" method="POST" class="inline" id="force-delete-form-{{ $m->id }}">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete Permanently">
+                                                <button type="button"
+                                                    @click="$dispatch('open-delete-modal', {
+                                                        formId: 'force-delete-form-{{ $m->id }}',
+                                                        title: 'Permanently Delete Movement?',
+                                                        message: 'This action cannot be undone. The record will be gone forever.',
+                                                        confirmText: 'Delete Forever',
+                                                        confirmColor: 'btn-danger'
+                                                    })"
+                                                    class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete Permanently">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                 </button>
                                             </form>
                                         @else
                                             {{-- Soft delete button --}}
-                                            <form action="{{ route('stock.history.destroy', $m->id) }}" method="POST" class="inline" onsubmit="return confirm('Delete this stock movement?')">
+                                            <form action="{{ route('stock.history.destroy', $m->id) }}" method="POST" class="inline" id="delete-form-{{ $m->id }}">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete">
+                                                <button type="button"
+                                                    @click="$dispatch('open-delete-modal', {
+                                                        formId: 'delete-form-{{ $m->id }}',
+                                                        title: 'Delete Stock Movement?',
+                                                        message: 'This will move the record to the trash. You can restore it later if needed.',
+                                                        confirmText: 'Delete',
+                                                        confirmColor: 'btn-danger'
+                                                    })"
+                                                    class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete">
                                                     <i data-lucide="trash" class="w-4 h-4"></i>
                                                 </button>
                                             </form>
