@@ -34,7 +34,7 @@ class StockAdjustmentController extends Controller
 
             // Lock product to prevent race conditions
             $product = Product::where('id', $product->id)->lockForUpdate()->first();
-            
+
             $currentStock = $product->currentStock();
             $actualStock  = (float) $request->input('actual_stock');
             $difference   = $actualStock - $currentStock;
@@ -43,30 +43,37 @@ class StockAdjustmentController extends Controller
                 return back()->with('info', 'No adjustment needed. Stock is already ' . $actualStock);
             }
 
+            // 1. Create the StockAdjustment Record FIRST
+            // This gives us a real ID to link to the movement
+            $adjustment = \App\Models\StockAdjustment::create([
+                'user_id'    => Auth::id(),
+                'product_id' => $product->id,
+                'quantity'   => $difference,
+                'notes'      => $request->input('notes') ?? 'Manual Stock Adjustment',
+            ]);
+
+            // 2. Determine type and qty for movement
             $type = $difference > 0 ? 'in' : 'out';
             $qty  = abs($difference);
-            
-            // Use weighted average cost for the value of the adjustment
+
+            // Use weighted average cost
             $unitCost = $product->weightedAverageCost();
 
+            // 3. Create the Movement linked to the Adjustment
             StockMovement::create([
                 'product_id'  => $product->id,
                 'type'        => $type,
                 'quantity'    => $qty,
                 'unit_cost'   => $unitCost,
                 'total_cost'  => round($qty * $unitCost, 2),
-                'source_type' => 'App\Models\StockAdjustment', // Virtual model or just string
-                'source_id'   => 0, // No specific parent model for ad-hoc adjustment, or could create one
+                'source_type' => \App\Models\StockAdjustment::class, // Use the class constant
+                'source_id'   => $adjustment->id, // Use the REAL ID now
                 'user_id'     => Auth::id(),
-                'notes'       => $request->input('notes') ?? 'Manual Stock Adjustment (Survey)',
+                'notes'       => $request->input('notes'),
             ]);
 
-            // Update product cost price if needed? 
-            // Usually adjustments shouldn't change unit cost unless it's a value adjustment.
-            // We keep WAC as is, just adjusting quantity.
-
             DB::commit();
-            
+
             return redirect()->route('products.show', $product)
                 ->with('success', "Stock adjusted from {$currentStock} to {$actualStock}.");
 
