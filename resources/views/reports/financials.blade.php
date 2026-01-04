@@ -27,7 +27,7 @@
     <!-- Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <!-- Sales Card -->
-        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500 group relative">
             <h3 class="text-lg font-medium text-gray-900">Total Sales</h3>
             <p class="text-3xl font-bold text-green-600 mt-2">{{ number_format($totalSales) }} RWF</p>
             <div class="mt-2 text-sm text-gray-500">
@@ -35,6 +35,13 @@
             </div>
             <div class="mt-1 text-sm text-gray-500">
                 Profit: <span class="font-bold text-green-700">+{{ number_format($totalProfit) }}</span>
+            </div>
+            
+            <!-- Formulas -->
+            <div class="mt-4 pt-3 border-t border-dashed border-gray-200 text-xs text-gray-400">
+                <p><strong>Total:</strong> Sum of all sales (Paid + Unpaid)</p>
+                <p><strong>Received:</strong> Actual cash collected</p>
+                <p><strong>Profit:</strong> (Price - Cost) × Qty</p>
             </div>
         </div>
 
@@ -44,6 +51,11 @@
             <p class="text-3xl font-bold text-red-600 mt-2">{{ number_format($totalPurchases) }} RWF</p>
             <div class="mt-2 text-sm text-gray-500">
                 Expenses recorded in this period.
+            </div>
+            
+             <!-- Formulas -->
+             <div class="mt-4 pt-3 border-t border-dashed border-gray-200 text-xs text-gray-400">
+                <p><strong>Formula:</strong> Sum of total cost of all purchases.</p>
             </div>
         </div>
 
@@ -65,6 +77,13 @@
                         {{ number_format($loansGiven - $loansTaken) }}
                     </span>
                 </div>
+            </div>
+
+            <!-- Formulas -->
+            <div class="mt-4 pt-3 border-t border-dashed border-gray-200 text-xs text-gray-400">
+                <p><strong>Given:</strong> Loans you gave to others</p>
+                <p><strong>Taken:</strong> Loans you took from others</p>
+                <p><strong>Net:</strong> Given - Taken</p>
             </div>
         </div>
     </div>

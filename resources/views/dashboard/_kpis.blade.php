@@ -21,6 +21,10 @@
                 </div>
                 <span class="font-medium">Revenue</span>
             </div>
+             <!-- Formula -->
+            <div class="mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500">
+                Formula: Paid Sales + Unpaid Sales
+            </div>
         </div>
 
         <!-- Total Profit -->
@@ -36,6 +40,10 @@
                 </div>
                 <span class="font-medium">Gross Profit</span>
             </div>
+            <!-- Formula -->
+            <div class="mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500">
+                Formula: ∑((Selling Price - Cost Price) × Qty)
+            </div>
         </div>
 
         <!-- Pending Balances -->
@@ -50,6 +58,10 @@
                     <i data-lucide="alert-circle" class="h-4 w-4"></i>
                 </div>
                 <span class="font-medium">Outstanding</span>
+            </div>
+            <!-- Formula -->
+            <div class="mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500">
+                Formula: Unpaid Sales + Loans Given
             </div>
         </div>
 
@@ -67,6 +79,10 @@
                 </div>
                 <span class="font-medium">Liquidity</span>
             </div>
+            <!-- Formula -->
+            <div class="mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500">
+                Formula: (Cash Sales + Loans Taken) - (Purchases + Expenses + Loans Given)
+            </div>
         </div>
 
         <!-- Stock Value -->
@@ -81,6 +97,10 @@
                     <i data-lucide="package" class="h-4 w-4"></i>
                 </div>
                 <span class="font-medium">Inventory Asset</span>
+            </div>
+            <!-- Formula -->
+            <div class="mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500">
+                Formula: ∑(Stock Qty × Cost Price)
             </div>
         </div>
     </div>
