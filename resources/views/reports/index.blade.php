@@ -134,10 +134,10 @@
 
             <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                    <x-stat-card title="Revenue" :value="'RWF '.number_format($plRevenue,2)" color="blue" />
-                    <x-stat-card title="COGS" :value="'RWF '.number_format($plCogs,2)" color="amber" />
-                    <x-stat-card title="Gross Profit" :value="'RWF '.number_format($plGrossProfit,2)" color="green" />
-                    <x-stat-card title="Other Expenses" :value="'RWF '.number_format($plOtherExpenses,2)" color="red" />
+                    <x-stat-card title="Revenue" :value="'RWF '.number_format($plRevenue,2)" color="blue" formula="Sum of Sales Subtotals" />
+                    <x-stat-card title="COGS" :value="'RWF '.number_format($plCogs,2)" color="amber" formula="Revenue - Gross Profit" />
+                    <x-stat-card title="Gross Profit" :value="'RWF '.number_format($plGrossProfit,2)" color="green" formula="Revenue - COGS" />
+                    <x-stat-card title="Other Expenses" :value="'RWF '.number_format($plOtherExpenses,2)" color="red" formula="Debits (No Invoice)" />
                 </div>
 
                 <div class="flex items-center justify-between">
@@ -165,22 +165,26 @@
                 <x-stat-card
                     title="Accounts Receivable (AR)"
                     :value="'RWF ' . number_format($arBalance, 2)"
-                    color="{{ $arBalance > 0 ? 'amber' : 'green' }}" />
+                    color="{{ $arBalance > 0 ? 'amber' : 'green' }}"
+                    formula="Total Unpaid Sales" />
 
                 <x-stat-card
                     title="Accounts Payable (AP)"
                     :value="'RWF ' . number_format($apBalance, 2)"
-                    color="{{ $apBalance > 0 ? 'red' : 'green' }}" />
+                    color="{{ $apBalance > 0 ? 'red' : 'green' }}"
+                    formula="Total Unpaid Purchases" />
 
                 <x-stat-card
                     title="Inventory Units"
                     :value="number_format($inventoryUnits, 0)"
-                    color="blue" />
+                    color="blue"
+                    formula="Total Stock Quantity" />
 
                 <x-stat-card
                     title="Inventory Value @ cost"
                     :value="'RWF ' . number_format($inventoryValue, 2)"
-                    color="purple" />
+                    color="purple"
+                    formula="Sum of (Qty x Cost Price)" />
             </div>
         </section>
 
