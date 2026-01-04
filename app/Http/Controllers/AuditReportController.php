@@ -93,50 +93,80 @@ class AuditReportController extends Controller
      */
     public function reconciliation()
     {
+        // Increase time limit for this specific report (allow 2 minutes)
+        set_time_limit(120);
+
         $issues = [];
+        $limit  = 100; // Cap to prevent memory exhaustion
 
         // 1. Detect Sales with Payment Mismatches
-        // Logic: If status is 'paid' but amount_paid < total_amount
-        $badPaidSales = Sale::where('status', 'paid')
-            ->whereRaw('amount_paid < total_amount - 1') // Allow small tolerance
+        // Logic: Sales that are 'completed' but paid amount < total
+        $badPaidSales = Sale::where('status', 'completed')
+            ->whereRaw('amount_paid < total_amount - 1')
+            ->latest()
+            ->limit($limit)
             ->get();
         
         foreach ($badPaidSales as $sale) {
             $issues[] = [
                 'type' => 'Sale Error',
                 'item_id' => $sale->id,
-                'message' => "Sale #{$sale->id} is marked 'Paid' but amount paid ({$sale->amount_paid}) is less than total ({$sale->total_amount}).",
+                'message' => "Sale #{$sale->id} is 'Completed' but Paid ({$sale->amount_paid}) < Total ({$sale->total_amount}).",
                 'severity' => 'high',
                 'link' => route('sales.show', $sale->id),
             ];
         }
 
         // 2. Detect Overpaid Sales
-        $overpaidSales = Sale::whereRaw('amount_paid > total_amount + 1')->get();
+        // Logic: Sales where paid > total
+        $overpaidSales = Sale::whereRaw('amount_paid > total_amount + 1')
+            ->latest()
+            ->limit($limit)
+            ->get();
+
         foreach ($overpaidSales as $sale) {
             $issues[] = [
                 'type' => 'Sale Warning',
                 'item_id' => $sale->id,
-                'message' => "Sale #{$sale->id} has been overpaid! Total: {$sale->total_amount}, Paid: {$sale->amount_paid}.",
+                'message' => "Sale #{$sale->id} Overpaid! Total: {$sale->total_amount}, Paid: {$sale->amount_paid}.",
                 'severity' => 'medium',
                 'link' => route('sales.show', $sale->id),
             ];
         }
 
-        // 3. Loans that are 'paid' but have remaining balance
-        // We need to calculate remaining carefully or rely on model attribute if loaded
-        // Let's use raw query for speed
-        $badLoans = Loan::where('status', 'paid')->get()->filter(function($loan) {
-             return $loan->remaining > 1; 
-        });
+        // 3. Loans marked 'paid' but have remaining balance
+        // CRITICAL OPTIMIZATION: Use SQL subquery instead of iterating all loans
+        $badLoans = Loan::where('status', 'paid')
+            ->whereRaw('(amount - (select COALESCE(sum(amount), 0) from loan_payments where loan_payments.loan_id = loans.id)) > 1')
+            ->limit($limit) // Limit results
+            ->get();
 
         foreach ($badLoans as $loan) {
+            $paid = $loan->payments()->sum('amount');
+            $rem  = $loan->amount - $paid;
+
             $issues[] = [
                 'type' => 'Loan Error',
                 'item_id' => $loan->id,
-                'message' => "Loan #{$loan->id} ({$loan->type}) is marked 'Paid' but still has {$loan->remaining} remaining.",
+                'message' => "Loan #{$loan->id} ({$loan->type}) is marked 'Paid' but has balance {$rem}.",
                 'severity' => 'high',
-                'link' => '#', // route('loans.show', $loan->id)
+                'link' => '#', 
+            ];
+        }
+
+        // 4. Loans that are 'pending' but fully paid (Bonus check)
+        $forgottenLoans = Loan::where('status', 'pending')
+             ->whereRaw('(amount - (select COALESCE(sum(amount), 0) from loan_payments where loan_payments.loan_id = loans.id)) < 1')
+             ->limit($limit)
+             ->get();
+
+        foreach ($forgottenLoans as $loan) {
+             $issues[] = [
+                'type' => 'Loan Status',
+                'item_id' => $loan->id,
+                'message' => "Loan #{$loan->id} is fully paid but status is 'Pending'.",
+                'severity' => 'medium',
+                'link' => '#',
             ];
         }
         
