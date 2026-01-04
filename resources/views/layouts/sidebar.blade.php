@@ -262,6 +262,31 @@
                             <i data-lucide="users" class="w-3.5 h-3.5 inline mr-2"></i>
                             Customer Statement
                         </a>
+
+                        @can('audit.view')
+                            <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+
+                            <a href="{{ route('audit.financials') }}"
+                               class="block px-3 py-2 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-gray-700
+                                      {{ request()->routeIs('audit.financials') ? 'bg-gray-100 dark:bg-gray-700 font-medium' : '' }}">
+                                <i data-lucide="trending-up" class="w-3.5 h-3.5 inline mr-2 text-green-600"></i>
+                                Financials (Pro)
+                            </a>
+
+                            <a href="{{ route('audit.reconciliation') }}"
+                               class="block px-3 py-2 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-gray-700
+                                      {{ request()->routeIs('audit.reconciliation') ? 'bg-gray-100 dark:bg-gray-700 font-medium' : '' }}">
+                                <i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline mr-2 text-yellow-600"></i>
+                                Mistake Detection
+                            </a>
+
+                            <a href="{{ route('audit.logs') }}"
+                               class="block px-3 py-2 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-gray-700
+                                      {{ request()->routeIs('audit.logs') ? 'bg-gray-100 dark:bg-gray-700 font-medium' : '' }}">
+                                <i data-lucide="clipboard-list" class="w-3.5 h-3.5 inline mr-2 text-gray-500"></i>
+                                Audit Logs
+                            </a>
+                        @endcan
                     </div>
                 </div>
             @endcan

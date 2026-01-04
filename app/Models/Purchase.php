@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\Auditable;
 
 class Purchase extends Model
 {
-    use HasFactory;
+    use HasFactory, Auditable;
 
     /* ───────────── Constants ───────────── */
     public const STATUSES = ['pending','partial','completed','cancelled'];

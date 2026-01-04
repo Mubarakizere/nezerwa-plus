@@ -8,10 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\{BelongsTo, HasMany};
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
+use App\Traits\Auditable;
 
 class Loan extends Model
 {
-    use HasFactory;
+    use HasFactory, Auditable;
 
     /** Allowed enums */
     public const TYPES    = ['given', 'taken'];

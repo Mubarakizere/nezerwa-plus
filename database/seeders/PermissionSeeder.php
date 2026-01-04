@@ -27,6 +27,7 @@ class PermissionSeeder extends Seeder
             'item-loans',
             'partner-companies',
             'payment-channels',
+            'audit', // New Audit module permissions (audit.view, audit.create, etc.)
         ];
 
         $actions = ['view', 'create', 'edit', 'delete'];

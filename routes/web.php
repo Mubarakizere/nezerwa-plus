@@ -445,6 +445,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('reports.export.pl.pdf');
     });
 
+    /**
+     * Audit & Professional Tools
+     */
+    Route::middleware('permission:audit.view')->group(function () {
+        Route::get('/audit-logs', [App\Http\Controllers\AuditReportController::class, 'index'])
+            ->name('audit.logs');
+
+        Route::get('/reports/financials', [App\Http\Controllers\AuditReportController::class, 'financials'])
+            ->name('audit.financials');
+
+        Route::get('/reports/reconciliation', [App\Http\Controllers\AuditReportController::class, 'reconciliation'])
+            ->name('audit.reconciliation');
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Expenses
