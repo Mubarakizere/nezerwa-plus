@@ -110,18 +110,19 @@
                 Summary ({{ $start }} → {{ $end }})
             </h3>
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                <x-stat-card title="Total Sales" :value="$totalSales" color="blue" />
-                <x-stat-card title="Total Profit" :value="$totalProfit" color="green" />
-                <x-stat-card title="Pending Balances" :value="$pendingBalances" color="red" />
-                <x-stat-card title="Total Purchases" :value="$totalPurchases" color="indigo" />
-                <x-stat-card title="Credits (In)" :value="$credits" color="green" />
-                <x-stat-card title="Debits (Out)" :value="$debits" color="red" />
+                <x-stat-card title="Total Sales" :value="$totalSales" color="blue" formula="Paid + Unpaid Sales (Date range)" />
+                <x-stat-card title="Total Profit" :value="$totalProfit" color="green" formula="Sum of (Price - Cost) x Qty" />
+                <x-stat-card title="Pending Balances" :value="$pendingBalances" color="red" formula="Unpaid Sales (Total - Paid)" />
+                <x-stat-card title="Total Purchases" :value="$totalPurchases" color="indigo" formula="Sum of Purchase Totals" />
+                <x-stat-card title="Credits (In)" :value="$credits" color="green" formula="Sum of Credit Transactions" />
+                <x-stat-card title="Debits (Out)" :value="$debits" color="red" formula="Sum of Debit Transactions" />
                 <x-stat-card
                     title="Net Balance"
                     :value="$netBalance"
-                    color="{{ ((float)str_replace(',', '', $netBalance)) >= 0 ? 'green' : 'red' }}" />
-                <x-stat-card title="Loans Given" :value="$loansGiven" color="blue" />
-                <x-stat-card title="Loans Taken" :value="$loansTaken" color="amber" />
+                    color="{{ ((float)str_replace(',', '', $netBalance)) >= 0 ? 'green' : 'red' }}"
+                    formula="Credits - Debits" />
+                <x-stat-card title="Loans Given" :value="$loansGiven" color="blue" formula="Total Loans Given" />
+                <x-stat-card title="Loans Taken" :value="$loansTaken" color="amber" formula="Total Loans Taken" />
             </div>
         </section>
 
