@@ -69,12 +69,12 @@ class AuditReportController extends Controller
             ->pluck('total', 'payment_channel');
 
         // Full Lists (No Pagination as requested for report view)
-        $allSales = Sale::with('customer')
+        $allSales = Sale::with(['customer', 'user'])
             ->whereBetween('sale_date', [$startDate, $endDate])
             ->latest('sale_date')
             ->get();
             
-        $allPurchases = Purchase::with('supplier')
+        $allPurchases = Purchase::with(['supplier', 'user'])
             ->whereBetween('purchase_date', [$startDate, $endDate])
             ->latest('purchase_date')
             ->get();

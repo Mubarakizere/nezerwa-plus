@@ -95,6 +95,7 @@
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Channel</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recorded By</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -104,9 +105,10 @@
                                 <td class="px-4 py-2 text-sm font-medium text-gray-900">{{ $sale->customer->name ?? 'Walk-in' }}</td>
                                 <td class="px-4 py-2 text-sm text-green-600 font-semibold">{{ number_format($sale->total_amount) }}</td>
                                 <td class="px-4 py-2 text-sm text-gray-500">{{ ucfirst($sale->payment_channel) }}</td>
+                                <td class="px-4 py-2 text-sm text-gray-500">{{ $sale->user->name ?? 'System' }}</td>
                             </tr>
                             @empty
-                            <tr><td colspan="4" class="px-4 py-2 text-center text-gray-500">No sales found.</td></tr>
+                            <tr><td colspan="5" class="px-4 py-2 text-center text-gray-500">No sales found.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -126,6 +128,7 @@
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Recorded By</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -135,9 +138,10 @@
                                 <td class="px-4 py-2 text-sm font-medium text-gray-900">{{ $purchase->supplier->name ?? 'Unknown' }}</td>
                                 <td class="px-4 py-2 text-sm text-red-600 font-semibold">{{ number_format($purchase->total_amount) }}</td>
                                 <td class="px-4 py-2 text-sm text-gray-500">{{ ucfirst($purchase->status) }}</td>
+                                <td class="px-4 py-2 text-sm text-gray-500">{{ $purchase->user->name ?? 'System' }}</td>
                             </tr>
                             @empty
-                            <tr><td colspan="4" class="px-4 py-2 text-center text-gray-500">No purchases found.</td></tr>
+                            <tr><td colspan="5" class="px-4 py-2 text-center text-gray-500">No purchases found.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
