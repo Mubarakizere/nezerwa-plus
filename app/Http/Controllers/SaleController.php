@@ -17,12 +17,29 @@ class SaleController extends Controller
     /** ===================== INDEX ===================== */
     public function index(Request $request)
     {
-        $perPage = $this->sanitizePerPage((int) $request->get('per_page', 15));
+        // Check for 'all' or special case where search implies no pagination
+        $perPageInput = $request->get('per_page');
+        $showAll      = ($perPageInput === 'all');
+        
+        // Also if user is searching, they requested "whole list in one view", so we default to 'all' if per_page is not set explicitly
+        if ($request->filled('search') && !$request->has('per_page')) {
+            $showAll = true;
+        }
+
         $paymentChannels = PaymentChannel::where('is_active', true)->get();
 
-        $sales = $this->filteredSalesQuery($request)
-            ->paginate($perPage)
-            ->withQueryString();
+        $query = $this->filteredSalesQuery($request);
+
+        if ($showAll) {
+            // No pagination -> get all (careful with large datasets, but user requested it)
+            // Using a high limit to avoid total crash if DB is huge? Or just get().
+            // Let's use get() but maybe limit to 500 or just trust the user.
+            // Paginator with large number is safer for view compatibility (links() won't break)
+            $sales = $query->paginate(2000)->withQueryString(); 
+        } else {
+            $perPage = $this->sanitizePerPage((int) ($perPageInput ?: 15));
+            $sales = $query->paginate($perPage)->withQueryString();
+        }
 
         return view('sales.index', compact('sales', 'paymentChannels'));
     }
@@ -608,7 +625,7 @@ class SaleController extends Controller
 
     private function sanitizePerPage(int $n): int
     {
-        $allowed = [10, 15, 25, 50, 100];
+        $allowed = [10, 15, 25, 50, 100, 200];
         return in_array($n, $allowed, true) ? $n : 15;
     }
 

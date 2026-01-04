@@ -204,8 +204,9 @@
                     <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Per page</label>
                     <select name="per_page" onchange="this.form.submit()"
                             class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
+                        <option value="all" {{ request('per_page')==='all' ? 'selected' : '' }}>All</option>
                         @foreach([10,15,25,50,100] as $n)
-                            <option value="{{ $n }}" {{ (int)request('per_page',15)===$n ? 'selected' : '' }}>
+                            <option value="{{ $n }}" {{ (int)request('per_page',15)===$n && request('per_page')!=='all' ? 'selected' : '' }}>
                                 {{ $n }}
                             </option>
                         @endforeach
