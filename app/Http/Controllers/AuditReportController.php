@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\Sale;
 use App\Models\Purchase;
 use App\Models\Loan;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
