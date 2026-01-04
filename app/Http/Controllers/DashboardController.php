@@ -158,17 +158,27 @@ class DashboardController extends Controller
     /**
      * Calculate total stock value
      */
+    /**
+     * Calculate total stock value
+     */
     private function calculateStockValue(): float
     {
         try {
-            // Calculate stock value: sum((in - out) * cost_price)
-            // We use a direct DB query for performance
-            $value = DB::table('stock_movements')
-                ->join('products', 'stock_movements.product_id', '=', 'products.id')
-                ->selectRaw('SUM(CASE WHEN stock_movements.type = ? THEN stock_movements.quantity ELSE -stock_movements.quantity END * products.cost_price) as total', ['in'])
-                ->value('total');
+            // Calculate stock value: sum(max(0, net_qty) * cost_price)
+            // We use a subquery to calculate net quantity per product first,
+            // clamp it to 0 (ignoring negative stock), then multiply by cost.
+            // This matches the logic in ReportsController.
+            
+            $value = DB::table('products')
+                ->join('stock_movements', 'products.id', '=', 'stock_movements.product_id')
+                ->selectRaw('products.cost_price, SUM(CASE WHEN stock_movements.type = ? THEN stock_movements.quantity ELSE -stock_movements.quantity END) as net_qty', ['in'])
+                ->groupBy('products.id', 'products.cost_price')
+                ->get()
+                ->sum(function ($product) {
+                    return max(0, $product->net_qty) * $product->cost_price;
+                });
 
-            return (float) max(0, $value);
+            return (float) $value;
         } catch (\Exception $e) {
             Log::warning('Stock value calculation failed: ' . $e->getMessage());
             return 0.0;

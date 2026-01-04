@@ -169,7 +169,33 @@ class AuditReportController extends Controller
                 'link' => '#',
             ];
         }
-        
-        return view('reports.reconciliation', compact('issues'));
+
+    // 5. Detect Negative Stock (Pro Check)
+    // Logic: Sum of movements < 0
+    $negativeStock = DB::table('stock_movements')
+        ->select('product_id', DB::raw('SUM(CASE WHEN type="in" THEN quantity ELSE -quantity END) as balance'))
+        ->groupBy('product_id')
+        ->having('balance', '<', 0)
+        ->limit($limit)
+        ->get();
+
+    // Eager load products to get names
+    if ($negativeStock->isNotEmpty()) {
+        $prodIds = $negativeStock->pluck('product_id')->toArray();
+        $products = Product::whereIn('id', $prodIds)->pluck('name', 'id');
+
+        foreach ($negativeStock as $item) {
+            $name = $products[$item->product_id] ?? 'Unknown Product';
+            $issues[] = [
+                'type' => 'Negative Stock',
+                'item_id' => $item->product_id,
+                'message' => "Product '{$name}' has negative stock level: {$item->balance}.",
+                'severity' => 'critical', // Very high severity
+                'link' => route('products.show', $item->product_id),
+            ];
+        }
+    }
+    
+    return view('reports.reconciliation', compact('issues'));
     }
 }
