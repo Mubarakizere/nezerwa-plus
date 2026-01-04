@@ -203,33 +203,43 @@ class ReportsController extends Controller
         // =========================
         // LIVE SNAPSHOT: AR/AP & Inventory
         // =========================
-        $arBalance = (float) Sale::select('total_amount', 'amount_paid', 'returns_total')
-            ->get()
-            ->sum(function ($s) {
-                $due = (float)$s->total_amount - (float)$s->amount_paid - (float)($s->returns_total ?? 0);
-                return $due > 0 ? $due : 0;
-            });
+        // =========================
+        // LIVE SNAPSHOT: AR/AP & Inventory
+        // =========================
+        
+        // 1. Accounts Receivable (AR): Sum of outstanding sales balances
+        // Optimization: Calculate in DB instead of iterating all sales
+        $arBalance = (float) Sale::where('status', '!=', 'paid') // optional optimization to filter early
+            ->whereRaw('(total_amount - amount_paid - COALESCE(returns_total, 0)) > 0')
+            ->sum(DB::raw('total_amount - amount_paid - COALESCE(returns_total, 0)'));
 
-        $apBalance = (float) Purchase::select('total_amount', 'amount_paid')
-            ->get()
-            ->sum(function ($p) {
-                $due = (float)$p->total_amount - (float)$p->amount_paid;
-                return $due > 0 ? $due : 0;
-            });
+        // 2. Accounts Payable (AP): Sum of outstanding purchase balances
+        $apBalance = (float) Purchase::where('status', '!=', 'paid')
+            ->whereRaw('(total_amount - amount_paid) > 0')
+            ->sum(DB::raw('total_amount - amount_paid'));
 
-        $productsForInv = Product::select('id', 'cost_price', 'price')
-            ->withSum(['stockMovements as qty_in'  => fn($q) => $q->where('type', 'in')],  'quantity')
-            ->withSum(['stockMovements as qty_out' => fn($q) => $q->where('type', 'out')], 'quantity')
+        // 3. Inventory Value & Units
+        // Optimization: Use aggregated SQL query matching DashboardController
+        $stockData = DB::table('products')
+            ->leftJoin('stock_movements', 'products.id', '=', 'stock_movements.product_id')
+            ->selectRaw('
+                products.cost_price,
+                SUM(CASE WHEN stock_movements.type = "in" THEN stock_movements.quantity 
+                         WHEN stock_movements.type = "out" THEN -stock_movements.quantity 
+                         ELSE 0 END) as net_qty
+            ')
+            ->groupBy('products.id', 'products.cost_price')
             ->get();
 
         $inventoryUnits = 0;
         $inventoryValue = 0.0;
-        foreach ($productsForInv as $p) {
-            $in  = (float)($p->qty_in  ?? 0);
-            $out = (float)($p->qty_out ?? 0);
-            $stk = max(0, $in - $out);
-            $inventoryUnits += $stk;
-            $inventoryValue += $stk * (float)($p->cost_price ?? 0);
+
+        foreach ($stockData as $p) {
+            $qty = (float) $p->net_qty;
+            if ($qty > 0) {
+                $inventoryUnits += $qty;
+                $inventoryValue += $qty * (float) $p->cost_price;
+            }
         }
 
         // =========================
