@@ -60,11 +60,31 @@ class AuditReportController extends Controller
         $loansGiven = Loan::whereBetween('loan_date', [$startDate, $endDate])->where('type', 'given')->sum('amount');
         $loansTaken = Loan::whereBetween('loan_date', [$startDate, $endDate])->where('type', 'taken')->sum('amount');
 
+        // Revenue by Payment Channel (Group by 'payment_channel' on Sale)
+        // Note: For more granularity (split payments), we could query SalePayment.
+        // But for now, using Sale's primary channel is faster and consistent with current usage.
+        $revenueByChannel = Sale::whereBetween('sale_date', [$startDate, $endDate])
+            ->select('payment_channel', DB::raw('sum(amount_paid) as total'))
+            ->groupBy('payment_channel')
+            ->pluck('total', 'payment_channel');
+
+        // Full Lists (No Pagination as requested for report view)
+        $allSales = Sale::with('customer')
+            ->whereBetween('sale_date', [$startDate, $endDate])
+            ->latest('sale_date')
+            ->get();
+            
+        $allPurchases = Purchase::with('supplier')
+            ->whereBetween('purchase_date', [$startDate, $endDate])
+            ->latest('purchase_date')
+            ->get();
+
         return view('reports.financials', compact(
             'startDate', 'endDate',
             'totalSales', 'totalReceived', 'totalProfit',
             'totalPurchases',
-            'loansGiven', 'loansTaken'
+            'loansGiven', 'loansTaken',
+            'revenueByChannel', 'allSales', 'allPurchases'
         ));
     }
 
