@@ -455,6 +455,7 @@ class PurchaseController extends Controller
         if ($newQty > 0) {
             $product->cost_price = round(($oldValue + $newValue) / $newQty, 2);
             $product->save();
+            $product->updatePriceFromMargin(); // 👈 Update price based on margin
         }
     }
 
@@ -473,6 +474,7 @@ class PurchaseController extends Controller
             $wac = (float) $p->weightedAverageCost(); // relies on movements
             $p->cost_price = round($wac, 2);
             $p->save();
+            $p->updatePriceFromMargin(); // 👈 Update price based on margin
         }
     }
 

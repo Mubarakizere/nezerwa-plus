@@ -122,10 +122,12 @@ class ProductController extends Controller
             DB::beginTransaction();
 
             $product = Product::create([
-                'name'        => $request->name,
-                'category_id' => $request->integer('category_id'),
-                'price'       => $request->input('price'),
-                'stock'       => $request->input('stock'),
+                'name'          => $request->name,
+                'category_id'   => $request->integer('category_id'),
+                'price'         => $request->input('price'),
+                'cost_price'    => $request->input('cost_price'),
+                'profit_margin' => $request->input('profit_margin'),
+                'stock'         => $request->input('stock'),
             ]);
 
             // Initial stock movement
@@ -180,14 +182,16 @@ class ProductController extends Controller
     {
         $request->validate([
             'name'        => ['required','string','max:255'],
-            'category_id' => [
+            'category_id'   => [
                 'required','integer',
                 Rule::exists('categories','id')->where(fn($q) =>
                     $q->whereNull('deleted_at')->where('is_active', true)->whereIn('kind',['product','both'])
                 ),
             ],
-            'price'       => ['required','numeric','min:0'],
-            'stock'       => ['required','numeric','min:0'],
+            'price'         => ['required','numeric','min:0'],
+            'cost_price'    => ['nullable','numeric','min:0'],
+            'profit_margin' => ['nullable','numeric','min:0','max:1000'],
+            'stock'         => ['required','numeric','min:0'],
         ], [
             'category_id.exists' => 'The selected category is invalid or inactive.',
         ]);
@@ -198,10 +202,12 @@ class ProductController extends Controller
             $oldStock = $product->currentStock();
 
             $product->update([
-                'name'        => $request->name,
-                'category_id' => $request->integer('category_id'),
-                'price'       => $request->input('price'),
-                'stock'       => $request->input('stock'),
+                'name'          => $request->name,
+                'category_id'   => $request->integer('category_id'),
+                'price'         => $request->input('price'),
+                'cost_price'    => $request->input('cost_price'),
+                'profit_margin' => $request->input('profit_margin'),
+                'stock'         => $request->input('stock'),
             ]);
 
             $newStock   = (float) $request->input('stock');

@@ -20,14 +20,16 @@ class Product extends Model
         'category_id',
         'price',
         'cost_price',
+        'profit_margin',
         'stock',
     ];
 
     /** Cast numeric money fields for consistency */
     protected $casts = [
-        'price'      => 'decimal:2',
-        'cost_price' => 'decimal:2',
-        'stock'      => 'decimal:2',
+        'price'         => 'decimal:2',
+        'cost_price'    => 'decimal:2',
+        'profit_margin' => 'decimal:2',
+        'stock'         => 'decimal:2',
     ];
 
     /** Optionally expose a formatted stock string in JSON if needed */
@@ -122,5 +124,20 @@ class Product extends Model
     {
         $threshold = $threshold ?? (int) config('inventory.low_stock', 5);
         return $this->currentStock() <= $threshold;
+    }
+
+    /**
+     * Recalculate and save selling price if profit_margin is set.
+     * New Price = Cost Price * (1 + Margin/100)
+     */
+    public function updatePriceFromMargin(): void
+    {
+        if ($this->profit_margin !== null && $this->profit_margin >= 0) {
+            $cost = (float) $this->cost_price;
+            $margin = (float) $this->profit_margin;
+            $newPrice = round($cost * (1 + ($margin / 100)), 2);
+            $this->price = $newPrice;
+            $this->saveQuietly(); // saveQuietly to avoid observer loops if any
+        }
     }
 }

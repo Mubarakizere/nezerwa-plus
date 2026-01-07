@@ -187,6 +187,43 @@
                     </p>
                 </div>
 
+                {{-- Cost Price & Margin --}}
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label" for="cost_price">
+                            Cost Price (RWF)
+                        </label>
+                        <input
+                            id="cost_price"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="cost_price"
+                            value="{{ old('cost_price', $product->cost_price) }}"
+                            class="form-input w-full"
+                            placeholder="e.g. 1000"
+                        >
+                    </div>
+
+                    <div>
+                        <label class="form-label" for="profit_margin">
+                            Profit Margin (%)
+                        </label>
+                        <input
+                            id="profit_margin"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="1000"
+                            name="profit_margin"
+                            value="{{ old('profit_margin', $product->profit_margin) }}"
+                            class="form-input w-full"
+                            placeholder="e.g. 20"
+                        >
+                         <p class="text-[10px] text-gray-500 mt-0.5">Auto-updates selling price based on cost.</p>
+                    </div>
+                </div>
+
                 {{-- Price & Stock --}}
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
