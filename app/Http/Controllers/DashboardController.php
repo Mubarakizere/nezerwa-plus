@@ -30,12 +30,22 @@ class DashboardController extends Controller
             $monthStart = now()->startOfMonth();
             $weekStart  = now()->startOfWeek();
 
+            // Determine if user should see only their own data
+            $isCashier = in_array($role, ['cashier']);
+            $userId = $user->id;
+
             // ========== TOTALS ==========
-            $totalSales      = $this->safeSum(Sale::class, 'total_amount');
+            $totalSales      = $this->safeSum(
+                $isCashier ? Sale::where('user_id', $userId) : Sale::class,
+                'total_amount'
+            );
             $totalPurchases  = $this->safeSum(Purchase::class, 'total_amount');
-            $totalProfit     = $this->safeSum(SaleItem::class, DB::raw('COALESCE(profit, (unit_price - cost_price) * quantity)'));
+            $totalProfit     = $this->safeSum(
+                $isCashier ? SaleItem::whereHas('sale', fn($q) => $q->where('user_id', $userId)) : SaleItem::class,
+                DB::raw('COALESCE(profit, (unit_price - cost_price) * quantity)')
+            );
             $pendingBalances = $this->safeSum(
-                Sale::where('status', 'pending'),
+                $isCashier ? Sale::where('status', 'pending')->where('user_id', $userId) : Sale::where('status', 'pending'),
                 DB::raw('total_amount - COALESCE(amount_paid, 0)')
             );
 
@@ -61,17 +71,29 @@ class DashboardController extends Controller
             $paidLoans         = Loan::where('status', 'paid')->count();
             $totalLoanPayments = $this->safeSum(LoanPayment::class, 'amount');
 
-            // ========== TIME-BASED SALES ==========
-            $todaySales     = $this->safeSum(Sale::whereDate('created_at', $today), 'total_amount');
-            $monthSales     = $this->safeSum(Sale::where('created_at', '>=', $monthStart), 'total_amount');
-            $weekSales      = $this->safeSum(Sale::where('created_at', '>=', $weekStart), 'total_amount');
-            $yesterdaySales = $this->safeSum(Sale::whereDate('created_at', $today->copy()->subDay()), 'total_amount');
+            // ========== TIME-BASED SALES (filtered for cashiers) ==========
+            $todaySales     = $this->safeSum(
+                $isCashier ? Sale::whereDate('created_at', $today)->where('user_id', $userId) : Sale::whereDate('created_at', $today),
+                'total_amount'
+            );
+            $monthSales     = $this->safeSum(
+                $isCashier ? Sale::where('created_at', '>=', $monthStart)->where('user_id', $userId) : Sale::where('created_at', '>=', $monthStart),
+                'total_amount'
+            );
+            $weekSales      = $this->safeSum(
+                $isCashier ? Sale::where('created_at', '>=', $weekStart)->where('user_id', $userId) : Sale::where('created_at', '>=', $weekStart),
+                'total_amount'
+            );
+            $yesterdaySales = $this->safeSum(
+                $isCashier ? Sale::whereDate('created_at', $today->copy()->subDay())->where('user_id', $userId) : Sale::whereDate('created_at', $today->copy()->subDay()),
+                'total_amount'
+            );
             $salesChange    = $yesterdaySales > 0 ? (($todaySales - $yesterdaySales) / $yesterdaySales) * 100 : 0;
 
             // ========== STOCK ==========
             $totalStockValue = $this->calculateStockValue();
 
-            // ========== MY DAY (for cashiers) ==========
+            // ========== MY DAY (for cashiers - always user-specific) ==========
             $myTodaySalesTotal = $this->safeSum(
                 Sale::where('user_id', $user->id)->whereDate('created_at', $today),
                 'total_amount'
@@ -85,19 +107,20 @@ class DashboardController extends Controller
                                 ->take(5)
                                 ->get();
 
-            // ========== RECENT TRANSACTIONS ==========
+            // ========== RECENT TRANSACTIONS (filtered for cashiers) ==========
             $recentTransactions = DebitCredit::with(['user:id,name', 'customer:id,name', 'supplier:id,name'])
+                                            ->when($isCashier, fn($q) => $q->where('user_id', $userId))
                                             ->latest()
                                             ->take(10)
                                             ->get();
 
-            // ========== CHART DATA ==========
-            [$chartLabels, $chartSales] = $this->getSalesChartData(30);
-            [$months, $salesTrend, $purchaseTrend] = $this->getTrendData(6);
+            // ========== CHART DATA (filtered for cashiers) ==========
+            [$chartLabels, $chartSales] = $this->getSalesChartData(30, $isCashier ? $userId : null);
+            [$months, $salesTrend, $purchaseTrend] = $this->getTrendData(6, $isCashier ? $userId : null);
 
-            // ========== INSIGHTS ==========
-            $topProducts = $this->getTopProducts(5);
-            $topCustomers = $this->getTopCustomers(5);
+            // ========== INSIGHTS (filtered for cashiers) ==========
+            $topProducts = $this->getTopProducts(5, $isCashier ? $userId : null);
+            $topCustomers = $this->getTopCustomers(5, $isCashier ? $userId : null);
 
             // ========== ACTIVE LOANS ==========
             $activeLoansList = $this->getActiveLoans(8);
@@ -188,13 +211,14 @@ class DashboardController extends Controller
     /**
      * Get sales chart data for last N days
      */
-    private function getSalesChartData(int $days = 30): array
+    private function getSalesChartData(int $days = 30, ?int $userId = null): array
     {
         try {
             $data = Sale::select(
                         DB::raw('DATE(created_at) as d'),
                         DB::raw('SUM(total_amount) as s')
                     )
+                    ->when($userId, fn($q) => $q->where('user_id', $userId))
                     ->where('created_at', '>=', now()->subDays($days))
                     ->groupBy(DB::raw('DATE(created_at)'))
                     ->orderBy('d')
@@ -213,7 +237,7 @@ class DashboardController extends Controller
     /**
      * Get trend data for last N months
      */
-    private function getTrendData(int $months = 6): array
+    private function getTrendData(int $months = 6, ?int $userId = null): array
     {
         try {
             $monthLabels = collect(range(1, $months))
@@ -222,6 +246,7 @@ class DashboardController extends Controller
             $startDate = now()->subMonths($months)->startOfMonth();
 
             $salesData = Sale::selectRaw("DATE_TRUNC('month', created_at) as m, SUM(total_amount) as t")
+                            ->when($userId, fn($q) => $q->where('user_id', $userId))
                             ->where('created_at', '>=', $startDate)
                             ->groupBy('m')
                             ->orderBy('m')
@@ -252,7 +277,7 @@ class DashboardController extends Controller
     /**
      * Get top selling products
      */
-    private function getTopProducts(int $limit = 5)
+    private function getTopProducts(int $limit = 5, ?int $userId = null)
     {
         try {
             return SaleItem::select(
@@ -260,6 +285,7 @@ class DashboardController extends Controller
                         DB::raw('SUM(quantity) as total_qty'),
                         DB::raw('SUM(subtotal) as total_revenue')
                     )
+                    ->when($userId, fn($q) => $q->whereHas('sale', fn($sq) => $sq->where('user_id', $userId)))
                     ->groupBy('product_id')
                     ->orderByDesc('total_qty')
                     ->take($limit)
@@ -274,13 +300,14 @@ class DashboardController extends Controller
     /**
      * Get top customers
      */
-    private function getTopCustomers(int $limit = 5)
+    private function getTopCustomers(int $limit = 5, ?int $userId = null)
     {
         try {
             return Sale::select(
                         'customer_id',
                         DB::raw('SUM(total_amount) as total_spent')
                     )
+                    ->when($userId, fn($q) => $q->where('user_id', $userId))
                     ->whereNotNull('customer_id')
                     ->groupBy('customer_id')
                     ->orderByDesc('total_spent')

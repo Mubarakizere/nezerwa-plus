@@ -342,6 +342,17 @@
                                 Payment Channels
                             </a>
                         @endcan
+
+                        {{-- System Reset (Danger Zone - Admin/Boss Only) --}}
+                        @if(Auth::user()->hasRole(['admin', 'boss']))
+                            <div class="border-t border-gray-200 dark:border-gray-700 my-2"></div>
+                            <a href="{{ route('system.reset') }}"
+                               class="block px-3 py-2 text-sm rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-all
+                                      {{ request()->routeIs('system.reset') ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium' : 'text-gray-700 dark:text-gray-300' }}">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5 inline mr-2"></i>
+                                System Reset
+                            </a>
+                        @endif
                     </div>
                 </div>
             @endcanany
