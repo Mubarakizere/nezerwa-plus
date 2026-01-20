@@ -241,20 +241,17 @@
 
         {{-- Table --}}
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-x-auto">
-            <table class="min-w-[1200px] w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+            <table class="min-w-full w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                 <thead class="bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-300 uppercase text-xs font-medium">
                     <tr>
                         <th class="px-4 py-3 text-left">Name</th>
                         <th class="px-4 py-3 text-left">Category</th>
-                        <th class="px-4 py-3 text-left">SKU</th>
-                        <th class="px-4 py-3 text-right">Cost (WAC)</th>
                         <th class="px-4 py-3 text-right">Price</th>
                         <th class="px-4 py-3 text-right">Margin</th>
                         <th class="px-4 py-3 text-right">In</th>
                         <th class="px-4 py-3 text-right">Out</th>
                         <th class="px-4 py-3 text-right">Returned</th>
                         <th class="px-4 py-3 text-right">Stock</th>
-                        <th class="px-4 py-3 text-left">Last Moved</th>
                         <th class="px-4 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
@@ -324,16 +321,6 @@
                                 @endif
                             </td>
 
-                            {{-- SKU --}}
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">
-                                {{ $p->sku ?? '—' }}
-                            </td>
-
-                            {{-- Cost --}}
-                            <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
-                                RWF {{ $fmt2($cost) }}
-                            </td>
-
                             {{-- Price --}}
                             <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">
                                 RWF {{ $fmt2($price) }}
@@ -376,11 +363,6 @@
                                         Low
                                     </span>
                                 @endif
-                            </td>
-
-                            {{-- Last moved --}}
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
-                                {{ $last }}
                             </td>
 
                             {{-- Actions --}}
@@ -426,7 +408,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="12" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+                            <td colspan="9" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
                                 No products found.
                             </td>
                         </tr>
