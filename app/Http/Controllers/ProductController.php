@@ -304,4 +304,100 @@ class ProductController extends Controller
 
         return $pdf->download("stock-report-{$filter}-" . now()->format('Y-m-d') . ".pdf");
     }
+
+    /**
+     * Download Excel template with categories
+     */
+    public function downloadTemplate()
+    {
+        $categories = Category::active()->forProducts()->orderBy('name')->get();
+        
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\ProductTemplateExport($categories),
+            'product-import-template.xlsx'
+        );
+    }
+
+    /**
+     * Upload and preview Excel import (Step 1)
+     */
+    public function uploadImport(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:10240', // 10MB max
+        ]);
+
+        try {
+            $file = $request->file('file');
+            
+            // Read Excel file to array
+            $data = \Maatwebsite\Excel\Facades\Excel::toArray([], $file)[0] ?? [];
+            
+            // Skip header row and convert to collection
+            $rows = collect($data)->slice(1);
+            
+            // Parse and validate
+            $import = new \App\Imports\ProductImport();
+            $result = $import->parse($rows);
+            
+            // Store in session for step 2
+            session(['import_preview' => $result['parsed']]);
+            
+            return response()->json([
+                'success' => true,
+                'stats' => $result['stats'],
+                'parsed' => $result['parsed'],
+                'errors' => $result['errors'],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Excel upload failed', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process file: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Execute import with selected mode (Step 2)
+     */
+    public function executeImport(Request $request)
+    {
+        $request->validate([
+            'mode' => 'required|in:replace,add',
+        ]);
+
+        $parsedData = session('import_preview');
+        
+        if (!$parsedData) {
+            return back()->withErrors(['error' => 'No import data found. Please upload file again.']);
+        }
+
+        try {
+            DB::beginTransaction();
+            
+            $import = new \App\Imports\ProductImport();
+            $result = $import->execute($parsedData, $request->mode, Auth::id());
+            
+            DB::commit();
+            
+            // Clear session
+            session()->forget('import_preview');
+            
+            Log::info('Excel import completed', [
+                'mode' => $request->mode,
+                'imported' => $result['imported'],
+                'failed' => $result['failed'],
+            ]);
+            
+            return redirect()->route('products.index')->with('success', 
+                "Import completed! {$result['imported']} products imported successfully."
+            );
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Excel import failed', ['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => 'Import failed: ' . $e->getMessage()]);
+        }
+    }
 }
+

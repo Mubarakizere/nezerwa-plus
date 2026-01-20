@@ -60,6 +60,30 @@
             @endcan
 
             @can('products.view')
+                {{-- Excel Import Dropdown --}}
+                <div x-data="{ open: false }" class="relative">
+                    <button @click="open = !open" @click.outside="open = false" class="btn btn-success text-sm flex items-center gap-1">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                        <span>Excel Import</span>
+                        <i data-lucide="chevron-down" class="w-3 h-3 ml-1"></i>
+                    </button>
+                    <div x-show="open" x-cloak class="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg py-1 z-50">
+                        <a href="{{ route('products.import.template') }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="download" class="w-4 h-4"></i>
+                                <span>Download Template</span>
+                            </div>
+                        </a>
+                        <button @click="open = false; $dispatch('open-import-modal')" class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="upload" class="w-4 h-4"></i>
+                                <span>Upload & Import</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Export Report Dropdown --}}
                 <div x-data="{ open: false }" class="relative">
                     <button @click="open = !open" @click.outside="open = false" class="btn btn-outline text-sm flex items-center gap-1">
                         <i data-lucide="download" class="w-4 h-4"></i>
@@ -82,6 +106,7 @@
                 </a>
             @endcan
         </div>
+
     </div>
 
     @cannot('products.view')
@@ -447,14 +472,319 @@
 </div>
 @endcan
 
+{{-- Excel Import Modal --}}
+@can('products.view')
+<div
+    x-data="importModal()"
+    @open-import-modal.window="open = true"
+    x-show="open"
+    x-cloak
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    @keydown.escape.window="close()"
+>
+    <div
+        @click.outside="close()"
+        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto"
+    >
+        {{-- Step 1: Upload --}}
+        <div x-show="step === 1" class="p-6">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                        <i data-lucide="upload-cloud" class="w-6 h-6 text-indigo-600"></i>
+                        Import Products from Excel
+                    </h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Step 1 of 2: Upload and preview</p>
+                </div>
+                <button @click="close()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            {{-- Upload Area --}}
+            <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center bg-gray-50 dark:bg-gray-900/20">
+                <i data-lucide="file-spreadsheet" class="w-16 h-16 mx-auto text-indigo-600 dark:text-indigo-400 mb-4"></i>
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Upload Excel File</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Supported formats: .xlsx, .xls, .csv (Max 10MB)</p>
+                
+                <input
+                    type="file"
+                    x-ref="fileInput"
+                    @change="handleFileSelect($event)"
+                    accept=".xlsx,.xls,.csv"
+                    class="hidden"
+                >
+                
+                <button
+                    @click="$refs.fileInput.click()"
+                    class="btn btn-primary inline-flex items-center gap-2 mb-3"
+                >
+                    <i data-lucide="upload" class="w-4 h-4"></i>
+                    Choose File
+                </button>
+                
+                <div x-show="selectedFile" class="mt-3 text-sm text-gray-700 dark:text-gray-300">
+                    <span class="font-medium">Selected:</span> <span x-text="selectedFile?.name"></span>
+                </div>
+            </div>
+
+            {{-- Loading State --}}
+            <div x-show="uploading" class="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div class="flex items-center gap-3">
+                    <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-sm text-blue-800 dark:text-blue-200">Processing file, please wait...</span>
+                </div>
+            </div>
+
+            {{-- Error Messages --}}
+            <div x-show="errors.length > 0" class="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                <h4 class="font-semibold text-red-800 dark:text-red-200 mb-2 flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    Errors Found
+                </h4>
+                <ul class="text-sm text-red-700 dark:text-red-300 space-y-1 list-disc list-inside">
+                    <template x-for="error in errors.slice(0, 10)" :key="error.row">
+                        <li>Row <span x-text="error.row"></span>: <span x-text="error.errors?.join(', ')"></span></li>
+                    </template>
+                </ul>
+                <p x-show="errors.length > 10" class="text-xs text-red-600 dark:text-red-400 mt-2">
+                    And <span x-text="errors.length - 10"></span> more errors...
+                </p>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6">
+                <button @click="close()" class="btn btn-outline">Cancel</button>
+            </div>
+        </div>
+
+        {{-- Step 2: Preview & Confirm --}}
+        <div x-show="step === 2" class="p-6">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                        <i data-lucide="check-circle" class="w-6 h-6 text-green-600"></i>
+                        Review & Confirm Import
+                    </h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Step 2 of 2: Choose import mode and confirm</p>
+                </div>
+                <button @click="close()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            {{-- Stats Cards --}}
+            <div class="grid grid-cols-3 gap-4 mb-6">
+                <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                    <div class="text-3xl font-bold text-green-700 dark:text-green-300" x-text="stats.new || 0"></div>
+                    <div class="text-sm text-green-600 dark:text-green-400">New Products</div>
+                </div>
+                <div class="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                    <div class="text-3xl font-bold text-orange-700 dark:text-orange-300" x-text="stats.existing || 0"></div>
+                    <div class="text-sm text-orange-600 dark:text-orange-400">Existing Products</div>
+                </div>
+                <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <div class="text-3xl font-bold text-blue-700 dark:text-blue-300" x-text="stats.total || 0"></div>
+                    <div class="text-sm text-blue-600 dark:text-blue-400">Total Rows</div>
+                </div>
+            </div>
+
+            {{-- Import Mode Selection --}}
+            <div class="mb-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+                <label class="block text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-3">
+                    <i data-lucide="settings" class="w-4 h-4 inline mr-1"></i>
+                    Select Import Mode
+                </label>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition"
+                           :class="mode === 'add' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'">
+                        <input type="radio" name="mode" value="add" x-model="mode" class="mt-1">
+                        <div class="ml-3">
+                            <div class="font-semibold text-gray-900 dark:text-gray-100">Add to Stock</div>
+                            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                Adds Excel quantity to existing stock. Example: 10 + 5 = 15
+                            </div>
+                        </div>
+                    </label>
+                    <label class="relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition"
+                           :class="mode === 'replace' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'">
+                        <input type="radio" name="mode" value="replace" x-model="mode" class="mt-1">
+                        <div class="ml-3">
+                            <div class="font-semibold text-gray-900 dark:text-gray-100">Replace Stock</div>
+                            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                Sets stock to exact Excel value. Example: 10 → 5
+                            </div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            {{-- Preview Table --}}
+            <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden mb-6">
+                <div class="bg-gray-50 dark:bg-gray-900/40 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="font-semibold text-gray-800 dark:text-gray-100">Preview (first 10 rows)</h3>
+                </div>
+                <div class="overflow-x-auto max-h-96">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100 dark:bg-gray-800 sticky top-0">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-semibold">Status</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold">Product Name</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold">Category</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold">Price</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold">Current Stock</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold">Excel Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                            <template x-for="item in parsed.slice(0, 10)" :key="item.row">
+                                <tr>
+                                    <td class="px-3 py-2">
+                                        <span x-show="item.status === 'new'" class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">New</span>
+                                        <span x-show="item.status === 'existing'" class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300">Update</span>
+                                    </td>
+                                    <td class="px-3 py-2 font-medium text-gray-900 dark:text-gray-100" x-text="item.data.name"></td>
+                                    <td class="px-3 py-2 text-gray-700 dark:text-gray-300" x-text="item.data.category"></td>
+                                    <td class="px-3 py-2 text-right text-gray-700 dark:text-gray-300" x-text="'RWF ' + parseFloat(item.data.price).toFixed(2)"></td>
+                                    <td class="px-3 py-2 text-right font-medium" x-text="item.current_stock || 0"></td>
+                                    <td class="px-3 py-2 text-right font-semibold text-indigo-700 dark:text-indigo-300" x-text="item.data.stock"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {{-- Action Buttons --}}
+            <div class="flex justify-between items-center gap-3">
+                <button @click="step = 1; errors = []" class="btn btn-outline flex items-center gap-1">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                    Back
+                </button>
+                <div class="flex gap-3">
+                    <button @click="close()" class="btn btn-outline">Cancel</button>
+                    <button
+                        @click="executeImport()"
+                        :disabled="!mode || importing"
+                        class="btn btn-success flex items-center gap-2"
+                        :class="{'opacity-50 cursor-not-allowed': !mode || importing}"
+                    >
+                        <span x-show="!importing">
+                            <i data-lucide="check" class="w-4 h-4 inline"></i>
+                            Confirm Import
+                        </span>
+                        <span x-show="importing" class="flex items-center gap-2">
+                            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/20 00/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Importing...
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endcan
+
 @push('scripts')
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
+    function importModal() {
+        return {
+            open: false,
+            step: 1,
+            selectedFile: null,
+            uploading: false,
+            importing: false,
+            mode: 'add',
+            parsed: [],
+            errors: [],
+            stats: {},
+
+            close() {
+                this.open = false;
+                this.step = 1;
+                this.selectedFile = null;
+                this.parsed = [];
+                this.errors = [];
+                this.stats = {};
+                this.mode = 'add';
+            },
+
+            async handleFileSelect(event) {
+                this.selectedFile = event.target.files[0];
+                if (!this.selectedFile) return;
+
+                this.uploading = true;
+                this.errors = [];
+
+                const formData = new FormData();
+                formData.append('file', this.selectedFile);
+                formData.append('_token', '{{ csrf_token() }}');
+
+                try {
+                    const response = await fetch('{{ route("products.import.upload") }}', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.parsed = data.parsed;
+                        this.stats = data.stats;
+                        this.errors = data.errors;
+                        this.step = 2;
+                        setTimeout(() => lucide.createIcons(), 100);
+                    } else {
+                        this.errors = [{ row: 0, errors: [data.message] }];
+                    }
+                } catch (error) {
+                    this.errors = [{ row: 0, errors: ['Failed to upload file. Please try again.'] }];
+                } finally {
+                    this.uploading = false;
+                }
+            },
+
+            async executeImport() {
+                if (!this.mode) return;
+
+                this.importing = true;
+
+                const formData = new FormData();
+                formData.append('mode', this.mode);
+                formData.append('_token', '{{ csrf_token() }}');
+
+                try {
+                    const response = await fetch('{{ route("products.import.execute") }}', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('Import failed. Please try again.');
+                        this.importing = false;
+                    }
+                } catch (error) {
+                    alert('Import failed. Please try again.');
+                    this.importing = false;
+                }
+            }
+        };
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         if (window.lucide) lucide.createIcons();
     });
 
     document.addEventListener('alpine:init', () => {
+
         // Global delete-confirm store (same pattern as sales)
         Alpine.store('confirm', {
             open: false,

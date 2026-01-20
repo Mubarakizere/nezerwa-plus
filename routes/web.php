@@ -180,8 +180,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('products.export.stock.pdf')
         ->middleware('permission:products.view');
 
+    // Excel Import Routes
+    Route::get('products/import/template', [ProductController::class, 'downloadTemplate'])
+        ->name('products.import.template')
+        ->middleware('permission:products.view');
+
+    Route::post('products/import/upload', [ProductController::class, 'uploadImport'])
+        ->name('products.import.upload')
+        ->middleware('permission:products.view');
+
+    Route::post('products/import/execute', [ProductController::class, 'executeImport'])
+        ->name('products.import.execute')
+        ->middleware('permission:products.view');
+
     Route::resource('products', ProductController::class)
         ->middleware('permission:products.view');
+
 
     // Stock Adjustment
     Route::get('products/{product}/adjust', [App\Http\Controllers\StockAdjustmentController::class, 'create'])
@@ -493,6 +507,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])
             ->name('expenses.destroy');
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | System Reset (Admin Only)
+    |--------------------------------------------------------------------------
+    | Dangerous feature to reset all data. Admin/Boss only.
+    */
+    Route::get('/system/reset', [App\Http\Controllers\SystemResetController::class, 'index'])
+        ->name('system.reset')
+        ->middleware('role:admin|boss');
+
+    Route::post('/system/reset',  [App\Http\Controllers\SystemResetController::class, 'reset'])
+        ->name('system.reset.execute')
+        ->middleware('role:admin|boss');
 
     /*
     |--------------------------------------------------------------------------
