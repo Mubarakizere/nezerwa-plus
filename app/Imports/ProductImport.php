@@ -192,6 +192,7 @@ class ProductImport
         
         // Update price and cost if changed
         $product->update([
+            'category_id' => $item['category_id'],
             'price' => $item['data']['price'],
             'cost_price' => $item['data']['cost_price'] ?? $item['data']['price'],
         ]);
