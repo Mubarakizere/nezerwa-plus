@@ -621,7 +621,7 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                            <template x-for="item in parsed.slice(0, 10)" :key="item.row">
+                            <template x-for="item in parsed" :key="item.row">
                                 <tr>
                                     <td class="px-3 py-2">
                                         <span x-show="item.status === 'new'" class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">New</span>
@@ -745,16 +745,23 @@
                     const response = await fetch('{{ route("products.import.execute") }}', {
                         method: 'POST',
                         body: formData,
+                        headers: {
+                            'Accept': 'application/json',
+                        },
                     });
 
-                    if (response.ok) {
+                    const data = await response.json();
+
+                    if (data.success) {
+                         // Optional: show a success message before reloading
                         window.location.reload();
                     } else {
-                        alert('Import failed. Please try again.');
+                        alert(data.message || 'Import failed. Please try again.');
                         this.importing = false;
                     }
                 } catch (error) {
-                    alert('Import failed. Please try again.');
+                    console.error(error); // Log for debugging
+                    alert('Import failed. Please check the console or try again.');
                     this.importing = false;
                 }
             }

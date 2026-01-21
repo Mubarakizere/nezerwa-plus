@@ -390,13 +390,18 @@ class ProductController extends Controller
                 'failed' => $result['failed'],
             ]);
             
-            return redirect()->route('products.index')->with('success', 
-                "Import completed! {$result['imported']} products imported successfully."
-            );
+            return response()->json([
+                'success' => true,
+                'message' => "Import completed! {$result['imported']} products imported successfully.",
+                'redirect' => route('products.index'),
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Excel import failed', ['error' => $e->getMessage()]);
-            return back()->withErrors(['error' => 'Import failed: ' . $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage(),
+            ], 500);
         }
     }
 }
