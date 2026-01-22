@@ -70,9 +70,9 @@ class ProductImport
         $data = [
             'name' => trim($row[0] ?? ''),
             'category' => trim($row[1] ?? ''),
-            'price' => $row[2] ?? null,
-            'cost_price' => $row[3] ?? null,
-            'stock' => $row[4] ?? null,
+            'price' => isset($row[2]) ? (float) trim($row[2]) : null,
+            'cost_price' => isset($row[3]) ? (float) trim($row[3]) : null,
+            'stock' => isset($row[4]) ? (float) trim($row[4]) : null,
         ];
 
         // Validate
@@ -208,15 +208,16 @@ class ProductImport
         ]);
 
         // Create initial stock movement
-        if ($item['data']['stock'] > 0) {
+        $stock = (float) $item['data']['stock'];
+        if ($stock > 0) {
             \App\Models\StockMovement::create([
                 'product_id' => $product->id,
                 'type' => 'in',
-                'quantity' => $item['data']['stock'],
+                'quantity' => $stock,
                 'unit_cost' => $product->cost_price,
-                'total_cost' => $item['data']['stock'] * $product->cost_price,
-                'source_type' => 'Excel Import',
-                'source_id' => null,
+                'total_cost' => $stock * $product->cost_price,
+                'source_type' => \App\Models\Product::class, // Use Product class to align with Controller
+                'source_id' => $product->id,
                 'user_id' => $userId,
                 'notes' => 'Initial stock from Excel import',
             ]);
