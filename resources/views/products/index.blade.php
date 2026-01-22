@@ -579,7 +579,7 @@
                     <i data-lucide="settings" class="w-4 h-4 inline mr-1"></i>
                     Select Import Mode
                 </label>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <label class="relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition"
                            :class="mode === 'add' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/40' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'">
                         <input type="radio" name="mode" value="add" x-model="mode" class="mt-1">
@@ -597,6 +597,16 @@
                             <div class="font-semibold text-gray-900 dark:text-gray-100">Replace Stock</div>
                             <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                                 Sets stock to exact Excel value. Example: 10 → 5
+                            </div>
+                        </div>
+                    </label>
+                    <label class="relative flex items-start p-4 border-2 rounded-lg cursor-pointer transition"
+                           :class="mode === 'full_replace' ? 'border-red-600 bg-red-50 dark:bg-red-900/40' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'">
+                        <input type="radio" name="mode" value="full_replace" x-model="mode" class="mt-1">
+                        <div class="ml-3">
+                            <div class="font-semibold text-gray-900 dark:text-gray-100">Full Replace</div>
+                            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                Wipes products not in Excel. Sets stock to Excel value.
                             </div>
                         </div>
                     </label>

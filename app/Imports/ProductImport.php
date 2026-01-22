@@ -128,7 +128,32 @@ class ProductImport
     {
         $imported = 0;
         $failed = 0;
+        $deleted = 0;
         $errors = [];
+
+        // Full Replace: Delete products not in the import file
+        if ($mode === 'full_replace') {
+            // Get all product names from the import
+            $importNames = array_map(fn($item) => $item['data']['name'], $parsedData);
+            
+            // Find products in DB that are NOT in the import list
+            // We use chunking to avoid memory issues if many products
+            Product::whereNotIn('name', $importNames)->chunk(100, function ($products) use (&$deleted, &$failed, &$errors) {
+                foreach ($products as $product) {
+                    try {
+                        $product->delete();
+                        $deleted++;
+                    } catch (\Exception $e) {
+                        // Likely integrity constraint (has sales/stock history)
+                        $failed++;
+                        $errors[] = [
+                            'row' => 'N/A',
+                            'error' => "Could not delete '{$product->name}': " . $e->getMessage(),
+                        ];
+                    }
+                }
+            });
+        }
 
         foreach ($parsedData as $item) {
             try {
@@ -149,6 +174,7 @@ class ProductImport
 
         return [
             'imported' => $imported,
+            'deleted' => $deleted,
             'failed' => $failed,
             'errors' => $errors,
         ];
@@ -200,8 +226,9 @@ class ProductImport
         $currentStock = $item['current_stock'];
         $excelStock = (float) $item['data']['stock'];
 
-        if ($mode === 'replace') {
-            // Replace mode: Calculate difference and adjust
+        // full_replace behaves like replace for individual items (sets exact stock)
+        if ($mode === 'replace' || $mode === 'full_replace') {
+            // Replace/Full Replace mode: Calculate difference and adjust
             $difference = $excelStock - $currentStock;
             
             if ($difference != 0) {

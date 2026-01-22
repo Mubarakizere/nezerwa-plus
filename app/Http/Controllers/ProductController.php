@@ -364,7 +364,7 @@ class ProductController extends Controller
     public function executeImport(Request $request)
     {
         $request->validate([
-            'mode' => 'required|in:replace,add',
+            'mode' => 'required|in:replace,add,full_replace',
         ]);
 
         $parsedData = session('import_preview');
@@ -390,9 +390,14 @@ class ProductController extends Controller
                 'failed' => $result['failed'],
             ]);
             
+            $msg = "Import completed! {$result['imported']} products imported.";
+            if (!empty($result['deleted'])) {
+                $msg .= " {$result['deleted']} products deleted.";
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => "Import completed! {$result['imported']} products imported successfully.",
+                'message' => $msg,
                 'redirect' => route('products.index'),
             ]);
         } catch (\Exception $e) {
