@@ -18,7 +18,8 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $threshold = 5;
-        $perPage   = (int) $request->input('per_page', 20);
+        $perPageInput = $request->input('per_page', 20);
+        $perPage      = $perPageInput == -1 ? 100000 : (int) $perPageInput;
         $op        = DB::connection()->getDriverName() === 'pgsql' ? 'ILIKE' : 'LIKE';
 
         // Only show categories that are usable for products in filters

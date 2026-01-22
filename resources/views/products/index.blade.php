@@ -208,6 +208,7 @@
                         @foreach([10,20,50,100] as $pp)
                             <option value="{{ $pp }}" @selected((int)request('per_page', 20)===$pp)>{{ $pp }}</option>
                         @endforeach
+                            <option value="-1" @selected((int)request('per_page')===-1)>All</option>
                     </select>
                 </div>
             </div>
@@ -314,6 +315,10 @@
                                             <span class="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
                                                 Not usable
                                             </span>
+                                        @unless($catOk)
+                                            <span class="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                                                Not usable
+                                            </span>
                                         @endunless
                                     </span>
                                 @else
@@ -414,6 +419,25 @@
                         </tr>
                     @endforelse
                 </tbody>
+                {{-- Footer for Totals --}}
+                <tfoot class="bg-gray-50 dark:bg-gray-900/40 font-semibold text-gray-900 dark:text-gray-100">
+                    <tr>
+                        <td colspan="4" class="px-4 py-3 text-right text-xs uppercase text-gray-500 dark:text-gray-400">Total (Page):</td>
+                        <td class="px-4 py-3 text-right text-emerald-700 dark:text-emerald-300">
+                            {{ $fmt0($products->sum(fn($p) => (float)($p->qty_in ?? 0))) }}
+                        </td>
+                        <td class="px-4 py-3 text-right text-rose-700 dark:text-rose-300">
+                            {{ $fmt0($products->sum(fn($p) => (float)($p->qty_out ?? 0))) }}
+                        </td>
+                        <td class="px-4 py-3 text-right text-amber-700 dark:text-amber-300">
+                            {{ $fmt0($products->sum(fn($p) => (float)($p->qty_returned ?? 0))) }}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            {{ $fmt0($pageUnits) }}
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
 
