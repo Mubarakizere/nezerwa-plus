@@ -131,20 +131,27 @@ class ProductImport
         $deleted = 0;
         $errors = [];
 
-        // Full Replace: Delete products not in the import file
+        // Full Replace: Delete ALL products for a clean slate
         if ($mode === 'full_replace') {
-            // Get all product names from the import
-            $importNames = array_map(fn($item) => $item['data']['name'], $parsedData);
-            
-            // Find products in DB that are NOT in the import list
-            // We use chunking to avoid memory issues if many products
-            Product::whereNotIn('name', $importNames)->chunk(100, function ($products) use (&$deleted, &$failed, &$errors) {
+            Product::chunk(100, function ($products) use (&$deleted, &$failed, &$errors) {
                 foreach ($products as $product) {
                     try {
+                        // Force delete dependencies to satisfy Foreign Key constraints
+                        // 1. Stock Movements (SoftDeletes, so use forceDelete)
+                        \App\Models\StockMovement::where('product_id', $product->id)->forceDelete();
+                        
+                        // 2. Sale Items (Hard delete)
+                        \App\Models\SaleItem::where('product_id', $product->id)->delete();
+
+                        // 3. Purchase Items (Hard delete, assuming it exists)
+                        if (class_exists(\App\Models\PurchaseItem::class)) {
+                            \App\Models\PurchaseItem::where('product_id', $product->id)->delete();
+                        }
+
+                        // 4. Finally delete the product
                         $product->delete();
                         $deleted++;
                     } catch (\Exception $e) {
-                        // Likely integrity constraint (has sales/stock history)
                         $failed++;
                         $errors[] = [
                             'row' => 'N/A',
@@ -157,7 +164,8 @@ class ProductImport
 
         foreach ($parsedData as $item) {
             try {
-                if ($item['status'] === 'new') {
+                // In full_replace mode, we just deleted everything, so everything is "new"
+                if ($item['status'] === 'new' || $mode === 'full_replace') {
                     $this->createProduct($item, $userId);
                 } else {
                     $this->updateProduct($item, $mode, $userId);
