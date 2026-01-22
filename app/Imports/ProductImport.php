@@ -133,22 +133,28 @@ class ProductImport
 
         // Full Replace: Delete ALL products for a clean slate
         if ($mode === 'full_replace') {
-            Product::chunk(100, function ($products) use (&$deleted, &$failed, &$errors) {
+            // Get ALL product IDs first to avoid offset issues during deletion
+            $allIds = Product::pluck('id');
+            
+            // Chunk the IDs array to process deletes in batches (sanity check, though we process one by one inside)
+            foreach ($allIds->chunk(200) as $chunkIds) {
+                $products = Product::whereIn('id', $chunkIds)->get();
+                
                 foreach ($products as $product) {
                     try {
-                        // Force delete dependencies to satisfy Foreign Key constraints
-                        // 1. Stock Movements (SoftDeletes, so use forceDelete)
+                        // Force delete dependencies
+                        // 1. Stock Movements (SoftDeletes -> forceDelete)
                         \App\Models\StockMovement::where('product_id', $product->id)->forceDelete();
                         
-                        // 2. Sale Items (Hard delete)
+                        // 2. Sale Items
                         \App\Models\SaleItem::where('product_id', $product->id)->delete();
 
-                        // 3. Purchase Items (Hard delete, assuming it exists)
+                        // 3. Purchase Items
                         if (class_exists(\App\Models\PurchaseItem::class)) {
                             \App\Models\PurchaseItem::where('product_id', $product->id)->delete();
                         }
 
-                        // 4. Finally delete the product
+                        // 4. Delete product
                         $product->delete();
                         $deleted++;
                     } catch (\Exception $e) {
@@ -159,7 +165,7 @@ class ProductImport
                         ];
                     }
                 }
-            });
+            }
         }
 
         foreach ($parsedData as $item) {
