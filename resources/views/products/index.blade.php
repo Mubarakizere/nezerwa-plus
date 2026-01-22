@@ -315,10 +315,6 @@
                                             <span class="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
                                                 Not usable
                                             </span>
-                                        @unless($catOk)
-                                            <span class="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                                                Not usable
-                                            </span>
                                         @endunless
                                     </span>
                                 @else
