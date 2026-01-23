@@ -1,8 +1,10 @@
 <section>
+    @if(($permissions['sales'] ?? false) || ($permissions['purchases'] ?? false))
     {{-- Charts Header --}}
     <h3 class="text-lg font-semibold text-indigo-600 mb-4 dark:text-indigo-400">
         Sales Performance
     </h3>
+    @endif
 
     <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-6 relative overflow-hidden">
 
@@ -37,6 +39,7 @@
             </div>
         </div>
     </div>
+    @endif
 </section>
 
 @push('scripts')

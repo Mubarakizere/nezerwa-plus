@@ -40,5 +40,22 @@ class PermissionSeeder extends Seeder
                 ]);
             }
         }
+
+        // Granular view permissions for dashboard data filtering
+        $granularViewPermissions = [
+            'sales.view-own',          // View only own sales
+            'sales.view-all',          // View all sales
+            'transactions.view-own',   // View only own transactions
+            'transactions.view-all',   // View all transactions
+            'reports.view-own',        // View only own reports
+            'reports.view-all',        // View all reports
+        ];
+
+        foreach ($granularViewPermissions as $permission) {
+            Permission::firstOrCreate([
+                'name'       => $permission,
+                'guard_name' => 'web',
+            ]);
+        }
     }
 }

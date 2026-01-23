@@ -7,6 +7,12 @@
                     Dashboard
                 </h2>
                 
+                @if(isset($permissions) && (
+                    ($permissions['sales'] ?? false) || 
+                    ($permissions['purchases'] ?? false) || 
+                    ($permissions['loans'] ?? false) || 
+                    ($permissions['expenses'] ?? false)
+                ))
                 <div class="flex items-center gap-3">
                     {{-- Customize Button --}}
                     <div class="relative" x-data="{ open: false }" @click.away="open = false">
@@ -21,37 +27,59 @@
                             <div class="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                 Visible Sections
                             </div>
+                            @if($permissions['sales'] ?? false)
                             <label class="flex items-center px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
                                 <input type="checkbox" x-model="showKpis" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-200">KPIs</span>
                             </label>
+                            @endif
+                            @if(($permissions['sales'] ?? false) || ($permissions['purchases'] ?? false))
                             <label class="flex items-center px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
                                 <input type="checkbox" x-model="showCharts" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                                 <span class="ml-2 text-sm text-gray-700 dark:text-gray-200">Charts</span>
                             </label>
+                            @endif
+                            @if(($permissions['sales'] ?? false) && (($permissions['products'] ?? false) || ($permissions['customers'] ?? false)))
                             <label class="flex items-center px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
                                 <input type="checkbox" x-model="showInsights" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-200">Insights</span>
+                                <span class="ml-2 text-gray-700 dark:text-gray-200">Insights</span>
                             </label>
+                            @endif
                         </div>
                     </div>
                 </div>
+                @endif
             </div>
         </div>
 
         <div class="py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+            {{-- Show message if no permissions --}}
+            @if(!isset($permissions) || empty(array_filter($permissions)))
+                <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900 rounded-xl p-6 text-center">
+                    <i data-lucide="lock" class="w-12 h-12 mx-auto text-yellow-600 dark:text-yellow-500 mb-3"></i>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Dashboard Access</h3>
+                    <p class="text-gray-600 dark:text-gray-400">You don't have permissions to view any dashboard sections. Please contact your administrator.</p>
+                </div>
+            @endif
+
             {{-- Sections with transitions --}}
+            @if($permissions['sales'] ?? false)
             <div x-show="showKpis" x-collapse>
                 @include('dashboard._kpis')
             </div>
+            @endif
             
+            @if(($permissions['sales'] ?? false) || ($permissions['purchases'] ?? false))
             <div x-show="showCharts" x-collapse>
                 @include('dashboard._charts')
             </div>
+            @endif
             
+            @if(($permissions['sales'] ?? false) && (($permissions['products'] ?? false) || ($permissions['customers'] ?? false)))
             <div x-show="showInsights" x-collapse>
                 @include('dashboard._insights')
             </div>
+            @endif
         </div>
     </div>
 

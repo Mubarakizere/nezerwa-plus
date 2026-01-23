@@ -13,127 +13,207 @@ class DashboardController extends Controller
     {
         try {
             $user = Auth::user();
-            $role = strtolower($user->getRoleNames()->first() ?? 'guest');
 
-            $sections = [
-                'kpis'               => in_array($role, ['admin','manager','accountant']),
-                'finance'            => in_array($role, ['admin','accountant']),
-                'loans'              => in_array($role, ['admin','manager','accountant']),
-                'charts'             => in_array($role, ['admin','manager','accountant']),
-                'recentTransactions' => in_array($role, ['admin','manager','accountant']),
-                'cashierDaily'       => in_array($role, ['cashier']),
-                'insights'           => in_array($role, ['admin','manager']),
-                'expenses'           => in_array($role, ['admin','manager','accountant']),
+            // Determine data access levels based on permissions
+            $canViewAllSales = $user->can('sales.view-all') || ($user->can('sales.view') && !$user->can('sales.view-own'));
+            $canViewOwnSales = $user->can('sales.view-own') || ($user->can('sales.view') && !$canViewAllSales);
+            $canViewSales = $canViewAllSales || $canViewOwnSales;
+            
+            $canViewAllTransactions = $user->can('transactions.view-all') || ($user->can('transactions.view') && !$user->can('transactions.view-own'));
+            $canViewTransactions = $canViewAllTransactions || $user->can('transactions.view-own') || $user->can('transactions.view');
+
+            // Check module permissions
+            $permissions = [
+                'sales' => $canViewSales,
+                'purchases' => $user->can('purchases.view'),
+                'loans' => $user->can('loans.view'),
+                'expenses' => $user->can('expenses.view'),
+                'stock' => $user->can('stock.view'),
+                'debits_credits' => $user->can('debits-credits.view'),
+                'customers' => $user->can('customers.view'),
+                'products' => $user->can('products.view'),
+                'reports' => $user->can('reports.view') || $user->can('reports.view-own') || $user->can('reports.view-all'),
             ];
 
             $today      = Carbon::today();
             $monthStart = now()->startOfMonth();
             $weekStart  = now()->startOfWeek();
 
-            // Determine if user should see only their own data
-            $isCashier = in_array($role, ['cashier']);
+            // Determine if user should see only their own sales data
+            $filterOwnSales = $canViewOwnSales && !$canViewAllSales;
+            $filterOwnTransactions = $user->can('transactions.view-own') && !$canViewAllTransactions;
             $userId = $user->id;
 
             // ========== TOTALS ==========
-            $totalSales      = $this->safeSum(
-                $isCashier ? Sale::where('user_id', $userId) : Sale::class,
-                'total_amount'
-            );
-            $totalPurchases  = $this->safeSum(Purchase::class, 'total_amount');
-            $totalProfit     = $this->safeSum(
-                $isCashier ? SaleItem::whereHas('sale', fn($q) => $q->where('user_id', $userId)) : SaleItem::class,
-                DB::raw('COALESCE(profit, (unit_price - cost_price) * quantity)')
-            );
-            $pendingBalances = $this->safeSum(
-                $isCashier ? Sale::where('status', 'pending')->where('user_id', $userId) : Sale::where('status', 'pending'),
-                DB::raw('total_amount - COALESCE(amount_paid, 0)')
-            );
+            $totalSales = 0;
+            $totalProfit = 0;
+            $pendingBalances = 0;
+            
+            if ($permissions['sales']) {
+                $totalSales = $this->safeSum(
+                    $filterOwnSales ? Sale::where('user_id', $userId) : Sale::class,
+                    'total_amount'
+                );
+                $totalProfit = $this->safeSum(
+                    $filterOwnSales ? SaleItem::whereHas('sale', fn($q) => $q->where('user_id', $userId)) : SaleItem::class,
+                    DB::raw('COALESCE(profit, (unit_price - cost_price) * quantity)')
+                );
+                $pendingBalances = $this->safeSum(
+                    $filterOwnSales ? Sale::where('status', 'pending')->where('user_id', $userId) : Sale::where('status', 'pending'),
+                    DB::raw('total_amount - COALESCE(amount_paid, 0)')
+                );
+            }
+
+            $totalPurchases = $permissions['purchases'] ? $this->safeSum(Purchase::class, 'total_amount') : 0;
 
             // ========== LEDGER ==========
-            $totalCredits = $this->safeSum(DebitCredit::where('type', 'credit'), 'amount');
-            $totalDebits  = $this->safeSum(DebitCredit::where('type', 'debit'), 'amount');
-            $netBalance   = $totalCredits - $totalDebits;
+            $totalCredits = 0;
+            $totalDebits = 0;
+            $netBalance = 0;
+            
+            if ($permissions['debits_credits']) {
+                $totalCredits = $this->safeSum(DebitCredit::where('type', 'credit'), 'amount');
+                $totalDebits  = $this->safeSum(DebitCredit::where('type', 'debit'), 'amount');
+                $netBalance   = $totalCredits - $totalDebits;
+            }
 
             // ========== EXPENSES ==========
-            $totalExpenses = $this->safeSum(Expense::class, 'amount');
-            $todayExpenses = $this->safeSum(Expense::whereDate('date', $today), 'amount');
-            $weekExpenses  = $this->safeSum(Expense::where('date', '>=', $weekStart), 'amount');
-            $monthExpenses = $this->safeSum(Expense::where('date', '>=', $monthStart), 'amount');
+            $totalExpenses = 0;
+            $todayExpenses = 0;
+            $weekExpenses = 0;
+            $monthExpenses = 0;
+            
+            if ($permissions['expenses']) {
+                $totalExpenses = $this->safeSum(Expense::class, 'amount');
+                $todayExpenses = $this->safeSum(Expense::whereDate('date', $today), 'amount');
+                $weekExpenses  = $this->safeSum(Expense::where('date', '>=', $weekStart), 'amount');
+                $monthExpenses = $this->safeSum(Expense::where('date', '>=', $monthStart), 'amount');
+            }
 
             // ========== LOANS ==========
-            $totalLoansGiven   = $this->safeSum(Loan::where('type', 'given'), 'amount');
-            $totalLoansTaken   = $this->safeSum(Loan::where('type', 'taken'), 'amount');
-            $activeLoans       = Loan::where('status', '!=', 'paid')->count();
-            $overdueLoans      = Loan::where('status', '!=', 'paid')
-                                     ->whereNotNull('due_date')
-                                     ->where('due_date', '<', now())
-                                     ->count();
-            $paidLoans         = Loan::where('status', 'paid')->count();
-            $totalLoanPayments = $this->safeSum(LoanPayment::class, 'amount');
+            $totalLoansGiven = 0;
+            $totalLoansTaken = 0;
+            $activeLoans = 0;
+            $overdueLoans = 0;
+            $paidLoans = 0;
+            $totalLoanPayments = 0;
+            
+            if ($permissions['loans']) {
+                $totalLoansGiven   = $this->safeSum(Loan::where('type', 'given'), 'amount');
+                $totalLoansTaken   = $this->safeSum(Loan::where('type', 'taken'), 'amount');
+                $activeLoans       = Loan::where('status', '!=', 'paid')->count();
+                $overdueLoans      = Loan::where('status', '!=', 'paid')
+                                         ->whereNotNull('due_date')
+                                         ->where('due_date', '<', now())
+                                         ->count();
+                $paidLoans         = Loan::where('status', 'paid')->count();
+                $totalLoanPayments = $this->safeSum(LoanPayment::class, 'amount');
+            }
 
-            // ========== TIME-BASED SALES (filtered for cashiers) ==========
-            $todaySales     = $this->safeSum(
-                $isCashier ? Sale::whereDate('created_at', $today)->where('user_id', $userId) : Sale::whereDate('created_at', $today),
-                'total_amount'
-            );
-            $monthSales     = $this->safeSum(
-                $isCashier ? Sale::where('created_at', '>=', $monthStart)->where('user_id', $userId) : Sale::where('created_at', '>=', $monthStart),
-                'total_amount'
-            );
-            $weekSales      = $this->safeSum(
-                $isCashier ? Sale::where('created_at', '>=', $weekStart)->where('user_id', $userId) : Sale::where('created_at', '>=', $weekStart),
-                'total_amount'
-            );
-            $yesterdaySales = $this->safeSum(
-                $isCashier ? Sale::whereDate('created_at', $today->copy()->subDay())->where('user_id', $userId) : Sale::whereDate('created_at', $today->copy()->subDay()),
-                'total_amount'
-            );
-            $salesChange    = $yesterdaySales > 0 ? (($todaySales - $yesterdaySales) / $yesterdaySales) * 100 : 0;
+            // ========== TIME-BASED SALES ==========
+            $todaySales = 0;
+            $monthSales = 0;
+            $weekSales = 0;
+            $yesterdaySales = 0;
+            $salesChange = 0;
+            
+            if ($permissions['sales']) {
+                $todaySales     = $this->safeSum(
+                    $filterOwnSales ? Sale::whereDate('created_at', $today)->where('user_id', $userId) : Sale::whereDate('created_at', $today),
+                    'total_amount'
+                );
+                $monthSales     = $this->safeSum(
+                    $filterOwnSales ? Sale::where('created_at', '>=', $monthStart)->where('user_id', $userId) : Sale::where('created_at', '>=', $monthStart),
+                    'total_amount'
+                );
+                $weekSales      = $this->safeSum(
+                    $filterOwnSales ? Sale::where('created_at', '>=', $weekStart)->where('user_id', $userId) : Sale::where('created_at', '>=', $weekStart),
+                    'total_amount'
+                );
+                $yesterdaySales = $this->safeSum(
+                    $filterOwnSales ? Sale::whereDate('created_at', $today->copy()->subDay())->where('user_id', $userId) : Sale::whereDate('created_at', $today->copy()->subDay()),
+                    'total_amount'
+                );
+                $salesChange    = $yesterdaySales > 0 ? (($todaySales - $yesterdaySales) / $yesterdaySales) * 100 : 0;
+            }
 
             // ========== STOCK ==========
-            $totalStockValue = $this->calculateStockValue();
+            $totalStockValue = $permissions['stock'] ? $this->calculateStockValue() : 0;
 
-            // ========== MY DAY (for cashiers - always user-specific) ==========
-            $myTodaySalesTotal = $this->safeSum(
-                Sale::where('user_id', $user->id)->whereDate('created_at', $today),
-                'total_amount'
-            );
-            $myTodaySalesCount = Sale::where('user_id', $user->id)
-                                    ->whereDate('created_at', $today)
-                                    ->count();
-            $myLatestSales = Sale::where('user_id', $user->id)
-                                ->with(['customer:id,name'])
-                                ->latest()
-                                ->take(5)
-                                ->get();
+            // ========== MY DAY (always user-specific) ==========
+            $myTodaySalesTotal = 0;
+            $myTodaySalesCount = 0;
+            $myLatestSales = collect();
+            
+            if ($permissions['sales']) {
+                $myTodaySalesTotal = $this->safeSum(
+                    Sale::where('user_id', $user->id)->whereDate('created_at', $today),
+                    'total_amount'
+                );
+                $myTodaySalesCount = Sale::where('user_id', $user->id)
+                                        ->whereDate('created_at', $today)
+                                        ->count();
+                $myLatestSales = Sale::where('user_id', $user->id)
+                                    ->with(['customer:id,name'])
+                                    ->latest()
+                                    ->take(5)
+                                    ->get();
+            }
 
-            // ========== RECENT TRANSACTIONS (filtered for cashiers) ==========
-            $recentTransactions = DebitCredit::with(['user:id,name', 'customer:id,name', 'supplier:id,name'])
-                                            ->when($isCashier, fn($q) => $q->where('user_id', $userId))
-                                            ->latest()
-                                            ->take(10)
-                                            ->get();
+            // ========== RECENT TRANSACTIONS ==========
+            $recentTransactions = collect();
+            if ($permissions['debits_credits']) {
+                $recentTransactions = DebitCredit::with(['user:id,name', 'customer:id,name', 'supplier:id,name'])
+                                                ->when($filterOwnTransactions, fn($q) => $q->where('user_id', $userId))
+                                                ->latest()
+                                                ->take(10)
+                                                ->get();
+            }
 
-            // ========== CHART DATA (filtered for cashiers) ==========
-            [$chartLabels, $chartSales] = $this->getSalesChartData(30, $isCashier ? $userId : null);
-            [$months, $salesTrend, $purchaseTrend] = $this->getTrendData(6, $isCashier ? $userId : null);
+            // ========== CHART DATA ==========
+            $chartLabels = collect();
+            $chartSales = collect();
+            $months = collect();
+            $salesTrend = collect();
+            $purchaseTrend = collect();
+            
+            if ($permissions['sales'] || $permissions['purchases']) {
+                if ($permissions['sales']) {
+                    [$chartLabels, $chartSales] = $this->getSalesChartData(30, $filterOwnSales ? $userId : null);
+                }
+                [$months, $salesTrend, $purchaseTrend] = $this->getTrendData(6, $filterOwnSales ? $userId : null);
+            }
 
-            // ========== INSIGHTS (filtered for cashiers) ==========
-            $topProducts = $this->getTopProducts(5, $isCashier ? $userId : null);
-            $topCustomers = $this->getTopCustomers(5, $isCashier ? $userId : null);
+            // ========== INSIGHTS ==========
+            $topProducts = collect();
+            $topCustomers = collect();
+            
+            if ($permissions['sales']) {
+                if ($permissions['products']) {
+                    $topProducts = $this->getTopProducts(5, $filterOwnSales ? $userId : null);
+                }
+                if ($permissions['customers']) {
+                    $topCustomers = $this->getTopCustomers(5, $filterOwnSales ? $userId : null);
+                }
+            }
 
             // ========== ACTIVE LOANS ==========
-            $activeLoansList = $this->getActiveLoans(8);
+            $activeLoansList = $permissions['loans'] ? $this->getActiveLoans(8) : collect();
 
             // ========== EXPENSE BY CATEGORY ==========
-            $expenseByCategory = $this->getExpensesByCategory($monthStart);
-            $recentExpenses = Expense::with(['category:id,name', 'creator:id,name', 'supplier:id,name'])
-                                    ->orderByDesc('date')
-                                    ->take(8)
-                                    ->get();
+            $expenseByCategory = ['labels' => [], 'amounts' => []];
+            $recentExpenses = collect();
+            
+            if ($permissions['expenses']) {
+                $expenseByCategory = $this->getExpensesByCategory($monthStart);
+                $recentExpenses = Expense::with(['category:id,name', 'creator:id,name', 'supplier:id,name'])
+                                        ->orderByDesc('date')
+                                        ->take(8)
+                                        ->get();
+            }
 
             return view('dashboard', compact(
-                'role', 'sections',
+                'permissions',
                 'totalSales', 'totalPurchases', 'totalProfit', 'pendingBalances',
                 'totalCredits', 'totalDebits', 'netBalance',
                 'totalExpenses', 'todayExpenses', 'weekExpenses', 'monthExpenses',
@@ -154,8 +234,7 @@ class DashboardController extends Controller
 
             return view('dashboard')->with([
                 'error' => 'Unable to load dashboard data. Please check logs.',
-                'role' => 'guest',
-                'sections' => []
+                'permissions' => []
             ]);
         }
     }

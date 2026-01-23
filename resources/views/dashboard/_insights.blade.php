@@ -1,9 +1,12 @@
 <section>
+    @if(($permissions['sales'] ?? false) && (($permissions['products'] ?? false) || ($permissions['customers'] ?? false)))
     {{-- Insights Header --}}
     <h3 class="text-lg font-semibold text-indigo-600 mb-4 dark:text-indigo-400">
         Advanced Insights
     </h3>
+    @endif
 
+    @if(($permissions['sales'] ?? false) && ($permissions['products'] ?? false))
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {{-- Top Selling Products --}}
@@ -46,8 +49,11 @@
             <div class="h-48">
                 <canvas id="topProductsChart"></canvas>
             </div>
+            </div>
         </div>
+        @endif
 
+        @if(($permissions['sales'] ?? false) && ($permissions['customers'] ?? false))
         {{-- Top Customers --}}
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-5 border border-gray-100 dark:border-gray-700 space-y-4">
             <h4 class="text-md font-semibold text-gray-700 dark:text-gray-300 flex items-center">
@@ -86,8 +92,11 @@
             <div class="h-48">
                 <canvas id="topCustomersChart"></canvas>
             </div>
+            </div>
         </div>
+        @endif
     </div>
+    @endif
 </section>
 
 @push('scripts')
