@@ -319,37 +319,52 @@ class DashboardController extends Controller
     private function getTrendData(int $months = 6, ?int $userId = null): array
     {
         try {
-            $monthLabels = collect(range(1, $months))
-                ->map(fn($i) => now()->subMonths($months - $i)->format('M'));
+            $driver = DB::connection()->getDriverName();
+            
+            // Define date format for grouping by YYYY-MM
+            $dateExpression = match ($driver) {
+                'mysql' => "DATE_FORMAT(created_at, '%Y-%m')",
+                'sqlite' => "strftime('%Y-%m', created_at)",
+                'pgsql' => "TO_CHAR(created_at, 'YYYY-MM')",
+                default => "DATE_FORMAT(created_at, '%Y-%m')", // Fallback
+            };
+
+            // Prepare expected month keys and labels
+            $monthKeys = [];
+            $labels = [];
+            
+            for ($i = $months - 1; $i >= 0; $i--) {
+                $date = now()->subMonths($i);
+                $monthKeys[] = $date->format('Y-m');
+                $labels[] = $date->format('M');
+            }
 
             $startDate = now()->subMonths($months)->startOfMonth();
 
-            $salesData = Sale::selectRaw("DATE_TRUNC('month', created_at) as m, SUM(total_amount) as t")
-                            ->when($userId, fn($q) => $q->where('user_id', $userId))
-                            ->where('created_at', '>=', $startDate)
-                            ->groupBy('m')
-                            ->orderBy('m')
-                            ->pluck('t');
+            // Helper query builder
+            $fetchTrend = function ($query) use ($dateExpression, $userId, $startDate) {
+                return $query->selectRaw("$dateExpression as m, SUM(total_amount) as t")
+                    ->when($userId, fn($q) => $q->where('user_id', $userId))
+                    ->where('created_at', '>=', $startDate)
+                    ->groupBy(DB::raw($dateExpression)) // Group by expression, not alias
+                    ->orderBy('m')
+                    ->pluck('t', 'm');
+            };
 
-            $purchaseData = Purchase::selectRaw("DATE_TRUNC('month', created_at) as m, SUM(total_amount) as t")
-                                   ->where('created_at', '>=', $startDate)
-                                   ->groupBy('m')
-                                   ->orderBy('m')
-                                   ->pluck('t');
+            // Fetch Data
+            $salesData = $fetchTrend(Sale::query());
+            $purchaseData = $fetchTrend(Purchase::query());
 
-            // Pad with zeros if needed
-            while ($salesData->count() < $months) {
-                $salesData->push(0);
-            }
-            while ($purchaseData->count() < $months) {
-                $purchaseData->push(0);
-            }
+            // Map data to expected months (filling zeros for missing months)
+            $salesTrend = collect($monthKeys)->map(fn($key) => (float) ($salesData[$key] ?? 0));
+            $purchaseTrend = collect($monthKeys)->map(fn($key) => (float) ($purchaseData[$key] ?? 0));
 
-            return [$monthLabels, $salesData, $purchaseData];
+            return [collect($labels), $salesTrend, $purchaseTrend];
+
         } catch (\Exception $e) {
             Log::warning('Trend data failed: ' . $e->getMessage());
             $empty = collect(array_fill(0, $months, 0));
-            return [collect(), $empty, $empty];
+            return [collect(array_fill(0, $months, '')), $empty, $empty];
         }
     }
 
