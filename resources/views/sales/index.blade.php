@@ -310,7 +310,7 @@
                         <th class="px-4 py-3 text-right">Paid</th>
                         <th class="px-4 py-3 text-right">Balance</th>
                         <th class="px-4 py-3">Status</th>
-                        <th class="px-4 py-3">Channel</th>
+                        <th class="px-4 py-3 hidden">Channel</th>
                         <th class="px-4 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
@@ -390,7 +390,7 @@
                                 @endif
                             </td>
 
-                            <td class="px-4 py-3">
+                            <td class="px-4 py-3 hidden">
                                 <div class="flex items-center gap-1.5 flex-wrap">
                                     <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium {{ $badge }}">
                                         <i data-lucide="{{ $icon }}" class="w-3.5 h-3.5"></i>
