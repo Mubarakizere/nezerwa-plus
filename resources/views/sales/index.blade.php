@@ -305,8 +305,8 @@
                         <th class="px-4 py-3">Date</th>
                         <th class="px-4 py-3">Customer</th>
                         <th class="px-4 py-3 text-right">Total</th>
-                        <th class="px-4 py-3 text-right">Returns</th>
-                        <th class="px-4 py-3 text-right">Net After Returns</th>
+                        <th class="px-4 py-3 text-right hidden">Returns</th>
+                        <th class="px-4 py-3 text-right hidden">Net After Returns</th>
                         <th class="px-4 py-3 text-right">Paid</th>
                         <th class="px-4 py-3 text-right">Balance</th>
                         <th class="px-4 py-3">Status</th>
@@ -358,11 +358,11 @@
                                 {{ number_format($grossTotal, 2) }}
                             </td>
 
-                            <td class="px-4 py-3 text-right font-medium {{ $returnsTotal>0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400' }}">
+                            <td class="px-4 py-3 text-right font-medium {{ $returnsTotal>0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400' }} hidden">
                                 {{ $returnsTotal>0 ? '- '.number_format($returnsTotal, 2) : number_format(0, 2) }}
                             </td>
 
-                            <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-gray-100">
+                            <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-gray-100 hidden">
                                 {{ number_format($netAfter, 2) }}
                             </td>
 
