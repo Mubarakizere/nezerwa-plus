@@ -17,7 +17,13 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
         <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <i data-lucide="package" class="w-6 h-6 text-indigo-600 dark:text-indigo-400"></i>
-            <span>Stock Movements</span>
+            <span>
+                @if(isset($runningBalance) && request('product_id'))
+                    {{ $products->find(request('product_id'))?->name }} History
+                @else
+                    Stock Movements
+                @endif
+            </span>
         </h1>
 
         @can('stock.view')
@@ -196,6 +202,9 @@
                             <th class="px-4 py-3 text-left">Reference / Note</th>
                             <th class="px-4 py-3 text-left">Recorded By</th>
                             <th class="px-4 py-3 text-left">Source</th>
+                            @if(isset($runningBalance))
+                                <th class="px-4 py-3 text-right">Balance</th>
+                            @endif
                             @can('stock.delete')
                             <th class="px-4 py-3 text-center">Actions</th>
                             @endcan
@@ -323,6 +332,31 @@
                                     </span>
                                 </td>
 
+                                @if(isset($runningBalance))
+                                    @php
+                                        // Current row's balance to display
+                                        $currentRowBalance = $runningBalance;
+                                        
+                                        // Update for NEXT row (which is older):
+                                        // BalanceAfterOlder = BalanceAfterNewer - (NewerChange)
+                                        // Check logic: 
+                                        // B_next = B_current - (isIn ? +qty : -qty)
+                                        // Example: 
+                                        // Current (Row 1) is IN 10. Balance After is 100.
+                                        // Previous (Row 2) balance was 90.
+                                        // 100 - (+10) = 90. Correct.
+                                        // Current (Row 1) is OUT 5. Balance After is 95.
+                                        // Previous (Row 2) balance was 100.
+                                        // 95 - (-5) = 100. Correct.
+                                        
+                                        $change = $isIn ? $m->quantity : -($m->quantity);
+                                        $runningBalance = $runningBalance - $change;
+                                    @endphp
+                                    <td class="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300">
+                                        {{ $fmt($currentRowBalance) }}
+                                    </td>
+                                @endif
+
                                 @can('stock.delete')
                                 <td class="px-4 py-3">
                                     <div class="flex items-center justify-center gap-1">
@@ -374,7 +408,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ auth()->user()->can('stock.delete') ? '10' : '9' }}" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                                <td colspan="{{ auth()->user()->can('stock.delete') ? (isset($runningBalance) ? '11' : '10') : (isset($runningBalance) ? '10' : '9') }}" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
                                     No movements found for the selected filters.
                                 </td>
                             </tr>

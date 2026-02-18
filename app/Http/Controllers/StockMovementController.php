@@ -50,7 +50,39 @@ class StockMovementController extends Controller
             'in_loan_returns' => (clone $query)->where('type','in')->where('source_type', ItemLoanReturn::class)->sum('quantity'),
         ];
 
-        return view('stock_movements.index', compact('movements', 'products', 'totals', 'breakdown'));
+        // Running Balance Calculation (Only provided if filtered by SINGLE Product and NO other filters confusing the timeline)
+        $runningBalance = null;
+        if ($request->filled('product_id') && !$request->filled('type') && !$request->filled('origin') && !$request->filled('search')) {
+            $product = Product::find($request->product_id);
+            if ($product) {
+                // Base balance is current stock (end of time)
+                $currentStock = $product->stock;
+
+                // If looking at historical pages, we must subtract the net change of NEWER records
+                $page = max(1, $request->integer('page', 1));
+                $perPage = 20; // Must match paginate(20) above
+                $offset = ($page - 1) * $perPage;
+
+                if ($offset > 0) {
+                    // Fetch the "newer" movements we skipped
+                    // Using get() because sum() ignores limit/take in SQL builder usually
+                    $netChangeResult = StockMovement::where('product_id', $product->id)
+                        ->latest()
+                        ->take($offset)
+                        ->get(['type', 'quantity']);
+                    
+                    $netChangeSkipped = $netChangeResult->sum(function($m) {
+                        return $m->type === 'in' ? $m->quantity : -$m->quantity;
+                    });
+
+                    $runningBalance = $currentStock - $netChangeSkipped;
+                } else {
+                    $runningBalance = $currentStock;
+                }
+            }
+        }
+
+        return view('stock_movements.index', compact('movements', 'products', 'totals', 'breakdown', 'runningBalance'));
     }
 
     /**
