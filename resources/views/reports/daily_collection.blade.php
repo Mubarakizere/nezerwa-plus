@@ -82,8 +82,8 @@
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <a href="{{ route('reports.daily-collection.export', request()->query()) }}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Export Excel
+                        <a href="{{ route('reports.daily-collection.export', request()->query()) }}" class="px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-md border border-emerald-700">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-white"></i> Export Excel
                         </a>
                     </div>
                 </div>
