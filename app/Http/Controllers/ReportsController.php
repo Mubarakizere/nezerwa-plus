@@ -587,7 +587,7 @@ class ReportsController extends Controller
             })->sum('amount');
 
         $cashPreviousLoanReceived = (float) LoanPayment::whereIn('method', $cashSlugs)
-            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->whereBetween('payment_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->sum('amount');
 
         $totalCashDebtReceived = $cashPreviousCreditReceived + $cashPreviousLoanReceived;
@@ -639,7 +639,7 @@ class ReportsController extends Controller
             })->sum('amount');
 
         $momoPreviousLoanReceived = (float) LoanPayment::whereIn('method', $momoSlugs)
-            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->whereBetween('payment_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->sum('amount');
 
         $totalMomoDebtReceived = $momoPreviousCreditReceived + $momoPreviousLoanReceived;
@@ -729,13 +729,17 @@ class ReportsController extends Controller
                 ->sum('amount_paid');
         }
 
+        $loanPayments = (float) LoanPayment::whereIn('method', $slugs)
+            ->where('payment_date', '<', $startDate->toDateString())
+            ->sum('amount');
+
         $transactions = (float) Transaction::whereIn('method', $slugs)
             ->where('type', 'credit')
             ->where('transaction_date', '<', $startDate->toDateString())
             ->whereNull('sale_id')
             ->sum('amount');
 
-        return $sales + $transactions;
+        return $sales + $loanPayments + $transactions;
     }
 
     private function getPriorOutflows(array $slugs, Carbon $startDate): float
