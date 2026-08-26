@@ -82,8 +82,10 @@
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <a href="{{ route('reports.daily-collection.export', request()->query()) }}" class="px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-md border border-emerald-700">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-white"></i> Export Excel
+                        <a href="{{ route('reports.daily-collection.export', request()->query()) }}" 
+                           style="background-color: #059669 !important; color: #ffffff !important; display: inline-flex !important; align-items: center !important; gap: 0.5rem !important; padding: 0.625rem 1.25rem !important; font-weight: 700 !important; font-size: 0.875rem !important; border-radius: 0.5rem !important; text-decoration: none !important; box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4" style="color: #ffffff !important;"></i>
+                            <span style="color: #ffffff !important; font-weight: 700 !important;">Export Excel</span>
                         </a>
                     </div>
                 </div>
