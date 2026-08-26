@@ -195,6 +195,10 @@
             </h3>
 
             <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 flex flex-wrap gap-3">
+                <a href="{{ route('reports.daily-collection', array_merge(request()->query(), ['start_date' => $start, 'end_date' => $end])) }}"
+                   class="btn btn-primary bg-indigo-700 hover:bg-indigo-800 text-white flex items-center gap-2">
+                    <i data-lucide="calendar-check" class="w-4 h-4 text-emerald-300"></i> Daily Collection Breakdown (Web &amp; Excel)
+                </a>
                 <a href="{{ route('reports.export.sales.csv', array_merge(request()->query(), ['start_date' => $start, 'end_date' => $end])) }}"
                    class="btn btn-success flex items-center gap-2">
                     <i data-lucide="file-text" class="w-4 h-4"></i> Sales Report (CSV)

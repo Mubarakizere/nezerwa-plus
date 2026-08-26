@@ -249,6 +249,13 @@
                             </a>
                         @endif
 
+                        <a href="{{ route('reports.daily-collection') }}"
+                           class="block px-3 py-2 text-sm rounded-md hover:bg-white/10 text-indigo-100
+                                  {{ request()->routeIs('reports.daily-collection*') ? 'bg-white/15 font-medium text-white' : '' }}">
+                            <i data-lucide="calendar-check" class="w-3.5 h-3.5 inline mr-2 text-emerald-300"></i>
+                            Daily Collection Breakdown
+                        </a>
+
                         <a href="{{ route('reports.suppliers.statement') }}"
                            class="block px-3 py-2 text-sm rounded-md hover:bg-white/10 text-indigo-100
                                   {{ request()->routeIs('reports.suppliers.statement') ? 'bg-white/15 font-medium text-white' : '' }}">

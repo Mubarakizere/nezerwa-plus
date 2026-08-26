@@ -457,6 +457,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Profit & Loss PDF
         Route::get('/reports/export/pl.pdf', [ReportsController::class, 'exportProfitLossPdf'])
             ->name('reports.export.pl.pdf');
+
+        // Daily Collection Breakdown Report & Excel export
+        Route::get('/reports/daily-collection', [ReportsController::class, 'dailyCollection'])
+            ->name('reports.daily-collection');
+
+        Route::get('/reports/daily-collection/export', [ReportsController::class, 'exportDailyCollectionExcel'])
+            ->name('reports.daily-collection.export');
     });
 
     /**

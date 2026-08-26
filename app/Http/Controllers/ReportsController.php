@@ -8,6 +8,13 @@ use App\Models\DebitCredit;
 use App\Models\Loan;
 use App\Models\SaleItem;
 use App\Models\Product;
+use App\Models\Expense;
+use App\Models\PaymentChannel;
+use App\Models\SalePayment;
+use App\Models\LoanPayment;
+use App\Models\Transaction;
+use App\Exports\DailyCollectionExport;
+use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -497,6 +504,252 @@ class ReportsController extends Controller
         ])->setPaper('a4', 'portrait');
 
         return $pdf->download("profit_loss_{$start->toDateString()}_to_{$end->toDateString()}.pdf");
+    }
+
+    /**
+     * Daily Collection Breakdown Report View
+     */
+    public function dailyCollection(Request $request)
+    {
+        $data = $this->dailyCollectionData($request);
+        return view('reports.daily_collection', $data);
+    }
+
+    /**
+     * Export Daily Collection Breakdown Report to Excel
+     */
+    public function exportDailyCollectionExcel(Request $request)
+    {
+        $data = $this->dailyCollectionData($request);
+        $fileName = "daily_collection_report_" . $data['startDateInput'] . ($data['mode'] === 'range' ? "_to_" . $data['endDateInput'] : "") . ".xlsx";
+        return Excel::download(new DailyCollectionExport($data), $fileName);
+    }
+
+    /**
+     * Compute and structure all daily collection data
+     */
+    public function dailyCollectionData(Request $request): array
+    {
+        $mode = $request->input('mode', 'single'); // 'single' or 'range'
+        $startDateInput = $request->input('start_date', now()->toDateString());
+        $endDateInput = $mode === 'range' ? $request->input('end_date', $startDateInput) : $startDateInput;
+
+        $startDate = Carbon::parse($startDateInput)->startOfDay();
+        $endDate   = Carbon::parse($endDateInput)->endOfDay();
+
+        // 1. Fetch Payment Channels
+        $channels = PaymentChannel::where('is_active', true)->get();
+
+        $cashSlugs = ['cash'];
+        $momoSlugs = ['momo', 'mobile_money', 'mobile-money', 'mobile money'];
+
+        // 2. Compute Opening Balances (Prior to $startDate)
+        $priorCashInflows   = $this->getPriorInflows($cashSlugs, $startDate);
+        $priorCashOutflows  = $this->getPriorOutflows($cashSlugs, $startDate);
+        $cashOpeningBalance = max(0, $priorCashInflows - $priorCashOutflows);
+
+        $priorMomoInflows   = $this->getPriorInflows($momoSlugs, $startDate);
+        $priorMomoOutflows  = $this->getPriorOutflows($momoSlugs, $startDate);
+        $momoOpeningBalance = max(0, $priorMomoInflows - $priorMomoOutflows);
+
+        // 3. Sales Summary (within period)
+        $ledgerCashSales = (float) SalePayment::whereIn('method', $cashSlugs)
+            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->sum('amount');
+        if ($ledgerCashSales == 0) {
+            $ledgerCashSales = (float) Sale::whereIn('payment_channel', $cashSlugs)
+                ->whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()])
+                ->sum('amount_paid');
+        }
+
+        $ledgerMomoSales = (float) SalePayment::whereIn('method', $momoSlugs)
+            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->sum('amount');
+        if ($ledgerMomoSales == 0) {
+            $ledgerMomoSales = (float) Sale::whereIn('payment_channel', $momoSlugs)
+                ->whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()])
+                ->sum('amount_paid');
+        }
+
+        $ledgerCreditSales = (float) Sale::whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->whereRaw('(total_amount - amount_paid) > 0')
+            ->sum(DB::raw('total_amount - amount_paid'));
+
+        $totalLedgerSales = $ledgerCashSales + $ledgerMomoSales + $ledgerCreditSales;
+
+        // 4. Cash Breakdown
+        $cashSalesSystem = $ledgerCashSales;
+
+        $cashPreviousCreditReceived = (float) SalePayment::whereIn('method', $cashSlugs)
+            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->whereHas('sale', function ($s) use ($startDate) {
+                $s->where('sale_date', '<', $startDate->toDateString());
+            })->sum('amount');
+
+        $cashPreviousLoanReceived = (float) LoanPayment::whereIn('method', $cashSlugs)
+            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->sum('amount');
+
+        $totalCashDebtReceived = $cashPreviousCreditReceived + $cashPreviousLoanReceived;
+
+        $otherCashReceived = (float) Transaction::whereIn('method', $cashSlugs)
+            ->where('type', 'credit')
+            ->whereBetween('transaction_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->whereNull('sale_id')
+            ->sum('amount');
+
+        $totalCashAvailable = $cashOpeningBalance + $cashSalesSystem + $totalCashDebtReceived + $otherCashReceived;
+
+        // Cash Outflows / Expenses breakdown
+        $cashExpenses = Expense::whereIn('method', $cashSlugs)
+            ->whereBetween('date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->with('category')
+            ->get();
+
+        $cashExpenseItems = [
+            'MD -UNCLE'               => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md -uncle') || str_contains(strtolower($e->category?->name ?? ''), 'uncle'))->sum('amount'),
+            'MD'                     => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md') && !str_contains(strtolower($e->note ?? ''), 'uncle'))->sum('amount'),
+            'Transport'              => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'transport') || str_contains(strtolower($e->category?->name ?? ''), 'transport'))->sum('amount'),
+            'off loading and loading' => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'loading') || str_contains(strtolower($e->category?->name ?? ''), 'loading'))->sum('amount'),
+            'others expenses'        => (float) $cashExpenses->filter(function($e) {
+                $n = strtolower(($e->note ?? '') . ($e->category?->name ?? ''));
+                return !str_contains($n, 'md') && !str_contains($n, 'transport') && !str_contains($n, 'loading') && !str_contains($n, 'deposit');
+            })->sum('amount'),
+        ];
+
+        $cashDeposit = (float) Transaction::whereIn('method', $cashSlugs)
+            ->where('type', 'debit')
+            ->where(function($q) {
+                $q->where('notes', 'like', '%deposit%')
+                  ->orWhere('notes', 'like', '%bank%');
+            })
+            ->whereBetween('transaction_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->sum('amount');
+
+        $totalCashOutflows = array_sum($cashExpenseItems) + $cashDeposit;
+        $cashClosingBalance = $totalCashAvailable - $totalCashOutflows;
+
+        // 5. MoMo Breakdown
+        $momoSalesSystem = $ledgerMomoSales;
+
+        $momoPreviousCreditReceived = (float) SalePayment::whereIn('method', $momoSlugs)
+            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->whereHas('sale', function ($s) use ($startDate) {
+                $s->where('sale_date', '<', $startDate->toDateString());
+            })->sum('amount');
+
+        $momoPreviousLoanReceived = (float) LoanPayment::whereIn('method', $momoSlugs)
+            ->whereBetween('paid_at', [$startDate, $endDate])
+            ->sum('amount');
+
+        $totalMomoDebtReceived = $momoPreviousCreditReceived + $momoPreviousLoanReceived;
+
+        $otherMomoReceived = (float) Transaction::whereIn('method', $momoSlugs)
+            ->where('type', 'credit')
+            ->whereBetween('transaction_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->whereNull('sale_id')
+            ->sum('amount');
+
+        $totalMomoAvailable = $momoOpeningBalance + $momoSalesSystem + $totalMomoDebtReceived + $otherMomoReceived;
+
+        // MoMo Outflows / Expenses breakdown
+        $momoExpenses = Expense::whereIn('method', $momoSlugs)
+            ->whereBetween('date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->with('category')
+            ->get();
+
+        $momoExpenseItems = [
+            'MD'                      => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md') && !str_contains(strtolower($e->note ?? ''), 'uncle'))->sum('amount'),
+            'MD -UNCLE'               => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md -uncle') || str_contains(strtolower($e->category?->name ?? ''), 'uncle'))->sum('amount'),
+            'Direct purchases by shop' => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'purchase') || str_contains(strtolower($e->category?->name ?? ''), 'purchase') || $e->supplier_id !== null)->sum('amount'),
+            'MOMO CHARGES'             => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'charge') || str_contains(strtolower($e->note ?? ''), 'fee'))->sum('amount'),
+            'others expenses'         => (float) $momoExpenses->filter(function($e) {
+                $n = strtolower(($e->note ?? '') . ($e->category?->name ?? ''));
+                return !str_contains($n, 'md') && !str_contains($n, 'purchase') && !str_contains($n, 'charge') && !str_contains($n, 'push') && !str_contains($n, 'change');
+            })->sum('amount'),
+            'MOMO PUSH'                => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'push'))->sum('amount'),
+            'CHANGES'                  => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'change'))->sum('amount'),
+        ];
+
+        $totalMomoTransfers = (float) Transaction::whereIn('method', $momoSlugs)
+            ->where('type', 'debit')
+            ->whereBetween('transaction_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->sum('amount');
+
+        $totalMomoOutflows = array_sum($momoExpenseItems) + $totalMomoTransfers;
+        $momoClosingBalance = $totalMomoAvailable - $totalMomoOutflows;
+
+        // 6. Bank Deposits List
+        $bankDeposits = Transaction::where('type', 'debit')
+            ->where(function($q) {
+                $q->where('notes', 'like', '%deposit%')
+                  ->orWhere('notes', 'like', '%bank%');
+            })
+            ->whereBetween('transaction_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->with('user')
+            ->get();
+
+        $totalBankDeposits = $bankDeposits->sum('amount');
+
+        // 7. Untraded Summary
+        $momoNotTraded = 0.0;
+        $cashNotTraded = 0.0;
+
+        // 8. Formulas Metadata
+        $formulas = [
+            'ledger_sales'   => 'Total Ledger Sales = Ledger Cash Sales + Ledger MoMo Sales + Ledger Credit Sales',
+            'cash_opening'   => 'Opening Cash Balance = Cumulative Prior Cash Inflows - Cumulative Prior Cash Outflows (Closing balance of previous day)',
+            'cash_available' => 'Total Cash Available = Opening Balance + System Cash Sales + Debt Receipts + Other Cash Received',
+            'cash_closing'   => 'Cash Closing Balance = Total Cash Available - Total Cash Outflows (Expenses + Bank Deposit)',
+            'momo_opening'   => 'Opening MoMo Balance = Cumulative Prior MoMo Inflows - Cumulative Prior MoMo Outflows (Closing balance of previous day)',
+            'momo_available' => 'Total MoMo Available = Opening Balance + System MoMo Sales + Debt Receipts + Other MoMo Received',
+            'momo_closing'   => 'MoMo Closing Balance = Total MoMo Available - Total MoMo Outflows (Expenses + Charges + Transfers)',
+        ];
+
+        return compact(
+            'mode', 'startDateInput', 'endDateInput', 'startDate', 'endDate',
+            'channels', 'ledgerCashSales', 'ledgerMomoSales', 'ledgerCreditSales', 'totalLedgerSales',
+            'cashOpeningBalance', 'cashSalesSystem', 'totalCashDebtReceived', 'otherCashReceived', 'totalCashAvailable',
+            'cashExpenseItems', 'cashDeposit', 'totalCashOutflows', 'cashClosingBalance',
+            'momoOpeningBalance', 'momoSalesSystem', 'totalMomoDebtReceived', 'otherMomoReceived', 'totalMomoAvailable',
+            'momoExpenseItems', 'totalMomoTransfers', 'totalMomoOutflows', 'momoClosingBalance',
+            'bankDeposits', 'totalBankDeposits', 'momoNotTraded', 'cashNotTraded', 'formulas'
+        );
+    }
+
+    private function getPriorInflows(array $slugs, Carbon $startDate): float
+    {
+        $sales = (float) SalePayment::whereIn('method', $slugs)
+            ->where('paid_at', '<', $startDate)
+            ->sum('amount');
+
+        if ($sales == 0) {
+            $sales = (float) Sale::whereIn('payment_channel', $slugs)
+                ->where('sale_date', '<', $startDate->toDateString())
+                ->sum('amount_paid');
+        }
+
+        $transactions = (float) Transaction::whereIn('method', $slugs)
+            ->where('type', 'credit')
+            ->where('transaction_date', '<', $startDate->toDateString())
+            ->whereNull('sale_id')
+            ->sum('amount');
+
+        return $sales + $transactions;
+    }
+
+    private function getPriorOutflows(array $slugs, Carbon $startDate): float
+    {
+        $expenses = (float) Expense::whereIn('method', $slugs)
+            ->where('date', '<', $startDate->toDateString())
+            ->sum('amount');
+
+        $transactions = (float) Transaction::whereIn('method', $slugs)
+            ->where('type', 'debit')
+            ->where('transaction_date', '<', $startDate->toDateString())
+            ->sum('amount');
+
+        return $expenses + $transactions;
     }
 
     // =========================
