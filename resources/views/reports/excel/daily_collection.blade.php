@@ -1,7 +1,7 @@
 <table>
     {{-- Header --}}
     <tr>
-        <td colspan="5" style="font-weight: bold; font-size: 14pt;">M BEVERAGE AND SERVICES</td>
+        <td colspan="5" style="font-weight: bold; font-size: 14pt;">KING WINE</td>
     </tr>
     <tr>
         <td colspan="5" style="font-weight: bold; font-size: 12pt;">DAILY REPORT FORMAT</td>

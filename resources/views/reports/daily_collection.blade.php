@@ -3,7 +3,7 @@
         <div class="bg-indigo-700 text-white px-4 py-3 rounded-md shadow flex flex-col md:flex-row md:justify-between md:items-center gap-2">
             <h2 class="font-semibold text-xl leading-tight flex items-center gap-2">
                 <i data-lucide="calendar-check" class="w-5 h-5 text-emerald-300"></i>
-                M Beverage & Services - Daily Report Format
+                KING WINE - Daily Report Format
             </h2>
             <div class="flex items-center gap-2 text-sm">
                 <span class="bg-indigo-800 px-3 py-1 rounded-full text-indigo-100 font-medium">
@@ -85,9 +85,6 @@
                         <a href="{{ route('reports.daily-collection.export', request()->query()) }}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold flex items-center gap-1.5 shadow">
                             <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Export Excel
                         </a>
-                        <button onclick="window.print()" class="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 shadow">
-                            <i data-lucide="printer" class="w-4 h-4"></i> Print
-                        </button>
                     </div>
                 </div>
             </form>
@@ -110,7 +107,7 @@
 
         {{-- 🔸 Report Print Header --}}
         <div class="text-center space-y-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
-            <h1 class="text-2xl font-black tracking-wide text-gray-900 dark:text-gray-100 uppercase">M BEVERAGE AND SERVICES</h1>
+            <h1 class="text-2xl font-black tracking-wide text-gray-900 dark:text-gray-100 uppercase">KING WINE</h1>
             <h2 class="text-lg font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">DAILY REPORT FORMAT</h2>
             <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase">DAILY SALES REPORT SUMMARY</h3>
             <p class="text-xs text-gray-400">Date Period: {{ $startDateInput }} @if($mode === 'range') to {{ $endDateInput }} @endif</p>
