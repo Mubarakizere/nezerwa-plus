@@ -97,6 +97,8 @@
         $custModeInit = old('new_customer_name') ? 'new' : (old('customer_id', $sale->customer_id) ? 'existing' : 'walkin');
         $saleDateInit = old('sale_date', $sale->sale_date ? $sale->sale_date->format('Y-m-d') : date('Y-m-d'));
         $singlePaidInit = old('amount_paid', $sale->amount_paid ?? 0); // Fallback input
+        $isGiftInit = (bool) old('is_gift', $sale->isGift() ? 1 : 0);
+        $giftReasonInit = old('gift_reason', $sale->gift_reason ?? '');
     @endphp
 
     {{-- Form --}}
@@ -107,7 +109,9 @@
               products: {{ json_encode($productsJson) }},
               custMode: '{{ $custModeInit }}',
               saleDate: '{{ $saleDateInit }}',
-              singlePaid: {{ $singlePaidInit }}
+              singlePaid: {{ $singlePaidInit }},
+              isGift: {{ json_encode($isGiftInit) }},
+              giftReason: {{ json_encode($giftReasonInit) }}
           })"
           x-init="init()">
         @csrf
@@ -171,6 +175,50 @@
                        value="{{ old('method', $sale->method) }}"
                        placeholder="POS ref / Txn batch"
                        class="w-full mt-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+            </div>
+        </div>
+
+        {{-- === Boss Gift Authorization Banner / Switch === --}}
+        <div class="bg-gradient-to-r from-purple-50 via-indigo-50 to-pink-50 dark:from-purple-950/30 dark:via-indigo-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800/60 rounded-xl p-4 shadow-sm mt-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-start gap-3">
+                    <div class="p-2 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 rounded-lg">
+                        <i data-lucide="gift" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <label for="is_gift_checkbox_edit" class="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 cursor-pointer">
+                            <span>Gift Given by Boss</span>
+                            <span class="text-[11px] font-normal px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">Complimentary</span>
+                        </label>
+                        <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                            Stock is deducted immediately, customer owes nothing, and <strong>NO loan</strong> will be created.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="is_gift_checkbox_edit" name="is_gift" value="1" x-model="isGift" @change="onGiftToggle()" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                    </label>
+                </div>
+            </div>
+
+            {{-- Gift Reason (appears when checked) --}}
+            <div x-show="isGift" x-cloak x-transition class="mt-3 pt-3 border-t border-purple-200/60 dark:border-purple-800/40 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-purple-900 dark:text-purple-200 mb-1">
+                        Gift Reason / Authorization Note (optional)
+                    </label>
+                    <input type="text" name="gift_reason" x-model="giftReason"
+                           value="{{ old('gift_reason', $sale->gift_reason) }}"
+                           placeholder="e.g. VIP client, event promotional gift, personal friend of boss..."
+                           class="w-full rounded-lg border-purple-300 dark:border-purple-700 dark:bg-gray-900/80 dark:text-gray-100 text-sm focus:border-purple-500 focus:ring-purple-500">
+                </div>
+                <div class="flex items-center text-xs text-purple-700 dark:text-purple-300 bg-white/60 dark:bg-gray-900/40 p-2.5 rounded-lg border border-purple-200/50 dark:border-purple-800/30">
+                    <i data-lucide="info" class="w-4 h-4 mr-1.5 flex-shrink-0 text-purple-500"></i>
+                    <span>This sale is tagged as <strong>Boss Gift</strong> with <strong>0.00 customer debt</strong>. Stock movements will reflect normal inventory deduction.</span>
+                </div>
             </div>
         </div>
 
@@ -279,70 +327,83 @@
                     <span class="font-medium text-gray-900 dark:text-gray-100" x-text="money(total)"></span>
                 </div>
 
-                {{-- Split payments --}}
-                <div class="border-t border-gray-100 dark:border-gray-700 pt-3">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Payments</span>
-                        <button type="button" class="btn btn-outline btn-sm" @click="addPayment()">
-                            <i data-lucide="plus" class="w-4 h-4"></i> Add Method
-                        </button>
+                {{-- Boss Gift Notice --}}
+                <div x-show="isGift" x-cloak class="rounded-lg bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700/60 p-3 space-y-1">
+                    <div class="flex items-center gap-1.5 text-purple-800 dark:text-purple-200 font-semibold text-xs">
+                        <i data-lucide="gift" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
+                        <span>Covered in full by Boss Gift</span>
                     </div>
-
-                    <template x-for="(p, i) in payments" :key="p.key">
-                        <div class="grid grid-cols-12 gap-2 items-center mb-2">
-                            <div class="col-span-5">
-                                <select :name="`payments[${i}][method]`" x-model="p.method"
-                                        class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm">
-                                    @foreach($paymentChannels as $channel)
-                                        <option value="{{ $channel->slug }}">{{ $channel->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-span-4">
-                                <input type="number" step="0.01" min="0" placeholder="Amount"
-                                       :name="`payments[${i}][amount]`" x-model.number="p.amount"
-                                       @input="recalc()"
-                                       class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-right text-sm">
-                            </div>
-                            <div class="col-span-3">
-                                <input type="text" placeholder="Ref / Phone"
-                                       :name="`payments[${i}][reference]`" x-model="p.reference"
-                                       class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm">
-                            </div>
-                            <input type="hidden" :name="`payments[${i}][paid_at]`" :value="saleDate">
-                            <button type="button" class="col-span-12 text-left text-[11px] text-gray-400 underline"
-                                    @click="removePayment(i)">Remove</button>
-                        </div>
-                    </template>
-
-                    <div x-show="!payments.length" class="text-xs text-gray-500 dark:text-gray-400">
-                        No payments added. You can still set a single Amount Paid below, or click “Add Method”.
-                    </div>
+                    <p class="text-[11px] text-purple-700 dark:text-purple-300">
+                        Zero cash required. Products will be deducted from stock with <strong>no loan</strong> created.
+                    </p>
                 </div>
 
-                {{-- Single amount fallback --}}
-                <div class="flex justify-between text-sm items-center">
-                    <label for="amount_paid" class="text-gray-700 dark:text-gray-300 font-medium">Amount Paid (fallback)</label>
-                    <div class="flex items-center gap-2">
-                        <input type="number" step="0.01" min="0" id="amount_paid"
-                               name="amount_paid"
-                               x-model.number="singlePaid"
-                               @input="recalc()"
-                               class="w-36 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-right text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="payFull()">Full</button>
+                <div x-show="!isGift" class="space-y-4">
+                    {{-- Split payments --}}
+                    <div class="border-t border-gray-100 dark:border-gray-700 pt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Payments</span>
+                            <button type="button" class="btn btn-outline btn-sm" @click="addPayment()">
+                                <i data-lucide="plus" class="w-4 h-4"></i> Add Method
+                            </button>
+                        </div>
+
+                        <template x-for="(p, i) in payments" :key="p.key">
+                            <div class="grid grid-cols-12 gap-2 items-center mb-2">
+                                <div class="col-span-5">
+                                    <select :name="`payments[${i}][method]`" x-model="p.method"
+                                            class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm">
+                                        @foreach($paymentChannels as $channel)
+                                            <option value="{{ $channel->slug }}">{{ $channel->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-span-4">
+                                    <input type="number" step="0.01" min="0" placeholder="Amount"
+                                           :name="`payments[${i}][amount]`" x-model.number="p.amount"
+                                           @input="recalc()"
+                                           class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-right text-sm">
+                                </div>
+                                <div class="col-span-3">
+                                    <input type="text" placeholder="Ref / Phone"
+                                           :name="`payments[${i}][reference]`" x-model="p.reference"
+                                           class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm">
+                                </div>
+                                <input type="hidden" :name="`payments[${i}][paid_at]`" :value="saleDate">
+                                <button type="button" class="col-span-12 text-left text-[11px] text-gray-400 underline"
+                                        @click="removePayment(i)">Remove</button>
+                            </div>
+                        </template>
+
+                        <div x-show="!payments.length" class="text-xs text-gray-500 dark:text-gray-400">
+                            No payments added. You can still set a single Amount Paid below, or click “Add Method”.
+                        </div>
+                    </div>
+
+                    {{-- Single amount fallback --}}
+                    <div class="flex justify-between text-sm items-center">
+                        <label for="amount_paid" class="text-gray-700 dark:text-gray-300 font-medium">Amount Paid (fallback)</label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" step="0.01" min="0" id="amount_paid"
+                                   name="amount_paid"
+                                   x-model.number="singlePaid"
+                                   @input="recalc()"
+                                   class="w-36 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-right text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="payFull()">Full</button>
+                        </div>
                     </div>
                 </div>
 
                 {{-- Totals --}}
                 <div class="flex justify-between text-sm">
-                    <span class="text-gray-600 dark:text-gray-400">Paid (split + fallback)</span>
-                    <span class="font-medium" x-text="money(totalPaid)"></span>
+                    <span class="text-gray-600 dark:text-gray-400" x-text="isGift ? 'Gift Value Settled' : 'Paid (split + fallback)'">Paid</span>
+                    <span class="font-medium" x-text="isGift ? money(total) : money(totalPaid)"></span>
                 </div>
 
                 <div class="flex justify-between font-semibold text-gray-800 dark:text-gray-100 border-t border-gray-100 dark:border-gray-700 pt-2">
                     <span>Balance</span>
-                    <span :class="(total - totalPaid) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'"
-                          x-text="money(Math.max(total - totalPaid, 0))"></span>
+                    <span :class="isGift ? 'text-green-600 dark:text-green-400' : ((total - totalPaid) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400')"
+                          x-text="isGift ? money(0) : money(Math.max(total - totalPaid, 0))"></span>
                 </div>
 
                 {{-- Hidden legacy bindings to keep older logic working --}}
@@ -378,11 +439,22 @@ function saleEditForm(config){
         custMode: config.custMode || 'walkin',
         saleDate: config.saleDate || '',
         singlePaid: Number(config.singlePaid || 0),
+        isGift: Boolean(config.isGift || false),
+        giftReason: config.giftReason || '',
 
         // State
         total: 0,
         totalPaid: 0,
         productMap: {},
+
+        onGiftToggle(){
+            if (this.isGift) {
+                this.singlePaid = this.total;
+            } else {
+                this.singlePaid = 0;
+            }
+            this.recalc();
+        },
 
         init(){
             // Index products for fast lookup
@@ -425,6 +497,9 @@ function saleEditForm(config){
         removePayment(i){ this.payments.splice(i,1); this.recalc(); },
 
         dominantMethod(){
+            if (this.isGift) {
+                return 'boss_gift';
+            }
             if (!this.payments.length) return (this.singlePaid > 0 ? 'cash' : '{{ $sale->payment_channel ?? 'cash' }}');
             const sums = {};
             for (const p of this.payments) sums[p.method] = (sums[p.method] || 0) + Number(p.amount || 0);
@@ -446,8 +521,12 @@ function saleEditForm(config){
 
         recalc(){
             this.total = this.lines.reduce((s, r) => s + (Number(r.quantity || 0) * Number(r.unit_price || 0)), 0);
-            const splitSum = this.payments.reduce((s,p)=> s + Number(p.amount || 0), 0);
-            this.totalPaid = splitSum + Number(this.singlePaid || 0);
+            if (this.isGift) {
+                this.totalPaid = this.total;
+            } else {
+                const splitSum = this.payments.reduce((s,p)=> s + Number(p.amount || 0), 0);
+                this.totalPaid = splitSum + Number(this.singlePaid || 0);
+            }
         }
     }
 }

@@ -5,6 +5,7 @@
 @section('content')
 @php
     use Carbon\Carbon;
+    use Illuminate\Support\Str;
 
     $paymentsPdfAction = \Illuminate\Support\Facades\Route::has('sales.payments.pdf')
         ? route('sales.payments.pdf')
@@ -13,11 +14,16 @@
             : null);
 
     $user = auth()->user();
+
+    $rows = $sales instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator
+        ? $sales->getCollection()
+        : collect($sales);
+
+    $fmt = fn($n) => number_format((float)$n, 2);
 @endphp
 
 <div
     x-data="{
-        // Quick range helpers (filters)
         applyRange(preset){
             const url = new URL(window.location.href);
             const today = new Date();
@@ -27,7 +33,7 @@
             if(preset==='today'){
                 from = fmt(today); to = fmt(today);
             }else if(preset==='week'){
-                const day = today.getDay(); // 0-6
+                const day = today.getDay();
                 const diffToMon = (day === 0 ? -6 : 1 - day);
                 const monday = new Date(today); monday.setDate(today.getDate()+diffToMon);
                 const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
@@ -49,51 +55,65 @@
             window.location.href = url.toString();
         }
     }"
-    class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6"
+    class="max-w-7xl mx-auto space-y-6"
 >
 
-    {{-- Page Header --}}
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <h1 class="text-xl sm:text-2xl font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-            <i data-lucide="shopping-cart" class="w-5 h-5 text-indigo-600 dark:text-indigo-400"></i>
-            <span>Sales</span>
-        </h1>
+    {{-- Top Action Bar --}}
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+            <div class="flex items-center gap-2.5">
+                <h1 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                    Sales Management
+                </h1>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
+                    {{ method_exists($sales, 'total') ? $sales->total() : count($sales) }}
+                </span>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                Monitor orders, track payment channels, and manage customer sales.
+            </p>
+        </div>
 
         @can('sales.view')
             <div class="flex items-center flex-wrap gap-2">
-                {{-- CSV --}}
+                {{-- CSV Export --}}
                 <a href="{{ route('sales.export', request()->query()) }}"
-                   class="btn btn-outline text-sm flex items-center gap-1">
-                    <i data-lucide="download" class="w-4 h-4"></i> Export CSV
+                   class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    <i data-lucide="download" class="w-3.5 h-3.5 text-slate-400"></i>
+                    <span>Export CSV</span>
                 </a>
 
-                {{-- PDF: Summary (optional/if exists) --}}
+                {{-- PDF Summary --}}
                 @if (\Illuminate\Support\Facades\Route::has('reports.sales.summary.pdf'))
                     <a href="{{ route('reports.sales.summary.pdf', request()->query()) }}"
-                       class="btn btn-outline text-sm flex items-center gap-1">
-                        <i data-lucide="file-down" class="w-4 h-4"></i> PDF Summary
+                       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Summary PDF</span>
                     </a>
                 @elseif (\Illuminate\Support\Facades\Route::has('reports.sales.pdf'))
                     <a href="{{ route('reports.sales.pdf', request()->query()) }}"
-                       class="btn btn-outline text-sm flex items-center gap-1">
-                        <i data-lucide="file-down" class="w-4 h-4"></i> PDF Summary
+                       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Summary PDF</span>
                     </a>
                 @endif
 
-                {{-- PDF: Payments by Method (exportPaymentsPdf) --}}
+                {{-- Payments PDF --}}
                 @if ($paymentsPdfAction)
                     <button type="button"
-                            class="btn btn-outline text-sm flex items-center gap-1"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                             @click="$store.paypdf.open = true">
-                        <i data-lucide="file-bar-chart-2" class="w-4 h-4"></i> Payments PDF
+                        <i data-lucide="receipt" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Payments PDF</span>
                     </button>
                 @endif
 
-                {{-- New Sale --}}
+                {{-- New Sale Button --}}
                 @can('sales.create')
                     <a href="{{ route('sales.create') }}"
-                       class="btn btn-primary flex items-center gap-2 text-sm sm:text-base">
-                        <i data-lucide="plus" class="w-4 h-4"></i> New Sale
+                       class="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        <span>New Sale</span>
                     </a>
                 @endcan
             </div>
@@ -101,12 +121,11 @@
     </div>
 
     @cannot('sales.view')
-        {{-- No permission state --}}
-        <div class="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-6 mt-4">
+        <div class="rounded-xl border border-amber-500/20 bg-amber-500/10 p-6">
             <div class="flex items-start gap-3">
                 <i data-lucide="shield-alert" class="w-5 h-5 text-amber-500 mt-0.5"></i>
                 <div>
-                    <h2 class="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                    <h2 class="text-sm font-semibold text-amber-900 dark:text-amber-200">
                         You don’t have permission to view sales.
                     </h2>
                     <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
@@ -117,470 +136,563 @@
         </div>
     @else
 
-        {{-- SUMMARY CARDS (Page Level) --}}
-        @php
-            // Calculate page-level stats
-            $rows = $sales instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator
-                ? $sales->getCollection()
-                : collect($sales);
-
-            $fmt = fn($n) => number_format((float)$n, 2);
-        @endphp
-
-        
-
-        {{-- Filters --}}
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-4">
-            <form method="GET" action="{{ route('sales.index') }}" class="flex flex-col md:flex-row flex-wrap items-end gap-3">
-
-                {{-- Search --}}
-                <div class="flex-1 min-w-[220px]">
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Search</label>
-                    <input
-                        type="text"
-                        name="search"
-                        placeholder="Customer, channel, status, or #"
-                        value="{{ request('search') }}"
-                        class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                </div>
-
-                {{-- Channel --}}
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Channel</label>
-                    <select name="channel"
-                            class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach($paymentChannels as $ch)
-                            <option value="{{ $ch->slug }}" {{ request('channel')===$ch->slug ? 'selected' : '' }}>
-                                {{ $ch->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-
-                {{-- Status --}}
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Status</label>
-                    <select name="status"
-                            class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        <option value="completed" {{ request('status')==='completed' ? 'selected' : '' }}>Completed</option>
-                        <option value="pending"   {{ request('status')==='pending'   ? 'selected' : '' }}>Pending</option>
-                        <option value="cancelled" {{ request('status')==='cancelled' ? 'selected' : '' }}>Cancelled</option>
-                    </select>
-                </div>
-
-                {{-- Date range --}}
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">From</label>
-                    <input type="date" name="from" value="{{ request('from') }}"
-                           class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">To</label>
-                    <input type="date" name="to" value="{{ request('to') }}"
-                           class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                </div>
-
-                {{-- Quick ranges --}}
-                <div class="flex items-center gap-1 h-[38px] mt-5 md:mt-0">
-                    <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('today')">Today</button>
-                    <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('week')">This Week</button>
-                    <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('month')">This Month</button>
-                    <button type="button" class="btn btn-outline text-xs px-2 py-1" @click="applyRange('all')">All</button>
-                </div>
-
-                {{-- Has returns --}}
-                <div class="flex items-center h-[38px] mt-5 md:mt-0">
-                    <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                        <input type="checkbox" name="has_returns" value="1" {{ request('has_returns') ? 'checked' : '' }}
-                               class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
-                        <span>With Returns</span>
-                    </label>
-                </div>
-
-                {{-- Per page --}}
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Per page</label>
-                    <select name="per_page" onchange="this.form.submit()"
-                            class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                        <option value="all" {{ request('per_page')==='all' ? 'selected' : '' }}>All</option>
-                        @foreach([10,15,25,50,100] as $n)
-                            <option value="{{ $n }}" {{ (int)request('per_page',15)===$n && request('per_page')!=='all' ? 'selected' : '' }}>
-                                {{ $n }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-
-                {{-- Sort --}}
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Sort</label>
-                    <select name="sort" class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                        @php $sort = request('sort','sale_date'); @endphp
-                        <option value="sale_date"    {{ $sort==='sale_date'    ? 'selected' : '' }}>Date</option>
-                        <option value="total_amount" {{ $sort==='total_amount' ? 'selected' : '' }}>Total</option>
-                        <option value="amount_paid"  {{ $sort==='amount_paid'  ? 'selected' : '' }}>Paid</option>
-                        <option value="id"           {{ $sort==='id'           ? 'selected' : '' }}>ID</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Direction</label>
-                    <select name="dir" class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-indigo-500 focus:ring-indigo-500 text-sm px-3 py-2">
-                        @php $dir = request('dir','desc'); @endphp
-                        <option value="asc"  {{ $dir==='asc'  ? 'selected' : '' }}>Asc</option>
-                        <option value="desc" {{ $dir==='desc' ? 'selected' : '' }}>Desc</option>
-                    </select>
-                </div>
-
-                {{-- Actions --}}
-                <div class="flex items-center gap-2">
-                    <button type="submit" class="btn btn-outline text-sm px-4 py-2 flex items-center gap-1">
-                        <i data-lucide="filter" class="w-4 h-4"></i> Filter
-                    </button>
-                    <a href="{{ route('sales.index') }}" class="btn btn-outline text-sm px-4 py-2">
-                        Reset
-                    </a>
-                </div>
-            </form>
-        </div>
-         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+        {{-- Channel Summary Stat Cards --}}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             @foreach ($paymentChannels as $channel)
                 @php
                     $slug = $channel->slug;
                     $label = $channel->name;
-                    $color = match($slug) {
-                        'cash' => 'green',
-                        'bank' => 'blue',
-                        'momo', 'mobile_money' => 'purple',
-                        default => 'gray'
+
+                    $palette = match($slug) {
+                        'cash' => [
+                            'badge' => 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+                            'icon' => 'banknote',
+                        ],
+                        'bank' => [
+                            'badge' => 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20',
+                            'icon' => 'building-2',
+                        ],
+                        'momo', 'mobile_money', 'mobile' => [
+                            'badge' => 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+                            'icon' => 'smartphone',
+                        ],
+                        'boss_gift' => [
+                            'badge' => 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
+                            'icon' => 'gift',
+                        ],
+                        default => [
+                            'badge' => 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20',
+                            'icon' => 'credit-card',
+                        ]
                     };
 
-                    // Filter rows for this channel
                     $filtered = $rows->filter(fn($s) => strtolower($s->payment_channel ?? 'cash') === $slug);
                     $count    = $filtered->count();
-                    
-                    // Sums
                     $total    = $filtered->sum(fn($s) => (float)($s->total_amount ?? 0));
                     $paid     = $filtered->sum(fn($s) => (float)($s->amount_paid ?? 0));
-                    // Net after returns logic if needed, but keeping simple for now matching purchases
-                    $balance  = max(0, $total - $paid);
+                    $balance  = ($slug === 'boss_gift') ? 0.0 : max(0, $total - $paid);
                 @endphp
-                <div class="rounded-xl p-4 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
+                <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs text-gray-500 dark:text-gray-400">
-                            {{ $label }} ({{ $count }})
+                        <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            {{ $label }}
                         </span>
-                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold bg-{{ $color }}-100 text-{{ $color }}-800 dark:bg-{{ $color }}-900/40 dark:text-{{ $color }}-300">
-                            {{ strtoupper($slug) }}
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold {{ $palette['badge'] }}">
+                            <i data-lucide="{{ $palette['icon'] }}" class="w-3 h-3"></i>
+                            {{ $count }}
                         </span>
                     </div>
-                    <div class="mt-2 space-y-2">
-                        <div class="flex justify-between items-center text-sm">
-                            <span class="text-gray-500 dark:text-gray-400">Total</span>
-                            <span class="font-medium text-gray-900 dark:text-gray-100">{{ $fmt($total) }}</span>
+
+                    <div class="mt-3">
+                        <div class="text-xs text-slate-400 font-medium uppercase tracking-wider">Volume</div>
+                        <div class="text-lg font-bold text-slate-900 dark:text-slate-100">
+                            {{ $fmt($total) }} <span class="text-xs font-normal text-slate-400">RWF</span>
                         </div>
-                        <div class="flex justify-between items-center text-sm">
-                            <span class="text-gray-500 dark:text-gray-400">Paid</span>
-                            <span class="font-medium text-emerald-700 dark:text-emerald-300">{{ $fmt($paid) }}</span>
+                    </div>
+
+                    <div class="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                        <div class="text-slate-500 dark:text-slate-400">
+                            Paid: <span class="font-semibold text-emerald-600 dark:text-emerald-400">{{ $fmt($paid) }}</span>
                         </div>
-                        <div class="border-t border-gray-100 dark:border-gray-800 pt-2 flex justify-between items-center text-sm">
-                            <span class="text-gray-500 dark:text-gray-400">Balance</span>
-                            <span class="font-medium {{ $balance>0 ? 'text-rose-600 dark:text-rose-300':'text-emerald-700 dark:text-emerald-300' }}">
-                                {{ $fmt($balance) }}
-                            </span>
-                        </div>
+                        @if ($slug === 'boss_gift')
+                            <span class="text-[10px] font-semibold text-purple-600 dark:text-purple-400">Gift Sale</span>
+                        @else
+                            <div class="text-slate-500 dark:text-slate-400">
+                                Bal: <span class="font-semibold {{ $balance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400' }}">{{ $fmt($balance) }}</span>
+                            </div>
+                        @endif
                     </div>
                 </div>
             @endforeach
         </div>
-        
-        {{-- Table --}}
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-x-auto">
-            <table class="w-full text-sm text-left min-w-[1150px]">
-                <thead class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 uppercase text-xs font-medium">
-                    <tr>
-                        <th class="px-4 py-3">#</th>
-                        <th class="px-4 py-3">Date</th>
-                        <th class="px-4 py-3">Customer</th>
-                        <th class="px-4 py-3 text-right">Total</th>
-                        <th class="px-4 py-3 text-right hidden">Returns</th>
-                        <th class="px-4 py-3 text-right hidden">Net After Returns</th>
-                        <th class="px-4 py-3 text-right">Paid</th>
-                        <th class="px-4 py-3 text-right">Balance</th>
-                        <th class="px-4 py-3">Status</th>
-                        <th class="px-4 py-3 hidden">Channel</th>
-                        <th class="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                </thead>
 
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                    @forelse ($sales as $sale)
-                        @php
-                            $date    = $sale->sale_date ? Carbon::parse($sale->sale_date) : ($sale->created_at ?? now());
-                            $channel = strtolower($sale->payment_channel ?? 'cash');
+        {{-- Streamlined Filter Panel --}}
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-2xs p-4">
+            <form method="GET" action="{{ route('sales.index') }}" class="space-y-3.5">
+                {{-- Row 1: Search and Core Filters --}}
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+                    {{-- Search Input --}}
+                    <div class="lg:col-span-4">
+                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Search</label>
+                        <div class="relative">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                            <input
+                                type="text"
+                                name="search"
+                                placeholder="Customer name, status, or #ID"
+                                value="{{ request('search') }}"
+                                class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                        </div>
+                    </div>
 
-                            $badge = match($channel) {
-                                'bank' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-                                'momo' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-                                'mobile' => 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-                                default => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-                            };
-                            $icon  = match($channel) {
-                                'bank' => 'credit-card',
-                                'momo' => 'smartphone',
-                                'mobile' => 'phone',
-                                default => 'banknote',
-                            };
+                    {{-- Channel Select --}}
+                    <div class="lg:col-span-3">
+                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Channel</label>
+                        <select name="channel"
+                                class="w-full py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                            <option value="">All Channels</option>
+                            @foreach($paymentChannels as $ch)
+                                <option value="{{ $ch->slug }}" {{ request('channel')===$ch->slug ? 'selected' : '' }}>
+                                    {{ $ch->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
 
-                            $returnsTotal = (float) ($sale->returns_total ?? $sale->returns()->sum('amount'));
-                            $grossTotal   = (float) ($sale->total_amount ?? 0);
-                            $netAfter     = max(0, $grossTotal - $returnsTotal);
-                            $paid         = (float) ($sale->amount_paid ?? 0);
-                            $balance      = max(0, round($netAfter - $paid, 2));
+                    {{-- Status Select --}}
+                    <div class="lg:col-span-3">
+                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Status</label>
+                        <select name="status"
+                                class="w-full py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                            <option value="">All Statuses</option>
+                            <option value="completed" {{ request('status')==='completed' ? 'selected' : '' }}>Completed</option>
+                            <option value="pending"   {{ request('status')==='pending'   ? 'selected' : '' }}>Pending</option>
+                            <option value="cancelled" {{ request('status')==='cancelled' ? 'selected' : '' }}>Cancelled</option>
+                        </select>
+                    </div>
 
-                            $splitHint = '';
-                            try {
-                                if (method_exists($sale, 'payments')) {
-                                    $cnt = $sale->payments()->count();
-                                    if ($cnt > 1) $splitHint = "Split";
-                                }
-                            } catch (\Throwable $e) {}
-                        @endphp
+                    {{-- Sale Type Select --}}
+                    <div class="lg:col-span-2">
+                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Sale Type</label>
+                        <select name="type"
+                                class="w-full py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                            <option value="">All Types</option>
+                            <option value="regular" {{ request('type')==='regular' ? 'selected' : '' }}>Regular Sales</option>
+                            <option value="gift" {{ request('type')==='gift' ? 'selected' : '' }}>🎁 Boss Gifts</option>
+                        </select>
+                    </div>
+                </div>
 
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $sale->id }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $date->format('Y-m-d') }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ $sale->customer->name ?? 'Walk-in' }}</td>
+                {{-- Row 2: Dates, Quick Ranges, Sorting & Submit --}}
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                    <div class="flex flex-wrap items-center gap-2">
+                        {{-- Date Inputs --}}
+                        <div class="flex items-center gap-1.5">
+                            <input type="date" name="from" value="{{ request('from') }}" title="From Date"
+                                   class="py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
+                            <span class="text-xs text-slate-400">to</span>
+                            <input type="date" name="to" value="{{ request('to') }}" title="To Date"
+                                   class="py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100">
+                        </div>
 
-                            <td class="px-4 py-3 text-right font-medium text-gray-800 dark:text-gray-200">
-                                {{ number_format($grossTotal, 2) }}
-                            </td>
+                        {{-- Quick Presets --}}
+                        <div class="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/60">
+                            <button type="button" class="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-md transition" @click="applyRange('today')">Today</button>
+                            <button type="button" class="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-md transition" @click="applyRange('week')">Week</button>
+                            <button type="button" class="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-md transition" @click="applyRange('month')">Month</button>
+                            <button type="button" class="px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-md transition" @click="applyRange('all')">All</button>
+                        </div>
 
-                            <td class="px-4 py-3 text-right font-medium {{ $returnsTotal>0 ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400' }} hidden">
-                                {{ $returnsTotal>0 ? '- '.number_format($returnsTotal, 2) : number_format(0, 2) }}
-                            </td>
+                        {{-- With Returns Checkbox --}}
+                        <label class="inline-flex items-center gap-1.5 ml-2 cursor-pointer text-xs text-slate-600 dark:text-slate-400">
+                            <input type="checkbox" name="has_returns" value="1" {{ request('has_returns') ? 'checked' : '' }}
+                                   class="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500">
+                            <span>With Returns</span>
+                        </label>
+                    </div>
 
-                            <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-gray-100 hidden">
-                                {{ number_format($netAfter, 2) }}
-                            </td>
+                    {{-- Sort & Apply Buttons --}}
+                    <div class="flex items-center gap-2 self-end lg:self-auto">
+                        <select name="sort" class="py-1.5 px-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300">
+                            @php $sort = request('sort','sale_date'); @endphp
+                            <option value="sale_date"    {{ $sort==='sale_date'    ? 'selected' : '' }}>Date</option>
+                            <option value="total_amount" {{ $sort==='total_amount' ? 'selected' : '' }}>Total</option>
+                            <option value="amount_paid"  {{ $sort==='amount_paid'  ? 'selected' : '' }}>Paid</option>
+                            <option value="id"           {{ $sort==='id'           ? 'selected' : '' }}>ID</option>
+                        </select>
 
-                            <td class="px-4 py-3 text-right text-gray-800 dark:text-gray-300">
-                                {{ number_format($paid, 2) }}
-                            </td>
+                        <select name="dir" class="py-1.5 px-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300">
+                            @php $dir = request('dir','desc'); @endphp
+                            <option value="desc" {{ $dir==='desc' ? 'selected' : '' }}>Desc</option>
+                            <option value="asc"  {{ $dir==='asc'  ? 'selected' : '' }}>Asc</option>
+                        </select>
 
-                            <td class="px-4 py-3 text-right font-semibold {{ $balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400' }}">
-                                {{ number_format($balance, 2) }}
-                            </td>
+                        <select name="per_page" onchange="this.form.submit()" class="py-1.5 px-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300">
+                            <option value="15" {{ (int)request('per_page',15)===15 ? 'selected' : '' }}>15 / page</option>
+                            <option value="25" {{ (int)request('per_page')===25 ? 'selected' : '' }}>25 / page</option>
+                            <option value="50" {{ (int)request('per_page')===50 ? 'selected' : '' }}>50 / page</option>
+                            <option value="all" {{ request('per_page')==='all' ? 'selected' : '' }}>All</option>
+                        </select>
 
-                            <td class="px-4 py-3">
-                                @if ($sale->status === 'completed')
-                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300">Completed</span>
-                                @elseif ($sale->status === 'pending')
-                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300">Pending</span>
-                                @else
-                                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">Cancelled</span>
-                                @endif
+                        <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs transition-colors">
+                            <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+                            <span>Filter</span>
+                        </button>
 
-                                @if ($returnsTotal > 0)
-                                    <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
-                                        Returns
-                                    </span>
-                                @endif
-                            </td>
-
-                            <td class="px-4 py-3 hidden">
-                                <div class="flex items-center gap-1.5 flex-wrap">
-                                    <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium {{ $badge }}">
-                                        <i data-lucide="{{ $icon }}" class="w-3.5 h-3.5"></i>
-                                        {{ strtoupper($channel) }}
-                                    </span>
-                                    @if($splitHint)
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                                            {{ $splitHint }}
-                                        </span>
-                                    @endif
-                                </div>
-                                @if($sale->method)
-                                    <div class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                                        Ref: {{ $sale->method }}
-                                    </div>
-                                @endif
-                            </td>
-
-                            <td class="px-4 py-3 text-right">
-                                <div class="flex justify-end flex-wrap gap-1.5">
-
-                                    @can('sales.view')
-                                        <a href="{{ route('sales.show', $sale) }}"
-                                           class="btn btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1">
-                                           <i data-lucide="eye" class="w-3.5 h-3.5"></i> View
-                                        </a>
-
-                                        <a href="{{ route('sales.invoice', $sale) }}" target="_blank"
-                                           class="btn btn-outline text-xs px-2.5 py-1.5 flex items-center gap-1">
-                                           <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Invoice
-                                        </a>
-
-                                        <a href="{{ route('sales.show', $sale) }}?open=returns"
-                                           class="btn btn-outline text-xs px-2.5 py-1.5 flex items-center gap-1">
-                                           <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Returns
-                                        </a>
-                                    @endcan
-
-                                    @can('sales.edit')
-                                        <a href="{{ route('sales.edit', $sale) }}"
-                                           class="btn btn-outline text-xs px-2.5 py-1.5 flex items-center gap-1">
-                                           <i data-lucide="edit" class="w-3.5 h-3.5"></i> Edit
-                                        </a>
-                                    @endcan
-
-                                    @can('sales.delete')
-                                        {{-- Delete -> global confirm store --}}
-                                        <form action="{{ route('sales.destroy', $sale) }}" method="POST" class="inline">
-                                            @csrf @method('DELETE')
-                                            <button type="button"
-                                                    class="btn btn-danger text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
-                                                    @click="$store.confirm.openWith($el.closest('form'))">
-                                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
-                                            </button>
-                                        </form>
-                                    @endcan
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="11" class="px-4 py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
-                                No sales recorded yet.
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                        <a href="{{ route('sales.index') }}" class="px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                            Reset
+                        </a>
+                    </div>
+                </div>
+            </form>
         </div>
 
-        {{-- Pagination --}}
-        <div class="mt-4">
-            {{ $sales->links() }}
+        {{-- Sales Data Table --}}
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-2xs overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs text-left min-w-[980px]">
+                    <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        <tr>
+                            <th class="px-4 py-3">#ID</th>
+                            <th class="px-4 py-3">Date</th>
+                            <th class="px-4 py-3">Customer</th>
+                            <th class="px-4 py-3">Channel</th>
+                            <th class="px-4 py-3 text-right">Total</th>
+                            <th class="px-4 py-3 text-right">Paid</th>
+                            <th class="px-4 py-3 text-right">Balance Due</th>
+                            <th class="px-4 py-3 text-center">Status</th>
+                            <th class="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
+                        @forelse ($sales as $sale)
+                            @php
+                                $date    = $sale->sale_date ? Carbon::parse($sale->sale_date) : ($sale->created_at ?? now());
+                                $channel = strtolower($sale->payment_channel ?? 'cash');
+
+                                $palette = match($channel) {
+                                    'bank' => [
+                                        'badge' => 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20',
+                                        'icon' => 'building-2',
+                                    ],
+                                    'momo', 'mobile_money', 'mobile' => [
+                                        'badge' => 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+                                        'icon' => 'smartphone',
+                                    ],
+                                    'boss_gift' => [
+                                        'badge' => 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
+                                        'icon' => 'gift',
+                                    ],
+                                    default => [
+                                        'badge' => 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+                                        'icon' => 'banknote',
+                                    ],
+                                };
+
+                                $returnsTotal = (float) ($sale->returns_total ?? $sale->returns()->sum('amount'));
+                                $grossTotal   = (float) ($sale->total_amount ?? 0);
+                                $netAfter     = max(0, $grossTotal - $returnsTotal);
+                                $paid         = (float) ($sale->amount_paid ?? 0);
+                                $balance      = $sale->isGift() ? 0.0 : max(0, round($netAfter - $paid, 2));
+
+                                $splitHint = '';
+                                try {
+                                    if (method_exists($sale, 'payments')) {
+                                        $cnt = $sale->payments()->count();
+                                        if ($cnt > 1) $splitHint = "Split";
+                                    }
+                                } catch (\Throwable $e) {}
+                            @endphp
+
+                            <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
+                                {{-- #ID --}}
+                                <td class="px-4 py-3 font-mono font-semibold text-slate-500 dark:text-slate-400">
+                                    #{{ $sale->id }}
+                                </td>
+
+                                {{-- Date --}}
+                                <td class="px-4 py-3">
+                                    <div class="font-medium text-slate-800 dark:text-slate-200">{{ $date->format('M j, Y') }}</div>
+                                    <div class="text-[10px] text-slate-400">{{ $date->format('g:i A') }}</div>
+                                </td>
+
+                                {{-- Customer --}}
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-xs flex items-center justify-center flex-shrink-0 border border-slate-200/60 dark:border-slate-700">
+                                            {{ strtoupper(substr($sale->customer->name ?? 'W', 0, 1)) }}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <div class="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[160px]">
+                                                {{ $sale->customer->name ?? 'Walk-in Customer' }}
+                                            </div>
+                                            @if ($sale->isGift())
+                                                <div class="flex items-center gap-1 mt-0.5">
+                                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20" title="{{ $sale->gift_reason ?? 'Boss Gift' }}">
+                                                        <i data-lucide="gift" class="w-3 h-3"></i>
+                                                        Boss Gift
+                                                    </span>
+                                                    @if ($sale->gift_reason)
+                                                        <span class="text-[10px] text-purple-400 italic truncate max-w-[120px]">
+                                                            "{{ $sale->gift_reason }}"
+                                                        </span>
+                                                    @endif
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </td>
+
+                                {{-- Channel --}}
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold {{ $palette['badge'] }}">
+                                            <i data-lucide="{{ $palette['icon'] }}" class="w-3 h-3"></i>
+                                            {{ strtoupper($channel) }}
+                                        </span>
+                                        @if($splitHint)
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                                {{ $splitHint }}
+                                            </span>
+                                        @endif
+                                    </div>
+                                </td>
+
+                                {{-- Total Amount --}}
+                                <td class="px-4 py-3 text-right">
+                                    <div class="font-bold text-slate-900 dark:text-slate-100">
+                                        {{ number_format($grossTotal, 2) }}
+                                        <span class="text-[10px] font-normal text-slate-400">RWF</span>
+                                    </div>
+                                    @if ($returnsTotal > 0)
+                                        <div class="text-[10px] text-rose-500">
+                                            -{{ number_format($returnsTotal, 2) }} Ret.
+                                        </div>
+                                    @endif
+                                </td>
+
+                                {{-- Paid Amount --}}
+                                <td class="px-4 py-3 text-right">
+                                    <div class="font-semibold text-emerald-600 dark:text-emerald-400">
+                                        {{ number_format($paid, 2) }}
+                                        <span class="text-[10px] font-normal text-slate-400">RWF</span>
+                                    </div>
+                                </td>
+
+                                {{-- Balance Due --}}
+                                <td class="px-4 py-3 text-right">
+                                    @if ($sale->isGift())
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20">
+                                            Gift (0 Debt)
+                                        </span>
+                                    @elseif ($balance <= 0)
+                                        <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                                            Cleared
+                                        </span>
+                                    @else
+                                        <span class="font-bold text-rose-600 dark:text-rose-400">
+                                            {{ number_format($balance, 2) }}
+                                            <span class="text-[10px] font-normal text-slate-400">RWF</span>
+                                        </span>
+                                    @endif
+                                </td>
+
+                                {{-- Status --}}
+                                <td class="px-4 py-3 text-center">
+                                    @if ($sale->status === 'completed')
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Completed
+                                        </span>
+                                    @elseif ($sale->status === 'pending')
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pending
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Cancelled
+                                        </span>
+                                    @endif
+                                </td>
+
+                                {{-- Actions --}}
+                                <td class="px-4 py-3 text-right">
+                                    <div class="inline-flex items-center gap-1 justify-end">
+                                        @can('sales.view')
+                                            <a href="{{ route('sales.show', $sale) }}"
+                                               title="View Sale Details"
+                                               class="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                               <i data-lucide="eye" class="w-4 h-4"></i>
+                                            </a>
+
+                                            <a href="{{ route('sales.invoice', $sale) }}" target="_blank"
+                                               title="View & Print Invoice"
+                                               class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                               <i data-lucide="file-text" class="w-4 h-4"></i>
+                                            </a>
+
+                                            <a href="{{ route('sales.show', $sale) }}?open=returns"
+                                               title="Process Returns"
+                                               class="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                               <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                            </a>
+                                        @endcan
+
+                                        @can('sales.edit')
+                                            <a href="{{ route('sales.edit', $sale) }}"
+                                               title="Edit Sale"
+                                               class="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                               <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                            </a>
+                                        @endcan
+
+                                        @can('sales.delete')
+                                            <form action="{{ route('sales.destroy', $sale) }}" method="POST" class="inline">
+                                                @csrf @method('DELETE')
+                                                <button type="button"
+                                                        title="Delete Sale"
+                                                        class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                                                        @click="$store.confirm.openWith($el.closest('form'))">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                </button>
+                                            </form>
+                                        @endcan
+                                    </div>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="9" class="px-4 py-12 text-center text-slate-400">
+                                    <div class="max-w-xs mx-auto space-y-2">
+                                        <i data-lucide="shopping-bag" class="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600"></i>
+                                        <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">No sales records found</p>
+                                        <p class="text-xs text-slate-500">Try adjusting your filters or record a new sale.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+
+            {{-- Table Pagination Footer --}}
+            @if(method_exists($sales, 'hasPages') && $sales->hasPages())
+                <div class="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                    {{ $sales->links() }}
+                </div>
+            @endif
         </div>
 
     @endcannot
 </div>
 
-{{-- Global Delete Confirmation Modal (Alpine Store) --}}
+{{-- Global Delete Confirmation Modal --}}
 @can('sales.delete')
 <div x-data
      x-show="$store.confirm.open"
      x-cloak
-     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
      @keydown.escape.window="$store.confirm.close()"
-     x-transition>
+     x-transition:enter="transition ease-out duration-150"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-100"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
     <div @click.outside="$store.confirm.close()"
-         class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
-        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Confirm Deletion</h2>
-        <p class="text-gray-600 dark:text-gray-300 text-sm mb-6">
-            Are you sure you want to delete this sale? This action cannot be undone and will revert stock movements.
+         class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-md">
+        <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-3">
+            <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+        <h2 class="text-base font-bold text-slate-900 dark:text-slate-100 mb-1.5">Confirm Sale Deletion</h2>
+        <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mb-6">
+            Are you sure you want to delete this sale? This action will reverse stock movements and monetary logs and cannot be undone.
         </p>
-        <div class="flex justify-end gap-3">
-            <button type="button" class="btn btn-outline" @click="$store.confirm.close()">Cancel</button>
-            <button type="button" class="btn btn-danger" @click="$store.confirm.confirm()">
-                Delete
+        <div class="flex justify-end gap-2.5">
+            <button type="button" class="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" @click="$store.confirm.close()">
+                Cancel
+            </button>
+            <button type="button" class="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors" @click="$store.confirm.confirm()">
+                Yes, Delete Sale
             </button>
         </div>
     </div>
 </div>
 @endcan
 
-{{-- Payments PDF Modal (Alpine Store) --}}
+{{-- Payments PDF Modal --}}
 @if ($paymentsPdfAction)
     @can('sales.view')
     <div x-data
          x-show="$store.paypdf.open"
          x-cloak
-         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
          @keydown.escape.window="$store.paypdf.open=false"
-         x-transition>
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
         <div @click.outside="$store.paypdf.open=false"
-             class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl p-6 w-full max-w-md">
+             class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-md">
 
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">
-                Export Payments PDF
-            </h2>
-            <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                Choose a period or custom range for the payments-by-method report.
-            </p>
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                    <i data-lucide="file-bar-chart" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-slate-900 dark:text-slate-100">
+                        Export Payments PDF
+                    </h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Breakdown of collected funds across channels
+                    </p>
+                </div>
+            </div>
 
-            <form id="paymentsPdfForm" method="GET" action="{{ $paymentsPdfAction }}" class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-xs font-semibold text-gray-500 dark:text-gray-400">Period</label>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <label class="inline-flex items-center gap-2">
-                            <input type="radio" name="period" value="daily" class="text-indigo-600 border-gray-300" checked>
-                            <span>Daily (today)</span>
+            <form id="paymentsPdfForm" method="GET" action="{{ $paymentsPdfAction }}" class="space-y-4 mt-4">
+                <div class="space-y-2">
+                    <label class="text-xs font-semibold text-slate-700 dark:text-slate-300">Select Reporting Period</label>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer">
+                            <input type="radio" name="period" value="daily" class="text-indigo-600 border-slate-300" checked>
+                            <span class="font-medium text-slate-700 dark:text-slate-200">Daily (Today)</span>
                         </label>
-                        <label class="inline-flex items-center gap-2">
-                            <input type="radio" name="period" value="weekly" class="text-indigo-600 border-gray-300">
-                            <span>Weekly (this week)</span>
+                        <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer">
+                            <input type="radio" name="period" value="weekly" class="text-indigo-600 border-slate-300">
+                            <span class="font-medium text-slate-700 dark:text-slate-200">This Week</span>
                         </label>
-                        <label class="inline-flex items-center gap-2">
-                            <input type="radio" name="period" value="monthly" class="text-indigo-600 border-gray-300">
-                            <span>Monthly (this month)</span>
+                        <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer">
+                            <input type="radio" name="period" value="monthly" class="text-indigo-600 border-slate-300">
+                            <span class="font-medium text-slate-700 dark:text-slate-200">This Month</span>
                         </label>
-                        <label class="inline-flex items-center gap-2">
-                            <input type="radio" name="period" value="custom" class="text-indigo-600 border-gray-300"
+                        <label class="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer">
+                            <input type="radio" name="period" value="custom" class="text-indigo-600 border-slate-300"
                                    x-model="$store.paypdf.period"
                                    @change="$store.paypdf.period='custom'">
-                            <span>Custom range</span>
+                            <span class="font-medium text-slate-700 dark:text-slate-200">Custom Range</span>
                         </label>
                     </div>
                 </div>
 
-                {{-- Custom range fields (only used when period=custom) --}}
-                <div class="grid grid-cols-2 gap-3">
+                {{-- Custom Range --}}
+                <div class="grid grid-cols-2 gap-3 pt-1">
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">From</label>
+                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">From</label>
                         <input type="date" name="from"
                                x-bind:disabled="$store.paypdf.period!=='custom'"
                                x-model="$store.paypdf.from"
-                               class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm px-3 py-2">
+                               class="w-full py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 disabled:opacity-50">
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">To</label>
+                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">To</label>
                         <input type="date" name="to"
                                x-bind:disabled="$store.paypdf.period!=='custom'"
                                x-model="$store.paypdf.to"
-                               class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm px-3 py-2">
+                               class="w-full py-1.5 px-2.5 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 disabled:opacity-50">
                     </div>
                 </div>
 
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" class="btn btn-outline" @click="$store.paypdf.open=false">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
-                        <i data-lucide="download" class="w-4 h-4"></i>
-                        <span>Download PDF</span>
+                <div class="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <button type="button" class="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors" @click="$store.paypdf.open=false">
+                        Cancel
+                    </button>
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        <span>Download Statement PDF</span>
                     </button>
                 </div>
             </form>
-
-            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-3">
-                Tip: If you already set <em>From/To</em> in the filters above, pick <strong>Custom</strong> and the dates will prefill.
-            </p>
         </div>
     </div>
     @endcan
 @endif
 
 @push('scripts')
-<script src="https://unpkg.com/lucide@latest"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        if (window.lucide) lucide.createIcons();
-    });
-
     document.addEventListener('alpine:init', () => {
-        // Global delete-confirm store (reused)
         Alpine.store('confirm', {
             open: false,
             submitEl: null,
@@ -598,7 +710,6 @@
             },
         });
 
-        // Payments PDF modal store
         Alpine.store('paypdf', {
             open: false,
             period: 'daily',

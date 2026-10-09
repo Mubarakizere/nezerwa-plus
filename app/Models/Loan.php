@@ -87,10 +87,12 @@ class Loan extends Model
      */
     public function getPaidAttribute(): float
     {
-        // When eager-loaded via withSum('payments as paid', 'amount')
-        $agg = $this->getAttribute('paid');
-        if ($agg !== null) {
-            return (float) $agg;
+        // When eager-loaded via withSum('payments as paid', 'amount') or withSum('payments', 'amount')
+        if (array_key_exists('paid', $this->attributes) && $this->attributes['paid'] !== null) {
+            return (float) $this->attributes['paid'];
+        }
+        if (array_key_exists('payments_sum_amount', $this->attributes) && $this->attributes['payments_sum_amount'] !== null) {
+            return (float) $this->attributes['payments_sum_amount'];
         }
 
         // If relation already loaded

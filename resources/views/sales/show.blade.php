@@ -27,21 +27,28 @@
     $grossTotal   = (float) ($sale->total_amount ?? 0);
     $netAfter     = max(0, $grossTotal - $returnsTotal);
 
+    $loan         = $sale->loan;
+    $loanAmt      = (float) ($loan->amount ?? 0);
+    $loanPaid     = (float) ($loan ? $loan->payments->sum('amount') : 0);
+    $loanRem      = $loan ? max(0, round($loanAmt - $loanPaid, 2)) : 0;
+    $loanProg     = $loanAmt > 0 ? min(100, (int) round(($loanPaid / $loanAmt) * 100)) : 0;
+
     $paymentsCol  = $sale->payments ?? collect();
     $byMethod     = $paymentsCol->groupBy(fn($p) => strtolower($p->method ?? 'cash'))->map->sum('amount');
-    $paid         = (float) ($paymentsCol->sum('amount') ?: ($sale->amount_paid ?? 0));
-    $balance      = max(0, round($netAfter - $paid, 2));
-    $progress     = $netAfter > 0 ? min(100, (int) round(($paid / $netAfter) * 100)) : 0;
+    $paid         = (float) max($sale->amount_paid ?? 0, $paymentsCol->sum('amount') + $loanPaid);
+    $balance      = $sale->isGift() ? 0.0 : max(0, round($netAfter - $paid, 2));
+    $progress     = $sale->isGift() ? 100 : ($netAfter > 0 ? min(100, (int) round(($paid / $netAfter) * 100)) : 0);
 
     $qtyTotal    = (float) $sale->items->sum('quantity');
     $profitTotal = (float) $sale->items->sum('profit');
 
     // Badges
     $channelClasses = [
-        'cash'   => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-        'bank'   => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-        'momo'   => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
-        'mobile' => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+        'cash'      => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+        'bank'      => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+        'momo'      => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+        'mobile'    => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+        'boss_gift' => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
     ][$channel] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-200';
 
     $statusClasses = match ($status) {
@@ -112,14 +119,18 @@
                 {{ strtoupper($channel) }}
             </span>
 
-            @if($loan)
+            @if($sale->isGift())
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 flex items-center gap-1">
+                    <i data-lucide="gift" class="w-3.5 h-3.5"></i> Boss Gift
+                </span>
+            @elseif($loan)
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold
                     {{ $loan->status === 'paid'
                         ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
                         : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' }}">
                     Loan {{ ucfirst($loan->status) }}
                 </span>
-            @endif>
+            @endif
         </div>
 
         <div class="flex flex-wrap gap-2">
@@ -147,10 +158,50 @@
         </div>
     @endif
 
+    @if($sale->isGift())
+        <div class="rounded-xl border border-purple-200 dark:border-purple-800/60 bg-gradient-to-r from-purple-50 via-indigo-50 to-pink-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-pink-950/30 p-5 shadow-sm">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-300 rounded-xl">
+                    <i data-lucide="gift" class="w-6 h-6"></i>
+                </div>
+                <div class="flex-1 space-y-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h3 class="text-base font-semibold text-purple-950 dark:text-purple-200">
+                            Gift Given by Boss (Complimentary)
+                        </h3>
+                        <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-200/70 dark:bg-purple-800/60 text-purple-800 dark:text-purple-200">
+                            Zero Customer Debt • No Loan
+                        </span>
+                    </div>
+                    <p class="text-sm text-purple-800/80 dark:text-purple-300">
+                        This sale was authorized as a gift by the boss. Stock has been deducted from inventory, customer balance is <strong>0.00</strong>, and no loan or debt was created.
+                    </p>
+                    @if($sale->gift_reason)
+                        <div class="mt-2 text-xs text-purple-900 dark:text-purple-200 bg-white/70 dark:bg-gray-900/50 p-2.5 rounded-lg border border-purple-200/60 dark:border-purple-800/40">
+                            <strong>Gift Authorization Reason:</strong> {{ $sale->gift_reason }}
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- Quick stats --}}
     <div class="grid md:grid-cols-4 gap-4">
-        <x-stat-card title="Customer"  icon="user"         :value="$sale->customer->name ?? 'Walk-in'" />
-        <x-stat-card title="Date"      icon="calendar"     :value="$date->format('Y-m-d')" />
+        @if($sale->customer)
+            <a href="{{ route('customers.show', $sale->customer) }}" class="block group" title="View Customer Account">
+                <div class="p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-900/30 group-hover:border-indigo-400 dark:group-hover:border-indigo-500 transition text-center">
+                    <p class="text-gray-600 dark:text-gray-400 text-sm font-medium flex items-center justify-center gap-1">
+                        <span>Customer</span>
+                        <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-indigo-500"></i>
+                    </p>
+                    <p class="text-xl font-bold mt-1 text-indigo-700 dark:text-indigo-300 group-hover:underline truncate">{{ $sale->customer->name }}</p>
+                </div>
+            </a>
+        @else
+            <x-stat-card title="Customer" icon="user" value="Walk-in" />
+        @endif
+        <x-stat-card title="Date"        icon="calendar"     :value="$date->format('Y-m-d')" />
         <x-stat-card title="Items (Qty)" icon="shopping-bag" :value="$qtyTotal" />
         <x-stat-card title="Recorded By" icon="shield-check" :value="$sale->user->name ?? 'N/A'" />
     </div>
@@ -218,6 +269,7 @@
                             'bank' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
                             'momo' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
                             'mobile' => 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                            'boss_gift' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
                             default => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
                         };
                     @endphp
@@ -374,7 +426,7 @@
     </div>
 
     {{-- Loan (summary + quick pay + history) --}}
-    @if($loan)
+    @if($loan && !$sale->isGift())
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2">

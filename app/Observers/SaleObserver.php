@@ -25,17 +25,44 @@ class SaleObserver
 
     /**
      * When a Sale is created
-     * - create Transaction + DebitCredit if amount_paid > 0
-     * - create Loan if there is an unpaid balance
+     * - create Transaction + DebitCredit if amount_paid > 0 (monetary channels only)
+     * - create Loan if there is an unpaid balance (Boss gifts NEVER create a loan)
      */
     public function created(Sale $sale): void
     {
         DB::afterCommit(function () use ($sale) {
             try {
+                $sale->refresh();
                 Log::info('🧾 SaleObserver.created', ['sale_id' => $sale->id]);
 
-                // 1) Financial record only if paid something
-                if (($sale->amount_paid ?? 0) > 0) {
+                // 🎁 Boss Gift: Do not create any loan or cash inflow transaction
+                if ($sale->isGift()) {
+                    Loan::where('sale_id', $sale->id)->delete();
+                    if ($txn = $sale->transaction) {
+                        DebitCredit::where('transaction_id', $txn->id)->delete();
+                        $txn->delete();
+                    }
+                    $sale->updateQuietly(['status' => 'completed']);
+                    Log::info('🎁 SaleObserver: Boss gift recorded, no loan/monetary txn created', ['sale_id' => $sale->id]);
+                    return;
+                }
+
+                // Calculate monetary payments vs gift coverage
+                $monetaryPaid = 0.0;
+                $giftPaid     = 0.0;
+                if ($sale->payments()->count() > 0) {
+                    $monetaryPaid = (float) $sale->payments()->where('method', '!=', 'boss_gift')->sum('amount');
+                    $giftPaid     = (float) $sale->payments()->where('method', 'boss_gift')->sum('amount');
+                } else {
+                    if ($this->channel($sale) === 'boss_gift') {
+                        $giftPaid = (float) ($sale->amount_paid ?? 0);
+                    } else {
+                        $monetaryPaid = (float) ($sale->amount_paid ?? 0);
+                    }
+                }
+
+                // 1) Financial record only if actual monetary amount paid
+                if ($monetaryPaid > 0) {
                     $notes = "Auto-generated from Sale #{$sale->id} (channel: " . strtoupper($this->channel($sale)) . ")";
                     if ($ref = $this->reference($sale)) {
                         $notes .= " • Ref: {$ref}";
@@ -46,16 +73,15 @@ class SaleObserver
                         'user_id'          => $sale->user_id ?? Auth::id(),
                         'customer_id'      => $sale->customer_id,
                         'sale_id'          => $sale->id,
-                        'amount'           => $sale->amount_paid,
+                        'amount'           => $monetaryPaid,
                         'transaction_date' => $sale->sale_date,
-                        // Store payment channel here:
                         'method'           => $this->channel($sale),
                         'notes'            => $notes,
                     ]);
 
                     DebitCredit::create([
                         'type'           => 'credit',
-                        'amount'         => $sale->amount_paid,
+                        'amount'         => $monetaryPaid,
                         'description'    => "Sale recorded – Invoice #{$sale->id}",
                         'date'           => now()->toDateString(),
                         'user_id'        => $sale->user_id ?? Auth::id(),
@@ -64,8 +90,9 @@ class SaleObserver
                     ]);
                 }
 
-                // 2) Loan if there’s an unpaid balance
-                $unpaid = ($sale->total_amount ?? 0) - ($sale->amount_paid ?? 0);
+                // 2) Loan only if there’s an unpaid balance (gift-covered amount is not debt)
+                $totalCovered = $monetaryPaid + $giftPaid;
+                $unpaid = max(0.0, ($sale->total_amount ?? 0) - $totalCovered);
                 if ($unpaid > 0.009) {
                     Loan::firstOrCreate(
                         ['sale_id' => $sale->id],
@@ -81,6 +108,7 @@ class SaleObserver
                     );
                     Log::info('💰 SaleObserver: loan created', ['sale_id' => $sale->id, 'unpaid' => $unpaid]);
                 } else {
+                    Loan::where('sale_id', $sale->id)->delete();
                     $sale->updateQuietly(['status' => 'completed']);
                 }
             } catch (\Throwable $e) {
@@ -91,22 +119,51 @@ class SaleObserver
 
     /**
      * When a Sale is updated
-     * - sync Loan status/amount
+     * - sync Loan status/amount (Boss gifts NEVER create a loan)
      * - sync Transaction + DebitCredit
      */
     public function updated(Sale $sale): void
     {
         DB::afterCommit(function () use ($sale) {
             try {
+                $sale->refresh();
                 Log::info('♻️ SaleObserver.updated', ['sale_id' => $sale->id]);
 
-                $unpaid = ($sale->total_amount ?? 0) - ($sale->amount_paid ?? 0);
+                // 🎁 Boss Gift: Do not maintain any loan or monetary transaction
+                if ($sale->isGift()) {
+                    Loan::where('sale_id', $sale->id)->delete();
+                    if ($txn = $sale->transaction) {
+                        DebitCredit::where('transaction_id', $txn->id)->delete();
+                        $txn->delete();
+                        Log::info('🗑️ Removed txn for boss gift', ['sale_id' => $sale->id]);
+                    }
+                    $sale->updateQuietly(['status' => 'completed']);
+                    Log::info('🎁 SaleObserver: Boss gift updated, loan/txns cleaned', ['sale_id' => $sale->id]);
+                    return;
+                }
+
+                // Calculate monetary payments vs gift coverage
+                $monetaryPaid = 0.0;
+                $giftPaid     = 0.0;
+                if ($sale->payments()->count() > 0) {
+                    $monetaryPaid = (float) $sale->payments()->where('method', '!=', 'boss_gift')->sum('amount');
+                    $giftPaid     = (float) $sale->payments()->where('method', 'boss_gift')->sum('amount');
+                } else {
+                    if ($this->channel($sale) === 'boss_gift') {
+                        $giftPaid = (float) ($sale->amount_paid ?? 0);
+                    } else {
+                        $monetaryPaid = (float) ($sale->amount_paid ?? 0);
+                    }
+                }
+
+                $totalCovered = $monetaryPaid + $giftPaid;
+                $unpaid = max(0.0, ($sale->total_amount ?? 0) - $totalCovered);
                 $loan   = Loan::where('sale_id', $sale->id)->first();
 
                 // Loan + Sale state
                 if ($unpaid <= 0.009) {
-                    if ($loan && $loan->status !== 'paid') {
-                        $loan->update(['status' => 'paid']);
+                    if ($loan) {
+                        $loan->delete();
                     }
                     $sale->updateQuietly(['status' => 'completed']);
                 } else {
@@ -125,15 +182,15 @@ class SaleObserver
                     $sale->updateQuietly(['status' => 'pending']);
                 }
 
-                // Transaction + DebitCredit sync
-                $txn = $sale->transaction; // may be null
-                $paidIsZero = (float)($sale->amount_paid ?? 0) <= 0.009;
+                // Transaction + DebitCredit sync (monetary only)
+                $txn = $sale->transaction;
+                $paidIsZero = $monetaryPaid <= 0.009;
 
                 if ($paidIsZero) {
                     if ($txn) {
                         DebitCredit::where('transaction_id', $txn->id)->delete();
                         $txn->delete();
-                        Log::info('🗑️ Removed txn (amount_paid=0)', ['sale_id' => $sale->id]);
+                        Log::info('🗑️ Removed txn (monetary_paid=0)', ['sale_id' => $sale->id]);
                     }
                     return;
                 }
@@ -145,7 +202,7 @@ class SaleObserver
 
                 if ($txn) {
                     $txn->update([
-                        'amount'           => $sale->amount_paid,
+                        'amount'           => $monetaryPaid,
                         'transaction_date' => $sale->sale_date,
                         'method'           => $this->channel($sale),
                         'notes'            => $notes,
@@ -154,7 +211,7 @@ class SaleObserver
                     $dc = DebitCredit::where('transaction_id', $txn->id)->first();
                     if ($dc) {
                         $dc->update([
-                            'amount'      => $sale->amount_paid,
+                            'amount'      => $monetaryPaid,
                             'description' => "Sale updated – Invoice #{$sale->id}",
                             'date'        => now()->toDateString(),
                             'user_id'     => $sale->user_id ?? Auth::id(),
@@ -163,7 +220,7 @@ class SaleObserver
                     } else {
                         DebitCredit::create([
                             'type'           => 'credit',
-                            'amount'         => $sale->amount_paid,
+                            'amount'         => $monetaryPaid,
                             'description'    => "Sale updated – Invoice #{$sale->id}",
                             'date'           => now()->toDateString(),
                             'user_id'        => $sale->user_id ?? Auth::id(),
@@ -172,13 +229,13 @@ class SaleObserver
                         ]);
                     }
                 } else {
-                    // Create missing txn (paid > 0)
+                    // Create missing txn (monetary paid > 0)
                     $txn = Transaction::create([
                         'type'             => 'credit',
                         'user_id'          => $sale->user_id ?? Auth::id(),
                         'customer_id'      => $sale->customer_id,
                         'sale_id'          => $sale->id,
-                        'amount'           => $sale->amount_paid,
+                        'amount'           => $monetaryPaid,
                         'transaction_date' => $sale->sale_date,
                         'method'           => $this->channel($sale),
                         'notes'            => $notes,
@@ -186,7 +243,7 @@ class SaleObserver
 
                     DebitCredit::create([
                         'type'           => 'credit',
-                        'amount'         => $sale->amount_paid,
+                        'amount'         => $monetaryPaid,
                         'description'    => "Sale recorded – Invoice #{$sale->id}",
                         'date'           => now()->toDateString(),
                         'user_id'        => $sale->user_id ?? Auth::id(),

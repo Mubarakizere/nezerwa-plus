@@ -65,35 +65,35 @@ return new class extends Migration
         if (Schema::hasTable('products')) {
             if (Schema::hasTable('expenses')) {
                 DB::statement("
-                    UPDATE categories c
+                    UPDATE categories
                        SET kind='both'
-                     WHERE EXISTS (SELECT 1 FROM products p WHERE p.category_id = c.id)
-                       AND EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = c.id)
+                     WHERE EXISTS (SELECT 1 FROM products p WHERE p.category_id = categories.id)
+                       AND EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = categories.id)
                 ");
                 DB::statement("
-                    UPDATE categories c
+                    UPDATE categories
                        SET kind='product'
-                     WHERE EXISTS (SELECT 1 FROM products p WHERE p.category_id = c.id)
-                       AND NOT EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = c.id)
+                     WHERE EXISTS (SELECT 1 FROM products p WHERE p.category_id = categories.id)
+                       AND NOT EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = categories.id)
                 ");
                 DB::statement("
-                    UPDATE categories c
+                    UPDATE categories
                        SET kind='expense'
-                     WHERE EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = c.id)
-                       AND NOT EXISTS (SELECT 1 FROM products p WHERE p.category_id = c.id)
+                     WHERE EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = categories.id)
+                       AND NOT EXISTS (SELECT 1 FROM products p WHERE p.category_id = categories.id)
                 ");
             } else {
                 DB::statement("
-                    UPDATE categories c
+                    UPDATE categories
                        SET kind='product'
-                     WHERE EXISTS (SELECT 1 FROM products p WHERE p.category_id = c.id)
+                     WHERE EXISTS (SELECT 1 FROM products p WHERE p.category_id = categories.id)
                 ");
             }
         } elseif (Schema::hasTable('expenses')) {
             DB::statement("
-                UPDATE categories c
+                UPDATE categories
                    SET kind='expense'
-                 WHERE EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = c.id)
+                 WHERE EXISTS (SELECT 1 FROM expenses e WHERE e.category_id = categories.id)
             ");
         }
 

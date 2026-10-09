@@ -20,10 +20,13 @@ class Sale extends Model
         'method',
         'status',
         'notes',
+        'is_gift',
+        'gift_reason',
     ];
 
     protected $casts = [
         'sale_date'  => 'date',
+        'is_gift'    => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -66,11 +69,52 @@ class Sale extends Model
     }
 
     /**
+     * Check if this sale is a complimentary gift given by the boss
+     */
+    public function isGift(): bool
+    {
+        return (bool) ($this->is_gift || strtolower((string)($this->payment_channel ?? '')) === 'boss_gift');
+    }
+
+    /**
+     * Scope for gift sales
+     */
+    public function scopeGifts($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('is_gift', true)
+              ->orWhere('payment_channel', 'boss_gift');
+        });
+    }
+
+    /**
+     * Scope for non-gift (regular) sales
+     */
+    public function scopeNonGifts($query)
+    {
+        return $query->where('is_gift', false)
+                     ->where('payment_channel', '!=', 'boss_gift');
+    }
+
+    /**
      * Accessors / helpers
      */
     public function getBalanceAttribute(): float
     {
-        return (float) (($this->total_amount ?? 0) - ($this->amount_paid ?? 0));
+        if ($this->isGift()) {
+            return 0.0;
+        }
+
+        // Account for any partial boss_gift split payments
+        $giftPaid = 0.0;
+        if ($this->relationLoaded('payments')) {
+            $giftPaid = (float) $this->payments->where('method', 'boss_gift')->sum('amount');
+        }
+
+        $effectiveTotal = max(0.0, (float)($this->total_amount ?? 0) - $giftPaid);
+        $paid = (float) ($this->amount_paid ?? 0);
+
+        return max(0.0, round($effectiveTotal - $paid, 2));
     }
 
     public function totalProfit(): float
@@ -87,6 +131,10 @@ class Sale extends Model
         $returns = (float) ($this->returns_total ?? $this->returns()->sum('amount'));
         return max(0.0, (float) ($this->total_amount ?? 0) - $returns);
     }
-    public function payments() { return $this->hasMany(\App\Models\SalePayment::class); }
+
+    public function payments()
+    {
+        return $this->hasMany(\App\Models\SalePayment::class);
+    }
 
 }

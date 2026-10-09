@@ -210,6 +210,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('permission:suppliers.view');
 
     // Customers
+    Route::post('customers/{customer}/pay-loans', [CustomerController::class, 'payLoans'])
+        ->name('customers.pay-loans')
+        ->middleware('permission:loans.view');
+
     Route::resource('customers', CustomerController::class)
         ->middleware('permission:customers.view');
 

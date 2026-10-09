@@ -75,6 +75,9 @@ class SaleController extends Controller
             'products.*.quantity'   => 'required|numeric|min:0.01',
             'products.*.unit_price' => 'required|numeric|min:0',
 
+            'is_gift'               => 'nullable|boolean',
+            'gift_reason'           => 'nullable|string|max:255',
+
             // Legacy single-payment fallback
             'amount_paid'           => 'nullable|numeric|min:0',
             'payment_channel'       => 'nullable|string',
@@ -140,16 +143,20 @@ class SaleController extends Controller
                 }
             } // walkin => null
 
+            $isGift = $request->boolean('is_gift') || $request->input('payment_channel') === 'boss_gift';
+
             // -------- Create base Sale (amounts/status set later) --------
             $sale = Sale::create([
                 'customer_id'     => $customerId,
                 'user_id'         => Auth::id(),
                 'sale_date'       => $request->sale_date,
-                'payment_channel' => $this->normalizeChannel($request->payment_channel, $request->method),
+                'payment_channel' => $isGift ? 'boss_gift' : $this->normalizeChannel($request->payment_channel, $request->method),
                 'method'          => $request->method ?: null, // reference/batch
                 'amount_paid'     => 0,
                 'total_amount'    => 0,
-                'status'          => 'pending',
+                'status'          => $isGift ? 'completed' : 'pending',
+                'is_gift'         => $isGift,
+                'gift_reason'     => $request->gift_reason,
                 'notes'           => $request->notes,
             ]);
 
@@ -198,7 +205,21 @@ class SaleController extends Controller
             $sumPaid  = 0.0;
             $dominant = null;
 
-            if ($payments->isNotEmpty()) {
+            if ($isGift) {
+                // Complimentary Gift given by Boss
+                SalePayment::create([
+                    'sale_id'   => $sale->id,
+                    'method'    => 'boss_gift',
+                    'amount'    => $totalAmount,
+                    'reference' => $request->gift_reason ?: 'Gift authorized by Boss',
+                    'phone'     => null,
+                    'paid_at'   => $request->sale_date ?? now(),
+                    'user_id'   => Auth::id(),
+                ]);
+
+                $sumPaid  = $totalAmount;
+                $dominant = 'boss_gift';
+            } elseif ($payments->isNotEmpty()) {
                 foreach ($payments as $p) {
                     $amount = round((float)$p['amount'], 2);
 
@@ -229,9 +250,11 @@ class SaleController extends Controller
         // -------- Finalize sale --------
         $sale->update([
             'total_amount'    => $totalAmount,
-            'amount_paid'     => $sumPaid,
-            'payment_channel' => $dominant ?: 'cash',
-            'status'          => ($totalAmount <= $sumPaid) ? 'completed' : 'pending',
+            'amount_paid'     => $isGift ? $totalAmount : $sumPaid,
+            'payment_channel' => $isGift ? 'boss_gift' : ($dominant ?: 'cash'),
+            'status'          => ($isGift || $totalAmount <= $sumPaid) ? 'completed' : 'pending',
+            'is_gift'         => $isGift,
+            'gift_reason'     => $request->gift_reason,
         ]);
 
         // -------- Check for Low Stock & Alert Admins --------
@@ -320,6 +343,9 @@ class SaleController extends Controller
             'products.*.quantity'   => 'required|numeric|min:0.01',
             'products.*.unit_price' => 'required|numeric|min:0',
 
+            'is_gift'               => 'nullable|boolean',
+            'gift_reason'           => 'nullable|string|max:255',
+
             'amount_paid'           => 'nullable|numeric|min:0',
             'payment_channel'       => 'nullable|string',
             'method'                => 'nullable|string|max:50',
@@ -366,6 +392,8 @@ class SaleController extends Controller
 
         try {
             DB::beginTransaction();
+
+            $isGift = $request->boolean('is_gift') || $request->input('payment_channel') === 'boss_gift';
 
             // Reset items + stock movements
             StockMovement::where('source_type', Sale::class)
@@ -416,7 +444,20 @@ class SaleController extends Controller
             $payments = collect($request->input('payments', []))
                 ->filter(fn ($p) => isset($p['method'], $p['amount']) && (float)$p['amount'] > 0);
 
-            if ($payments->isNotEmpty()) {
+            if ($isGift) {
+                SalePayment::create([
+                    'sale_id'   => $sale->id,
+                    'method'    => 'boss_gift',
+                    'amount'    => $totalAmount,
+                    'reference' => $request->gift_reason ?: 'Gift authorized by Boss',
+                    'phone'     => null,
+                    'paid_at'   => $request->sale_date ?? now(),
+                    'user_id'   => Auth::id(),
+                ]);
+
+                $sumPaid  = $totalAmount;
+                $dominant = 'boss_gift';
+            } elseif ($payments->isNotEmpty()) {
                 foreach ($payments as $p) {
                     $amount = round((float)$p['amount'], 2);
                     $sumPaid += $amount;
@@ -443,11 +484,13 @@ class SaleController extends Controller
             $sale->update([
                 'customer_id'     => $request->customer_id,
                 'sale_date'       => $request->sale_date,
-                'payment_channel' => $dominant ?: 'cash',
+                'payment_channel' => $isGift ? 'boss_gift' : ($dominant ?: 'cash'),
                 'method'          => $request->method ?? $sale->method,
-                'amount_paid'     => $sumPaid,
+                'amount_paid'     => $isGift ? $totalAmount : $sumPaid,
                 'total_amount'    => $totalAmount,
-                'status'          => ($totalAmount <= $sumPaid) ? 'completed' : 'pending',
+                'status'          => ($isGift || $totalAmount <= $sumPaid) ? 'completed' : 'pending',
+                'is_gift'         => $isGift,
+                'gift_reason'     => $request->gift_reason,
                 'notes'           => $request->notes,
             ]);
 
@@ -575,12 +618,21 @@ class SaleController extends Controller
                 $w->orWhere('payment_channel', $like, "%{$search}%")
                   ->orWhere('status',           $like, "%{$search}%")
                   ->orWhere('method',           $like, "%{$search}%")
+                  ->orWhere('gift_reason',      $like, "%{$search}%")
                   ->orWhereHas('customer', fn ($c) => $c->where('name', $like, "%{$search}%"));
             });
         }
 
         if ($request->filled('channel')) {
             $q->where('payment_channel', $request->channel);
+        }
+
+        if ($request->filled('type')) {
+            if ($request->type === 'gift') {
+                $q->where(fn($sub) => $sub->where('is_gift', true)->orWhere('payment_channel', 'boss_gift'));
+            } elseif ($request->type === 'regular') {
+                $q->where('is_gift', false)->where('payment_channel', '!=', 'boss_gift');
+            }
         }
 
         if ($request->filled('status')) { $q->where('status', $request->status); }

@@ -72,9 +72,11 @@ class ReportsController extends Controller
         $totalProfit   = (float) $siBase->sum('profit');
         $revenueByItem = (float) $siBase->sum('subtotal'); // more precise for P&L
 
-        // Pending balances within range (keep your original formula)
+        // Pending balances within range (keep your original formula, excluding gifts)
         $pendingBalances = (float) Sale::whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->where('status', 'pending')
+            ->where('is_gift', false)
+            ->where('payment_channel', '!=', 'boss_gift')
             ->sum(DB::raw('COALESCE(total_amount,0) - COALESCE(amount_paid,0) - COALESCE(returns_total,0)'));
 
         // =========================
@@ -546,15 +548,20 @@ class ReportsController extends Controller
         // 2. Compute Opening Balances (Prior to $startDate)
         $priorCashInflows   = $this->getPriorInflows($cashSlugs, $startDate);
         $priorCashOutflows  = $this->getPriorOutflows($cashSlugs, $startDate);
-        $cashOpeningBalance = max(0, $priorCashInflows - $priorCashOutflows);
+        $cashOpeningBalance = $priorCashInflows - $priorCashOutflows;
 
         $priorMomoInflows   = $this->getPriorInflows($momoSlugs, $startDate);
         $priorMomoOutflows  = $this->getPriorOutflows($momoSlugs, $startDate);
-        $momoOpeningBalance = max(0, $priorMomoInflows - $priorMomoOutflows);
+        $momoOpeningBalance = $priorMomoInflows - $priorMomoOutflows;
 
         // 3. Sales Summary (within period)
+        // IMPORTANT: Only count payments for sales made WITHIN this period
+        // to avoid double-counting with "Previous Credit Received" below.
         $ledgerCashSales = (float) SalePayment::whereIn('method', $cashSlugs)
             ->whereBetween('paid_at', [$startDate, $endDate])
+            ->whereHas('sale', function ($s) use ($startDate, $endDate) {
+                $s->whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()]);
+            })
             ->sum('amount');
         if ($ledgerCashSales == 0) {
             $ledgerCashSales = (float) Sale::whereIn('payment_channel', $cashSlugs)
@@ -564,6 +571,9 @@ class ReportsController extends Controller
 
         $ledgerMomoSales = (float) SalePayment::whereIn('method', $momoSlugs)
             ->whereBetween('paid_at', [$startDate, $endDate])
+            ->whereHas('sale', function ($s) use ($startDate, $endDate) {
+                $s->whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()]);
+            })
             ->sum('amount');
         if ($ledgerMomoSales == 0) {
             $ledgerMomoSales = (float) Sale::whereIn('payment_channel', $momoSlugs)
@@ -571,15 +581,27 @@ class ReportsController extends Controller
                 ->sum('amount_paid');
         }
 
-        $ledgerCreditSales = (float) Sale::whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()])
+        $ledgerGiftSales = (float) Sale::whereDate('sale_date', '>=', $startDate->toDateString())
+            ->whereDate('sale_date', '<=', $endDate->toDateString())
+            ->where(function($q) {
+                $q->where('is_gift', true)
+                  ->orWhere('payment_channel', 'boss_gift');
+            })
+            ->sum('total_amount');
+
+        $ledgerCreditSales = (float) Sale::whereDate('sale_date', '>=', $startDate->toDateString())
+            ->whereDate('sale_date', '<=', $endDate->toDateString())
+            ->where('is_gift', false)
+            ->where('payment_channel', '!=', 'boss_gift')
             ->whereRaw('(total_amount - amount_paid) > 0')
             ->sum(DB::raw('total_amount - amount_paid'));
 
-        $totalLedgerSales = $ledgerCashSales + $ledgerMomoSales + $ledgerCreditSales;
+        $totalLedgerSales = $ledgerCashSales + $ledgerMomoSales + $ledgerCreditSales + $ledgerGiftSales;
 
         // 4. Cash Breakdown
         $cashSalesSystem = $ledgerCashSales;
 
+        // Payments received during this period for sales made BEFORE this period
         $cashPreviousCreditReceived = (float) SalePayment::whereIn('method', $cashSlugs)
             ->whereBetween('paid_at', [$startDate, $endDate])
             ->whereHas('sale', function ($s) use ($startDate) {
@@ -596,6 +618,7 @@ class ReportsController extends Controller
             ->where('type', 'credit')
             ->whereBetween('transaction_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereNull('sale_id')
+            ->whereNull('loan_id')
             ->sum('amount');
 
         $totalCashAvailable = $cashOpeningBalance + $cashSalesSystem + $totalCashDebtReceived + $otherCashReceived;
@@ -606,15 +629,31 @@ class ReportsController extends Controller
             ->with('category')
             ->get();
 
+        // Categorize expenses by keyword matching
+        $cashCategorized = [
+            'MD -UNCLE'               => $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md -uncle') || str_contains(strtolower($e->note ?? ''), 'md-uncle') || str_contains(strtolower($e->category?->name ?? ''), 'uncle')),
+            'MD'                     => collect(),
+            'Transport'              => collect(),
+            'off loading and loading' => collect(),
+        ];
+        // Remaining expenses after removing already-categorized ones
+        $usedIds = $cashCategorized['MD -UNCLE']->pluck('id')->toArray();
+
+        $cashCategorized['MD'] = $cashExpenses->filter(fn($e) => !in_array($e->id, $usedIds) && str_contains(strtolower($e->note ?? ''), 'md'));
+        $usedIds = array_merge($usedIds, $cashCategorized['MD']->pluck('id')->toArray());
+
+        $cashCategorized['Transport'] = $cashExpenses->filter(fn($e) => !in_array($e->id, $usedIds) && (str_contains(strtolower($e->note ?? ''), 'transport') || str_contains(strtolower($e->category?->name ?? ''), 'transport')));
+        $usedIds = array_merge($usedIds, $cashCategorized['Transport']->pluck('id')->toArray());
+
+        $cashCategorized['off loading and loading'] = $cashExpenses->filter(fn($e) => !in_array($e->id, $usedIds) && (str_contains(strtolower($e->note ?? ''), 'loading') || str_contains(strtolower($e->category?->name ?? ''), 'loading')));
+        $usedIds = array_merge($usedIds, $cashCategorized['off loading and loading']->pluck('id')->toArray());
+
         $cashExpenseItems = [
-            'MD -UNCLE'               => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md -uncle') || str_contains(strtolower($e->category?->name ?? ''), 'uncle'))->sum('amount'),
-            'MD'                     => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md') && !str_contains(strtolower($e->note ?? ''), 'uncle'))->sum('amount'),
-            'Transport'              => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'transport') || str_contains(strtolower($e->category?->name ?? ''), 'transport'))->sum('amount'),
-            'off loading and loading' => (float) $cashExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'loading') || str_contains(strtolower($e->category?->name ?? ''), 'loading'))->sum('amount'),
-            'others expenses'        => (float) $cashExpenses->filter(function($e) {
-                $n = strtolower(($e->note ?? '') . ($e->category?->name ?? ''));
-                return !str_contains($n, 'md') && !str_contains($n, 'transport') && !str_contains($n, 'loading') && !str_contains($n, 'deposit');
-            })->sum('amount'),
+            'MD -UNCLE'               => (float) $cashCategorized['MD -UNCLE']->sum('amount'),
+            'MD'                     => (float) $cashCategorized['MD']->sum('amount'),
+            'Transport'              => (float) $cashCategorized['Transport']->sum('amount'),
+            'off loading and loading' => (float) $cashCategorized['off loading and loading']->sum('amount'),
+            'others expenses'        => (float) $cashExpenses->filter(fn($e) => !in_array($e->id, $usedIds))->sum('amount'),
         ];
 
         $cashDeposit = (float) Transaction::whereIn('method', $cashSlugs)
@@ -632,6 +671,7 @@ class ReportsController extends Controller
         // 5. MoMo Breakdown
         $momoSalesSystem = $ledgerMomoSales;
 
+        // Payments received during this period for sales made BEFORE this period
         $momoPreviousCreditReceived = (float) SalePayment::whereIn('method', $momoSlugs)
             ->whereBetween('paid_at', [$startDate, $endDate])
             ->whereHas('sale', function ($s) use ($startDate) {
@@ -648,6 +688,7 @@ class ReportsController extends Controller
             ->where('type', 'credit')
             ->whereBetween('transaction_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->whereNull('sale_id')
+            ->whereNull('loan_id')
             ->sum('amount');
 
         $totalMomoAvailable = $momoOpeningBalance + $momoSalesSystem + $totalMomoDebtReceived + $otherMomoReceived;
@@ -658,17 +699,40 @@ class ReportsController extends Controller
             ->with('category')
             ->get();
 
+        // Categorize MoMo expenses without double-counting
+        $momoCategorized = [
+            'MD -UNCLE'               => $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md -uncle') || str_contains(strtolower($e->note ?? ''), 'md-uncle') || str_contains(strtolower($e->category?->name ?? ''), 'uncle')),
+            'MD'                     => collect(),
+            'Direct purchases by shop' => collect(),
+            'MOMO CHARGES'            => collect(),
+            'MOMO PUSH'               => collect(),
+            'CHANGES'                 => collect(),
+        ];
+        $momoUsedIds = $momoCategorized['MD -UNCLE']->pluck('id')->toArray();
+
+        $momoCategorized['MD'] = $momoExpenses->filter(fn($e) => !in_array($e->id, $momoUsedIds) && str_contains(strtolower($e->note ?? ''), 'md'));
+        $momoUsedIds = array_merge($momoUsedIds, $momoCategorized['MD']->pluck('id')->toArray());
+
+        $momoCategorized['Direct purchases by shop'] = $momoExpenses->filter(fn($e) => !in_array($e->id, $momoUsedIds) && (str_contains(strtolower($e->note ?? ''), 'purchase') || str_contains(strtolower($e->category?->name ?? ''), 'purchase') || $e->supplier_id !== null));
+        $momoUsedIds = array_merge($momoUsedIds, $momoCategorized['Direct purchases by shop']->pluck('id')->toArray());
+
+        $momoCategorized['MOMO CHARGES'] = $momoExpenses->filter(fn($e) => !in_array($e->id, $momoUsedIds) && (str_contains(strtolower($e->note ?? ''), 'charge') || str_contains(strtolower($e->note ?? ''), 'fee')));
+        $momoUsedIds = array_merge($momoUsedIds, $momoCategorized['MOMO CHARGES']->pluck('id')->toArray());
+
+        $momoCategorized['MOMO PUSH'] = $momoExpenses->filter(fn($e) => !in_array($e->id, $momoUsedIds) && str_contains(strtolower($e->note ?? ''), 'push'));
+        $momoUsedIds = array_merge($momoUsedIds, $momoCategorized['MOMO PUSH']->pluck('id')->toArray());
+
+        $momoCategorized['CHANGES'] = $momoExpenses->filter(fn($e) => !in_array($e->id, $momoUsedIds) && str_contains(strtolower($e->note ?? ''), 'change'));
+        $momoUsedIds = array_merge($momoUsedIds, $momoCategorized['CHANGES']->pluck('id')->toArray());
+
         $momoExpenseItems = [
-            'MD'                      => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md') && !str_contains(strtolower($e->note ?? ''), 'uncle'))->sum('amount'),
-            'MD -UNCLE'               => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'md -uncle') || str_contains(strtolower($e->category?->name ?? ''), 'uncle'))->sum('amount'),
-            'Direct purchases by shop' => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'purchase') || str_contains(strtolower($e->category?->name ?? ''), 'purchase') || $e->supplier_id !== null)->sum('amount'),
-            'MOMO CHARGES'             => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'charge') || str_contains(strtolower($e->note ?? ''), 'fee'))->sum('amount'),
-            'others expenses'         => (float) $momoExpenses->filter(function($e) {
-                $n = strtolower(($e->note ?? '') . ($e->category?->name ?? ''));
-                return !str_contains($n, 'md') && !str_contains($n, 'purchase') && !str_contains($n, 'charge') && !str_contains($n, 'push') && !str_contains($n, 'change');
-            })->sum('amount'),
-            'MOMO PUSH'                => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'push'))->sum('amount'),
-            'CHANGES'                  => (float) $momoExpenses->filter(fn($e) => str_contains(strtolower($e->note ?? ''), 'change'))->sum('amount'),
+            'MD'                       => (float) $momoCategorized['MD']->sum('amount'),
+            'MD -UNCLE'                => (float) $momoCategorized['MD -UNCLE']->sum('amount'),
+            'Direct purchases by shop' => (float) $momoCategorized['Direct purchases by shop']->sum('amount'),
+            'MOMO CHARGES'             => (float) $momoCategorized['MOMO CHARGES']->sum('amount'),
+            'others expenses'          => (float) $momoExpenses->filter(fn($e) => !in_array($e->id, $momoUsedIds))->sum('amount'),
+            'MOMO PUSH'                => (float) $momoCategorized['MOMO PUSH']->sum('amount'),
+            'CHANGES'                  => (float) $momoCategorized['CHANGES']->sum('amount'),
         ];
 
         $totalMomoTransfers = (float) Transaction::whereIn('method', $momoSlugs)
@@ -697,7 +761,7 @@ class ReportsController extends Controller
 
         // 8. Formulas Metadata
         $formulas = [
-            'ledger_sales'   => 'Total Ledger Sales = Ledger Cash Sales + Ledger MoMo Sales + Ledger Credit Sales',
+            'ledger_sales'   => 'Total Ledger Sales = Ledger Cash Sales + Ledger MoMo Sales + Ledger Credit Sales + Boss Gift Sales',
             'cash_opening'   => 'Opening Cash Balance = Cumulative Prior Cash Inflows - Cumulative Prior Cash Outflows (Closing balance of previous day)',
             'cash_available' => 'Total Cash Available = Opening Balance + System Cash Sales + Debt Receipts + Other Cash Received',
             'cash_closing'   => 'Cash Closing Balance = Total Cash Available - Total Cash Outflows (Expenses + Bank Deposit)',
@@ -708,7 +772,7 @@ class ReportsController extends Controller
 
         return compact(
             'mode', 'startDateInput', 'endDateInput', 'startDate', 'endDate',
-            'channels', 'ledgerCashSales', 'ledgerMomoSales', 'ledgerCreditSales', 'totalLedgerSales',
+            'channels', 'ledgerCashSales', 'ledgerMomoSales', 'ledgerCreditSales', 'ledgerGiftSales', 'totalLedgerSales',
             'cashOpeningBalance', 'cashSalesSystem', 'totalCashDebtReceived', 'otherCashReceived', 'totalCashAvailable',
             'cashExpenseItems', 'cashDeposit', 'totalCashOutflows', 'cashClosingBalance',
             'momoOpeningBalance', 'momoSalesSystem', 'totalMomoDebtReceived', 'otherMomoReceived', 'totalMomoAvailable',
@@ -737,6 +801,7 @@ class ReportsController extends Controller
             ->where('type', 'credit')
             ->where('transaction_date', '<', $startDate->toDateString())
             ->whereNull('sale_id')
+            ->whereNull('loan_id')
             ->sum('amount');
 
         return $sales + $loanPayments + $transactions;

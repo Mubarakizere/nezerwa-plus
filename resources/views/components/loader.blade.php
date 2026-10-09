@@ -1,58 +1,54 @@
-<div
-    x-data="{
-        loading: true,
-        progress: 0,
-        init() {
-            let step = 0;
-            const tick = setInterval(() => {
-                step += Math.random() * 18 + 4;
-                if (step >= 100) {
-                    this.progress = 100;
-                    clearInterval(tick);
-                    setTimeout(() => this.loading = false, 400);
-                } else {
-                    this.progress = Math.round(step);
-                }
-            }, 200);
-        }
-    }"
-    x-show="loading"
-    x-transition:leave="transition ease-in duration-600"
-    x-transition:leave-start="opacity-100 scale-100"
-    x-transition:leave-end="opacity-0 scale-105"
-    class="fixed inset-0 z-[9999] flex items-center justify-center"
-    style="background: linear-gradient(135deg, #312e81 0%, #4338ca 40%, #6366f1 100%);"
->
-    <div class="flex flex-col items-center">
-
-        {{-- Wine Glass Icon --}}
-        <div class="mb-6" style="opacity: 0.9;">
-            <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 2h8l-1.5 8c-.3 1.8-1.8 3-3.5 3h-1c-1.7 0-3.2-1.2-3.5-3L8 2z"/>
-                <path d="M12 13v6"/>
-                <path d="M8 22h8"/>
-                <path d="M7.5 7h9"/>
-            </svg>
+{{-- Clean Full-Screen Site Loader --}}
+{{-- Minimalist, theme-aware, non-AI full-screen preloader that dismisses immediately on page ready --}}
+<div id="site-loader"
+     class="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-white dark:bg-[#0f172a]"
+     style="transition: opacity 0.25s ease, visibility 0.25s ease;"
+     aria-live="polite"
+     aria-busy="true">
+    <div class="flex flex-col items-center justify-center gap-3">
+        {{-- Clean modern circular spinner --}}
+        <div class="relative w-10 h-10">
+            <div class="w-10 h-10 rounded-full border-2 border-indigo-100 dark:border-slate-800"></div>
+            <div class="w-10 h-10 rounded-full border-2 border-indigo-600 dark:border-indigo-400 border-t-transparent animate-spin absolute inset-0"></div>
         </div>
-
-        {{-- Brand Name --}}
-        <h1 class="text-white text-3xl font-bold tracking-widest mb-1" style="letter-spacing: 0.25em; font-family: 'Inter', sans-serif;">
-            KINGWINE
-        </h1>
-        <p class="text-indigo-200 text-xs tracking-wider mb-8" style="letter-spacing: 0.15em;">
-            LIQUOR &amp; SPIRITS
-        </p>
-
-        {{-- Progress Bar --}}
-        <div class="w-48 h-1 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.15);">
-            <div
-                class="h-full rounded-full transition-all duration-200 ease-out"
-                :style="'width: ' + progress + '%; background: linear-gradient(90deg, #c7d2fe, #ffffff);'"
-            ></div>
-        </div>
-
-        {{-- Percentage --}}
-        <p class="text-indigo-200 text-xs mt-3 tabular-nums" x-text="progress + '%'" style="font-family: 'Inter', monospace;"></p>
-
     </div>
 </div>
+
+<script>
+(function () {
+    var dismissed = false;
+
+    function hideLoader() {
+        if (dismissed) return;
+        dismissed = true;
+
+        var loader = document.getElementById('site-loader');
+        if (!loader) return;
+
+        loader.style.opacity = '0';
+        loader.style.visibility = 'hidden';
+        loader.setAttribute('aria-busy', 'false');
+
+        setTimeout(function () {
+            if (loader && loader.parentNode) {
+                loader.parentNode.removeChild(loader);
+            }
+        }, 260);
+    }
+
+    // Dismiss immediately once page resources are ready
+    if (document.readyState === 'complete') {
+        hideLoader();
+    } else {
+        window.addEventListener('load', hideLoader);
+    }
+
+    // Safety fallback so users are never stuck if a 3rd-party script/font hangs
+    setTimeout(hideLoader, 2000);
+
+    // Support browser back/forward cache
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) hideLoader();
+    });
+})();
+</script>

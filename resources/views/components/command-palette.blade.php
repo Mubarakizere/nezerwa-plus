@@ -1,6 +1,7 @@
 <div x-data="commandPalette()"
      @keydown.window.meta.k.prevent="open = true"
      @keydown.window.ctrl.k.prevent="open = true"
+     @open-command-palette.window="open = true"
      @keydown.escape.window="open = false"
      class="relative z-[9999]"
      x-show="open"

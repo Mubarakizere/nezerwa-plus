@@ -32,7 +32,7 @@ class LowStockAlertMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Low Stock Alert - Nezerwa Plus',
+            subject: 'Low Stock Alert - KingWine',
         );
     }
 

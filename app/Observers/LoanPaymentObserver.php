@@ -24,8 +24,8 @@ class LoanPaymentObserver
             return;
         }
 
-        $totalPaid = (float) $loan->payments->sum('amount');
-        $remaining = round(($loan->amount ?? 0) - $totalPaid, 2);
+        $totalPaid = (float) $loan->payments()->sum('amount');
+        $remaining = max(0.0, round((float)($loan->amount ?? 0) - $totalPaid, 2));
 
         if ($remaining <= self::EPSILON) {
             $loan->updateQuietly(['status' => 'paid']);
@@ -50,15 +50,17 @@ class LoanPaymentObserver
             Log::info(" Loan #{$loan->id} partial (paid={$totalPaid}, remaining={$remaining}).");
 
             if ($loan->sale) {
+                $newSaleAmountPaid = max(0.0, round((float)($loan->sale->total_amount ?? 0) - $remaining, 2));
                 $loan->sale->updateQuietly([
                     'status'      => 'pending',
-                    'amount_paid' => $totalPaid,
+                    'amount_paid' => $newSaleAmountPaid,
                 ]);
             }
             if ($loan->purchase) {
+                $newPurchaseAmountPaid = max(0.0, round((float)($loan->purchase->total_amount ?? 0) - $remaining, 2));
                 $loan->purchase->updateQuietly([
                     'status'      => 'pending',
-                    'amount_paid' => $totalPaid,
+                    'amount_paid' => $newPurchaseAmountPaid,
                     'balance_due' => $remaining,
                 ]);
             }

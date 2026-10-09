@@ -187,7 +187,7 @@ class StatementController extends Controller
                 ->when($from, fn($q) => $q->whereDate('sale_date', '>=', $from))
                 ->when($to,   fn($q) => $q->whereDate('sale_date', '<=', $to ?? now()->toDateString()))
                 ->orderBy('sale_date')
-                ->get(['id','sale_date','total_amount','payment_channel','method','notes']);
+                ->get(['id','sale_date','total_amount','payment_channel','method','notes','is_gift','gift_reason']);
 
             // Customer transactions
             $txns = Transaction::query()
@@ -251,23 +251,30 @@ class StatementController extends Controller
                     ->get()
                 : collect();
 
-            // KPIs
-            $kpis['sales_total']   = (float) $sales->sum('total_amount');
+            // KPIs (Only count regular sales; Boss Gifts are complimentary with 0 debt)
+            $regularSales = $sales->reject(fn($s) => $s->isGift());
+            $kpis['sales_total']   = (float) $regularSales->sum('total_amount');
             $kpis['paid_total']    = (float) $txns->where('type','credit')->sum('amount'); // customer → you
             $kpis['refunds_total'] = (float) $txns->where('type','debit')->sum('amount');  // you → customer
             $kpis['balance']       = round($kpis['sales_total'] - $kpis['paid_total'] - $kpis['refunds_total'], 2);
 
             // Timeline
             foreach ($sales as $s) {
+                $isGift = $s->isGift();
+                $note = trim((string)$s->notes);
+                if ($isGift && $s->gift_reason) {
+                    $note = ($note !== '' ? $note . ' | ' : '') . 'Gift Reason: ' . $s->gift_reason;
+                }
+
                 $events->push([
                     'date'   => Carbon::parse($s->sale_date ?: now()),
                     'sort'   => 'A',
-                    'type'   => 'Sale',
-                    'ref'    => 'Sale #'.$s->id,
+                    'type'   => $isGift ? 'Boss Gift (Complimentary)' : 'Sale',
+                    'ref'    => 'Sale #'.$s->id . ($isGift ? ' [Gift]' : ''),
                     'method' => strtoupper($s->payment_channel ?? $s->method ?? '-'),
-                    'amount' => (float) $s->total_amount, // positive
+                    'amount' => $isGift ? 0.0 : (float) $s->total_amount, // gifts do not create debt
                     'link'   => route('sales.show', $s->id),
-                    'note'   => trim((string)$s->notes),
+                    'note'   => $note,
                 ]);
             }
 

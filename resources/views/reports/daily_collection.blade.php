@@ -147,10 +147,22 @@
                             <td class="px-6 py-3 text-right font-mono font-semibold text-red-600 dark:text-red-400">{{ number_format($ledgerCreditSales, 0) }}</td>
                             <td class="px-6 py-3 text-xs text-gray-500">Sales made on credit (unpaid balance)</td>
                         </tr>
+                        @if(($ledgerGiftSales ?? 0) > 0)
+                        <tr>
+                            <td class="px-6 py-3 font-medium text-purple-600 dark:text-purple-400">
+                                <span class="inline-flex items-center gap-1.5">
+                                    <i data-lucide="gift" class="w-4 h-4 text-purple-500"></i>
+                                    Boss Gift Sales
+                                </span>
+                            </td>
+                            <td class="px-6 py-3 text-right font-mono font-semibold text-purple-600 dark:text-purple-400">{{ number_format($ledgerGiftSales, 0) }}</td>
+                            <td class="px-6 py-3 text-xs text-gray-500">Authorized boss gifts (complimentary, deducted from inventory)</td>
+                        </tr>
+                        @endif
                         <tr class="bg-gray-50 dark:bg-gray-800 font-bold border-t-2 border-gray-300 dark:border-gray-600">
                             <td class="px-6 py-3 uppercase">Total Ledger Sales</td>
                             <td class="px-6 py-3 text-right font-mono text-base text-indigo-600 dark:text-indigo-400">{{ number_format($totalLedgerSales, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Cash + MoMo + Credit Sales</td>
+                            <td class="px-6 py-3 text-xs text-gray-500">Cash + MoMo + Credit + Boss Gifts</td>
                         </tr>
                     </tbody>
                 </table>

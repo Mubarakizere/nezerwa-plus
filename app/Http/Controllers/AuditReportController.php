@@ -103,6 +103,8 @@ class AuditReportController extends Controller
         // 1. Detect Sales with Payment Mismatches
         // Logic: Sales that are 'completed' but paid amount < total
         $badPaidSales = Sale::where('status', 'completed')
+            ->where('is_gift', false)
+            ->where('payment_channel', '!=', 'boss_gift')
             ->whereRaw('amount_paid < total_amount - 1')
             ->latest()
             ->limit($limit)

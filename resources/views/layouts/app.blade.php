@@ -10,7 +10,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title', config('app.name', 'Stock Manager'))</title>
+    <title>@yield('title', config('app.name', 'KingWine'))</title>
 
     @vite(['resources/css/app.css','resources/css/theme.css','resources/js/app.js'])
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -22,7 +22,7 @@
     <link rel="apple-touch-icon" sizes="192x192" href="{{ asset('images/icons/icon-192x192.png') }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Stock Management">
+    <meta name="apple-mobile-web-app-title" content="KingWine">
     <link rel="apple-touch-startup-image" href="{{ asset('images/icons/icon-512x512.png') }}">
 
     {{-- Prevent white flash + hide Google banner --}}
@@ -61,7 +61,7 @@
 <div class="flex h-screen overflow-hidden">
 
     {{-- Overlay (mobile) --}}
-    <div class="fixed inset-0 z-30 bg-black/50 lg:hidden"
+    <div class="fixed inset-0 z-40 bg-black/50 lg:hidden"
          x-show="sidebarOpen" x-transition.opacity
          @click="sidebarOpen = false"></div>
 
@@ -72,65 +72,97 @@
     <div class="flex-1 flex flex-col overflow-hidden">
 
         {{-- ====== HEADER ====== --}}
-        <header class="flex items-center justify-between bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm px-4 lg:px-6 py-3">
-            <div class="flex items-center gap-3">
-                <button class="text-gray-600 dark:text-gray-300 hover:text-indigo-600 lg:hidden" @click="sidebarOpen = true">
-                    <i data-lucide="menu" class="w-6 h-6"></i>
+        <header class="sticky top-0 z-30 flex items-center justify-between h-14 px-4 lg:px-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200/80 dark:border-slate-800 transition-colors">
+            {{-- Left: Mobile Toggle & Page Title Breadcrumb --}}
+            <div class="flex items-center gap-3 min-w-0">
+                <button class="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 lg:hidden p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        @click="sidebarOpen = true"
+                        aria-label="Open navigation sidebar">
+                    <i data-lucide="menu" class="w-5 h-5"></i>
                 </button>
-                <h1 class="text-lg font-semibold text-gray-800 dark:text-gray-100 tracking-tight">
-                    @yield('title', 'Dashboard')
-                </h1>
+
+                <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-xs font-medium text-slate-400 hidden sm:inline-block">KingWine</span>
+                    <span class="text-slate-300 dark:text-slate-600 hidden sm:inline-block">/</span>
+                    <h1 class="text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 tracking-tight truncate">
+                        @yield('title', 'Dashboard')
+                    </h1>
+                </div>
             </div>
 
-            <div class="flex items-center gap-4">
-                {{-- 🌙 Dark Mode Toggle --}}
+            {{-- Center: Sleek Command Palette / Search Trigger --}}
+            <div class="hidden md:flex items-center">
+                <button type="button"
+                        @click="$dispatch('open-command-palette')"
+                        class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-400 bg-slate-100/80 dark:bg-slate-800/60 hover:bg-slate-200/70 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 border border-slate-200/80 dark:border-slate-700/60 rounded-lg transition-colors">
+                    <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400"></i>
+                    <span>Search or jump to...</span>
+                    <kbd class="ml-2 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-700/60 rounded border border-slate-200 dark:border-slate-600 shadow-2xs">Ctrl K</kbd>
+                </button>
+            </div>
+
+            {{-- Right: Status, Language, Dark Mode, Profile --}}
+            <div class="flex items-center gap-2 sm:gap-2.5">
+                {{-- Live Connection Dot --}}
+                <div id="connection-indicator" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span id="connection-text">Online</span>
+                </div>
+
+                {{-- Language Switcher --}}
+                <div class="relative" x-data="{ open: false }" @keydown.escape="open = false" @click.away="open = false">
+                    <button @click="open = !open"
+                            class="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="Change language">
+                        <i data-lucide="globe" class="w-4 h-4 text-slate-400"></i>
+                        <span id="lang-badge" class="hidden sm:inline uppercase font-semibold text-[11px] text-slate-700 dark:text-slate-300">EN</span>
+                        <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 transition-transform duration-150" :class="open ? 'rotate-180' : ''"></i>
+                    </button>
+
+                    <div x-show="open" x-cloak
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95"
+                         class="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50">
+                        <button type="button" class="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between transition-colors"
+                                @click="window.__setLanguage('en'); open = false">
+                            <span>English</span>
+                            <span class="text-[10px] text-slate-400 font-mono">EN</span>
+                        </button>
+                        <button type="button" class="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between transition-colors"
+                                @click="window.__setLanguage('fr'); open = false">
+                            <span>Français</span>
+                            <span class="text-[10px] text-slate-400 font-mono">FR</span>
+                        </button>
+                        <button type="button" class="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between transition-colors"
+                                @click="window.__setLanguage('rw'); open = false">
+                            <span>Kinyarwanda</span>
+                            <span class="text-[10px] text-slate-400 font-mono">RW</span>
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Dark Mode Toggle --}}
                 <button
                     @click="
                         const isDark = document.documentElement.classList.toggle('dark');
                         localStorage.theme = isDark ? 'dark' : 'light';
                     "
-                    class="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                    class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                     title="Toggle dark mode">
-                    <i data-lucide="moon" class="w-4 h-4 text-gray-600 dark:hidden"></i>
-                    <i data-lucide="sun" class="w-4 h-4 text-yellow-400 hidden dark:block"></i>
+                    <i data-lucide="moon" class="w-4 h-4 dark:hidden"></i>
+                    <i data-lucide="sun" class="w-4 h-4 hidden dark:block text-amber-400"></i>
                 </button>
 
-                {{-- 🌐 Connection Indicator --}}
-                <div id="connection-indicator" class="hidden sm:flex items-center gap-1 text-sm font-medium">
-                    <svg id="wifi-icon" xmlns="http://www.w3.org/2000/svg"
-                         class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                              d="M5 13a10 10 0 0114 0M8.5 16.5a5 5 0 017 0M12 20h.01" />
-                    </svg>
-                    <span id="connection-text" class="text-green-600 dark:text-green-400">Online</span>
-                </div>
+                <div class="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5"></div>
 
-                {{-- 🌍 Language Switcher (Google Translate) --}}
-                <div class="relative" x-data="{ open:false }" @keydown.escape="open=false" @click.away="open=false">
-                    <button @click="open=!open"
-                            class="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                            title="Change language">
-                        <i data-lucide="languages" class="w-4 h-4 text-gray-500"></i>
-                        <span id="lang-badge" class="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300">EN</span>
-                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400"></i>
-                    </button>
-
-                    <div x-show="open" x-cloak x-transition
-                         class="absolute right-0 mt-2 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50">
-                        <button type="button" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                                @click="window.__setLanguage('en'); open=false">English</button>
-                        <button type="button" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                                @click="window.__setLanguage('fr'); open=false">Français</button>
-                        <button type="button" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                                @click="window.__setLanguage('rw'); open=false">Kinyarwanda</button>
-                        <div class="mt-1 px-4 pb-2 text-[10px] text-gray-400">Powered by Google Translate</div>
-                    </div>
-                </div>
-
-                {{-- 👤 User Dropdown --}}
+                {{-- User Dropdown --}}
                 <div class="relative" x-data="{ userMenu: false }" @click.away="userMenu = false">
                     <button @click="userMenu = !userMenu"
-                            class="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                            class="flex items-center gap-2 p-1 pl-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                         @php
                             $user = Auth::user();
                             $photo = $user?->photo ? asset('storage/' . $user->photo) : null;
@@ -138,42 +170,57 @@
 
                         @if($photo)
                             <img src="{{ $photo }}" alt="{{ $user->name }}"
-                                 class="w-8 h-8 rounded-full object-cover border border-gray-300 dark:border-gray-600">
+                                 class="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700">
                         @else
-                            <div class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
-                                <span class="text-indigo-700 dark:text-indigo-300 text-sm font-semibold">
-                                    {{ strtoupper(substr($user->name ?? 'U', 0, 1)) }}
-                                </span>
+                            <div class="w-7 h-7 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-semibold text-xs">
+                                {{ strtoupper(substr($user->name ?? 'U', 0, 1)) }}
                             </div>
                         @endif
 
-                        <span class="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300 truncate max-w-[120px]">
+                        <span class="hidden sm:block text-xs font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[120px]">
                             {{ $user->name ?? 'User' }}
                         </span>
-                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400"></i>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-150" :class="userMenu ? 'rotate-180' : ''"></i>
                     </button>
 
-                    <div x-show="userMenu" x-cloak x-transition
-                         class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50">
-                        <a href="{{ route('profile.edit') }}"
-                           class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
-                            <i data-lucide="user" class="w-4 h-4 inline mr-2"></i> Profile
-                        </a>
-                        <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
-                        <form method="POST" action="{{ route('logout') }}">
-                            @csrf
-                            <button type="submit"
-                                    class="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-gray-700">
-                                <i data-lucide="log-out" class="w-4 h-4 inline mr-2"></i> Logout
-                            </button>
-                        </form>
+                    <div x-show="userMenu" x-cloak
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95"
+                         class="absolute right-0 mt-1.5 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1.5 z-50">
+                        <div class="px-3.5 py-2 border-b border-slate-100 dark:border-slate-800">
+                            <p class="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">{{ $user->name }}</p>
+                            <p class="text-[11px] text-slate-400 truncate mt-0.5">{{ $user->email }}</p>
+                        </div>
+
+                        <div class="py-1">
+                            <a href="{{ route('profile.edit') }}"
+                               class="flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                <i data-lucide="user" class="w-3.5 h-3.5 text-slate-400"></i>
+                                Profile & Settings
+                            </a>
+                        </div>
+
+                        <div class="border-t border-slate-100 dark:border-slate-800 pt-1">
+                            <form method="POST" action="{{ route('logout') }}">
+                                @csrf
+                                <button type="submit"
+                                        class="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+                                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                                    Sign out
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
         </header>
 
         {{-- ====== MAIN CONTENT ====== --}}
-        <main class="flex-1 overflow-y-auto p-4 lg:p-6 bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+        <main class="relative z-10 flex-1 overflow-y-auto p-4 lg:p-6 bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
             {{ $slot ?? '' }}
             @yield('content')
         </main>

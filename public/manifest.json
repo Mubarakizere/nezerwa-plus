@@ -1,6 +1,6 @@
 {
-  "name": "Stock Manager",
-  "short_name": "StockApp",
+  "name": "KingWine",
+  "short_name": "KingWine",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

@@ -32,7 +32,7 @@ class UserCredentialsMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your Account Credentials - Nezerwa Plus',
+            subject: 'Your Account Credentials - KingWine',
         );
     }
 

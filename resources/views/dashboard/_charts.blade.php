@@ -1,39 +1,54 @@
-<section>
+<section class="space-y-4">
     @if(($permissions['sales'] ?? false) || ($permissions['purchases'] ?? false))
-    {{-- Charts Header --}}
-    <h3 class="text-lg font-semibold text-indigo-600 mb-4 dark:text-indigo-400">
-        Sales Performance
-    </h3>
+    <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+            Sales & Purchases Performance
+        </h3>
+        <span class="text-xs text-slate-400 font-medium">Monthly Trends</span>
+    </div>
 
-    <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 space-y-6 relative overflow-hidden">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-xs p-5 space-y-6">
 
-        {{-- Loading Overlay --}}
-        <div id="chart-loader" class="absolute inset-0 bg-white dark:bg-gray-800 z-10 flex flex-col gap-4 p-4 transition-opacity duration-500">
+        {{-- Top Trend: Sales vs Purchases --}}
+        <div>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <div>
+                    <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        Monthly Comparison
+                    </h4>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Sales vs. Purchases volume over the last 6 months
+                    </p>
+                </div>
+                <div class="flex items-center gap-4 text-xs font-medium">
+                    <span class="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                        <span class="w-2.5 h-2.5 rounded-full bg-indigo-600"></span> Sales
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 text-rose-500 dark:text-rose-400">
+                        <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Purchases
+                    </span>
+                </div>
+            </div>
+
+            <div class="h-60 sm:h-64 relative">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        {{-- Bottom: 30-Day Daily Sales --}}
+        <div class="pt-5 border-t border-slate-100 dark:border-slate-800">
             <div class="flex items-center justify-between mb-4">
-                <x-skeleton class="h-6 w-32" />
-                <x-skeleton class="h-6 w-16" />
+                <div>
+                    <h4 class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        Daily Sales Activity
+                    </h4>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">
+                        Day-by-day revenue breakdown for the past 30 days
+                    </p>
+                </div>
             </div>
-            <div class="flex-1 flex items-end gap-2">
-                <x-skeleton class="h-32 w-full" />
-                <x-skeleton class="h-48 w-full" />
-                <x-skeleton class="h-24 w-full" />
-                <x-skeleton class="h-40 w-full" />
-                <x-skeleton class="h-56 w-full" />
-                <x-skeleton class="h-32 w-full" />
-            </div>
-        </div>
 
-        {{-- Combined Chart: Sales vs Purchases --}}
-        <div class="h-56 sm:h-64">
-            <canvas id="trendChart"></canvas>
-        </div>
-
-        {{-- 30-Day Sales Chart --}}
-        <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
-            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                Sales (Last 30 Days)
-            </h4>
-            <div class="h-48 sm:h-56">
+            <div class="h-48 sm:h-52 relative">
                 <canvas id="salesChart"></canvas>
             </div>
         </div>
@@ -43,14 +58,12 @@
 
 @push('scripts')
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-
-            const loader = document.getElementById('chart-loader');
-            setTimeout(() => loader?.remove(), 600);
+            const isDark = document.documentElement.classList.contains('dark');
+            const tickColor = isDark ? '#94A3B8' : '#64748B';
+            const gridColor = isDark ? 'rgba(148, 163, 184, 0.08)' : 'rgba(226, 232, 240, 0.6)';
 
             // Trend Chart: Sales vs Purchases
             const ctxTrend = document.getElementById('trendChart')?.getContext('2d');
@@ -63,32 +76,56 @@
                             {
                                 label: 'Sales',
                                 data: @json($salesTrend),
-                                borderColor: '#4F46E5',
-                                backgroundColor: 'rgba(79,70,229,0.08)',
-                                borderWidth: 2,
-                                tension: 0.4,
+                                borderColor: '#6366F1',
+                                backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                                borderWidth: 2.5,
+                                tension: 0.35,
                                 fill: true,
-                                pointRadius: 2,
+                                pointBackgroundColor: '#6366F1',
+                                pointRadius: 3,
+                                pointHoverRadius: 5,
                             },
                             {
                                 label: 'Purchases',
                                 data: @json($purchaseTrend),
-                                borderColor: '#EC4899',
-                                backgroundColor: 'rgba(236,72,153,0.08)',
-                                borderWidth: 2,
-                                tension: 0.4,
+                                borderColor: '#F43F5E',
+                                backgroundColor: 'rgba(244, 63, 94, 0.06)',
+                                borderWidth: 2.5,
+                                tension: 0.35,
                                 fill: true,
-                                pointRadius: 2,
+                                pointBackgroundColor: '#F43F5E',
+                                pointRadius: 3,
+                                pointHoverRadius: 5,
                             }
                         ]
                     },
                     options: {
+                        responsive: true,
                         maintainAspectRatio: false,
-                        scales: {
-                            x: { ticks: { color: '#9CA3AF' }, grid: { display: false } },
-                            y: { ticks: { color: '#9CA3AF' }, grid: { color: 'rgba(156,163,175,0.1)' }, beginAtZero: true },
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                padding: 10,
+                                cornerRadius: 8,
+                                boxPadding: 4,
+                            }
                         },
-                        plugins: { legend: { position: 'top', labels: { color: '#6B7280' } } }
+                        scales: {
+                            x: {
+                                ticks: { color: tickColor, font: { size: 11 } },
+                                grid: { display: false }
+                            },
+                            y: {
+                                ticks: {
+                                    color: tickColor,
+                                    font: { size: 11 },
+                                    callback: v => Number(v).toLocaleString()
+                                },
+                                grid: { color: gridColor },
+                                beginAtZero: true
+                            },
+                        }
                     }
                 });
             }
@@ -106,17 +143,40 @@
                                 datasets: [{
                                     label: 'Daily Sales',
                                     data: data.sales,
-                                    backgroundColor: 'rgba(79,70,229,0.6)',
-                                    borderRadius: 5,
+                                    backgroundColor: 'rgba(99, 102, 241, 0.75)',
+                                    hoverBackgroundColor: '#4F46E5',
+                                    borderRadius: 4,
+                                    barPercentage: 0.7,
                                 }]
                             },
                             options: {
+                                responsive: true,
                                 maintainAspectRatio: false,
-                                scales: {
-                                    x: { ticks: { color: '#9CA3AF' }, grid: { display: false } },
-                                    y: { ticks: { color: '#9CA3AF' }, grid: { color: 'rgba(156,163,175,0.1)' }, beginAtZero: true },
+                                plugins: {
+                                    legend: { display: false },
+                                    tooltip: {
+                                        padding: 10,
+                                        cornerRadius: 8,
+                                        callbacks: {
+                                            label: ctx => 'Sales: ' + Number(ctx.parsed.y).toLocaleString() + ' RWF'
+                                        }
+                                    }
                                 },
-                                plugins: { legend: { display: false } }
+                                scales: {
+                                    x: {
+                                        ticks: { color: tickColor, font: { size: 10 }, maxRotation: 45 },
+                                        grid: { display: false }
+                                    },
+                                    y: {
+                                        ticks: {
+                                            color: tickColor,
+                                            font: { size: 11 },
+                                            callback: v => Number(v).toLocaleString()
+                                        },
+                                        grid: { color: gridColor },
+                                        beginAtZero: true
+                                    },
+                                }
                             }
                         });
                     }
