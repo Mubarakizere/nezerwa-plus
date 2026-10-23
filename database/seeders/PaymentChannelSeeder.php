@@ -16,6 +16,7 @@ class PaymentChannelSeeder extends Seeder
             'Momo',
             'Mobile',
             'Mobile Money',
+            'Supplier Debt Offset',
         ];
 
         foreach ($channels as $channel) {

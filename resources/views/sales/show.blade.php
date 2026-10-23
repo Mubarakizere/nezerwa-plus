@@ -11,9 +11,11 @@
             'items.product',
             'returns.items.product',
             'customer',
+            'supplier',
             'user',
             'payments.user',
             'loan.payments.user',
+            'loanPayments.loan',
         ])->loadSum('returns as returns_total','amount');
     } catch (\Throwable $e) {}
 
@@ -44,11 +46,13 @@
 
     // Badges
     $channelClasses = [
-        'cash'      => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-        'bank'      => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-        'momo'      => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
-        'mobile'    => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-        'boss_gift' => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+        'cash'            => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+        'bank'            => 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+        'momo'            => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+        'mobile'          => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+        'boss_gift'       => 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+        'supplier_offset' => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+        'goods_exchange'  => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
     ][$channel] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-200';
 
     $statusClasses = match ($status) {
@@ -123,6 +127,10 @@
                 <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300 flex items-center gap-1">
                     <i data-lucide="gift" class="w-3.5 h-3.5"></i> Boss Gift
                 </span>
+            @elseif($sale->isSupplierOffset() || $sale->supplier_id)
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 flex items-center gap-1">
+                    <i data-lucide="handshake" class="w-3.5 h-3.5"></i> Supplier Debt Offset
+                </span>
             @elseif($loan)
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold
                     {{ $loan->status === 'paid'
@@ -158,6 +166,52 @@
         </div>
     @endif
 
+    @if($sale->isSupplierOffset() || $sale->supplier_id)
+        <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-gradient-to-r from-amber-50 via-orange-50 to-yellow-50 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-yellow-950/30 p-5 shadow-sm">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 rounded-xl">
+                    <i data-lucide="handshake" class="w-6 h-6"></i>
+                </div>
+                <div class="flex-1 space-y-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h3 class="text-base font-semibold text-amber-950 dark:text-amber-200">
+                            Supplier Debt Offset (Goods Exchange)
+                        </h3>
+                        <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-200/70 dark:bg-amber-800/60 text-amber-800 dark:text-amber-200">
+                            FIFO Loan Repayment
+                        </span>
+                    </div>
+                    <p class="text-sm text-amber-800/80 dark:text-amber-300">
+                        Products from this sale were exchanged against store debt owed to supplier
+                        <strong class="text-amber-950 dark:text-white">{{ $sale->supplier->name ?? 'Supplier' }}</strong>.
+                        The oldest pending store loan(s) were automatically reduced first without physical cash movement.
+                    </p>
+                    @if($sale->loanPayments && $sale->loanPayments->count() > 0)
+                        <div class="mt-3 text-xs text-amber-900 dark:text-amber-200 bg-white/70 dark:bg-gray-900/50 p-3 rounded-lg border border-amber-200/60 dark:border-amber-800/40 space-y-1.5">
+                            <span class="font-bold uppercase tracking-wider text-[10px] text-amber-700 dark:text-amber-300 block">Settled Store Loans (FIFO):</span>
+                            <div class="space-y-1">
+                                @foreach($sale->loanPayments as $lp)
+                                    <div class="flex items-center justify-between text-xs py-1 border-b border-amber-100 dark:border-amber-900/40 last:border-0">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-bold text-amber-900 dark:text-amber-100">Loan #{{ $lp->loan_id }}</span>
+                                            <span class="text-[11px] text-slate-500">({{ $lp->loan->loan_number ?? 'Loan' }})</span>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            <span class="font-bold text-emerald-600 dark:text-emerald-400">- {{ number_format($lp->amount, 2) }} RWF</span>
+                                            <a href="{{ route('loans.show', $lp->loan_id) }}" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5">
+                                                <span>View Loan</span> &rarr;
+                                            </a>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if($sale->isGift())
         <div class="rounded-xl border border-purple-200 dark:border-purple-800/60 bg-gradient-to-r from-purple-50 via-indigo-50 to-pink-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-pink-950/30 p-5 shadow-sm">
             <div class="flex items-start gap-4">
@@ -188,7 +242,17 @@
 
     {{-- Quick stats --}}
     <div class="grid md:grid-cols-4 gap-4">
-        @if($sale->customer)
+        @if($sale->supplier)
+            <a href="{{ route('suppliers.show', $sale->supplier) }}" class="block group" title="View Supplier Account">
+                <div class="p-4 rounded-xl shadow-sm border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 group-hover:border-amber-400 dark:group-hover:border-amber-500 transition text-center">
+                    <p class="text-amber-600 dark:text-amber-400 text-sm font-medium flex items-center justify-center gap-1">
+                        <span>Supplier (Debt Offset)</span>
+                        <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-amber-500"></i>
+                    </p>
+                    <p class="text-xl font-bold mt-1 text-amber-700 dark:text-amber-300 group-hover:underline truncate">{{ $sale->supplier->name }}</p>
+                </div>
+            </a>
+        @elseif($sale->customer)
             <a href="{{ route('customers.show', $sale->customer) }}" class="block group" title="View Customer Account">
                 <div class="p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 bg-indigo-50 dark:bg-indigo-900/30 group-hover:border-indigo-400 dark:group-hover:border-indigo-500 transition text-center">
                     <p class="text-gray-600 dark:text-gray-400 text-sm font-medium flex items-center justify-center gap-1">

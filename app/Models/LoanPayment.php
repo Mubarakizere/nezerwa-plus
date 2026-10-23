@@ -10,10 +10,10 @@ class LoanPayment extends Model
 {
     use HasFactory, Auditable;
 
-    public const METHODS = ['cash','momo','bank','mobile_money'];
+    public const METHODS = ['cash','momo','bank','mobile_money','supplier_offset','goods_exchange'];
 
     protected $fillable = [
-        'loan_id', 'user_id', 'amount', 'payment_date', 'method', 'notes'
+        'loan_id', 'user_id', 'sale_id', 'amount', 'payment_date', 'method', 'notes'
     ];
 
     protected $casts = [
@@ -22,4 +22,6 @@ class LoanPayment extends Model
 
     public function loan() { return $this->belongsTo(Loan::class); }
     public function user() { return $this->belongsTo(User::class); }
+    public function sale() { return $this->belongsTo(Sale::class); }
 }
+

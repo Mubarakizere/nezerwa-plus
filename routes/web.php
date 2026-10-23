@@ -16,6 +16,7 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReportsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
+use App\Http\Controllers\PosController;
 use App\Http\Controllers\SaleReturnController;
 use App\Http\Controllers\StockMovementController;
 use App\Http\Controllers\SupplierController;
@@ -274,6 +275,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/purchases/returns/{return}/note', [PurchaseReturnController::class, 'note'])
             ->name('purchases.returns.note');
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Point of Sale (POS) Terminal
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware('permission:sales.view')->group(function () {
+        Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
+        Route::get('/pos/products', [PosController::class, 'products'])->name('pos.products');
+        Route::post('/pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
+        Route::get('/pos/receipt/{sale}', [PosController::class, 'receipt'])
+            ->name('pos.receipt')
+            ->whereNumber('sale');
     });
 
     /*

@@ -4,453 +4,498 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-
-    <title>@yield('title', 'Error') &mdash; {{ config('app.name', 'KingWine') }}</title>
+    <title>@yield('title', 'Error') — {{ config('app.name', 'KingWine') }}</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
+    @stack('head')
     <script>
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+        (() => {
+            const saved = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (saved === 'dark' || (!saved && prefersDark)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
     </script>
 
     <style>
+        /* ── Design tokens ─────────────────────────────── */
         :root {
-            --bg-base: #f8fafc;
-            --bg-card: #ffffff;
-            --border-card: #e2e8f0;
-            --text-heading: #0f172a;
-            --text-body: #475569;
-            --text-muted: #64748b;
-            --primary: #4f46e5;
-            --primary-hover: #4338ca;
-            --primary-light: #eef2ff;
-            --accent-glow: rgba(79, 70, 229, 0.12);
+            --c-bg:        #f4f6fb;
+            --c-surface:   #ffffff;
+            --c-border:    #e4e9f0;
+            --c-text:      #1e293b;
+            --c-muted:     #64748b;
+            --c-faint:     #94a3b8;
+
+            /* per-page accent — default indigo */
+            --accent:      #4f46e5;
+            --accent-2:    #6366f1;
+            --accent-bg:   rgba(79, 70, 229, 0.08);
+            --accent-ring: rgba(79, 70, 229, 0.2);
+            --accent-glow: rgba(99, 102, 241, 0.25);
         }
 
         html.dark {
-            --bg-base: #0a0f1d;
-            --bg-card: #111827;
-            --border-card: #1f2937;
-            --text-heading: #f8fafc;
-            --text-body: #94a3b8;
-            --text-muted: #64748b;
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --primary-light: rgba(99, 102, 241, 0.15);
-            --accent-glow: rgba(99, 102, 241, 0.18);
+            --c-bg:      #09101e;
+            --c-surface: #111827;
+            --c-border:  #1e2c3f;
+            --c-text:    #f1f5f9;
+            --c-muted:   #94a3b8;
+            --c-faint:   #475569;
+
+            --accent-bg:   rgba(99, 102, 241, 0.12);
+            --accent-ring: rgba(99, 102, 241, 0.3);
+            --accent-glow: rgba(99, 102, 241, 0.3);
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        /* ── Reset ─────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: var(--bg-base);
-            color: var(--text-body);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--c-bg);
+            color: var(--c-text);
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+            display: grid;
+            grid-template-rows: 1fr auto;
             overflow-x: hidden;
-            transition: background-color 0.25s ease, color 0.25s ease;
+            transition: background 0.2s, color 0.2s;
         }
 
-        .bg-mesh {
+        /* ── Ambient background ─────────────────────────── */
+        .scene {
             position: fixed;
             inset: 0;
-            pointer-events: none;
             z-index: 0;
-            background-image: 
-                radial-gradient(at 15% 15%, var(--accent-glow) 0px, transparent 55%),
-                radial-gradient(at 85% 85%, rgba(14, 165, 233, 0.1) 0px, transparent 50%),
-                radial-gradient(at 50% 50%, rgba(236, 72, 153, 0.05) 0px, transparent 60%);
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .scene-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.35;
+        }
+        html.dark .scene-blob { opacity: 0.22; }
+
+        .blob-1 {
+            width: 600px; height: 600px;
+            top: -180px; left: -150px;
+            background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+            animation: drift 14s ease-in-out infinite alternate;
+        }
+        .blob-2 {
+            width: 420px; height: 420px;
+            bottom: -100px; right: -80px;
+            background: radial-gradient(circle, var(--accent-2) 0%, transparent 70%);
+            animation: drift 18s ease-in-out infinite alternate-reverse;
+        }
+        @keyframes drift {
+            from { transform: translate(0, 0) scale(1); }
+            to   { transform: translate(30px, 20px) scale(1.05); }
         }
 
-        .bg-grid {
-            position: fixed;
+        .scene-grid {
+            position: absolute;
             inset: 0;
-            pointer-events: none;
-            z-index: 0;
-            opacity: 0.035;
-            background-size: 32px 32px;
-            background-image: 
-                linear-gradient(to right, currentColor 1px, transparent 1px),
-                linear-gradient(to bottom, currentColor 1px, transparent 1px);
+            background-image:
+                linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+            background-size: 36px 36px;
+        }
+        html.dark .scene-grid {
+            background-image:
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
         }
 
-        .main-container {
+        /* ── Main layout ────────────────────────────────── */
+        .page-center {
             position: relative;
             z-index: 10;
-            flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 2.5rem 1.25rem;
+            padding: 3rem 1.25rem;
         }
 
-        .error-card {
+        /* ── Card ───────────────────────────────────────── */
+        .card {
             width: 100%;
-            max-width: 640px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-card);
-            border-radius: 1.5rem;
-            padding: 2.5rem 2.25rem;
-            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.07), 0 0 1px 1px rgba(0, 0, 0, 0.02);
+            max-width: 600px;
+            background: var(--c-surface);
+            border: 1px solid var(--c-border);
+            border-radius: 20px;
+            padding: 2.75rem 2.5rem;
+            box-shadow:
+                0 1px 2px rgba(0,0,0,0.04),
+                0 8px 24px rgba(0,0,0,0.06),
+                0 32px 64px rgba(0,0,0,0.04);
             text-align: center;
-            position: relative;
-            backdrop-filter: blur(8px);
+        }
+        html.dark .card {
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.04),
+                0 8px 32px rgba(0,0,0,0.4),
+                0 32px 80px rgba(0,0,0,0.3);
         }
 
-        html.dark .error-card {
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
-        }
-
-        .brand-pill {
+        /* ── Brand strip ────────────────────────────────── */
+        .brand {
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.35rem 0.85rem;
-            border-radius: 9999px;
-            background: var(--primary-light);
-            color: var(--primary);
-            font-size: 0.8125rem;
+            gap: 7px;
+            font-size: 0.78rem;
             font-weight: 600;
-            letter-spacing: 0.02em;
-            margin-bottom: 1.5rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--accent);
+            background: var(--accent-bg);
+            border: 1px solid var(--accent-ring);
+            padding: 5px 14px;
+            border-radius: 100px;
+            margin-bottom: 1.75rem;
         }
+        .brand svg { width: 13px; height: 13px; flex-shrink: 0; }
 
-        .brand-pill svg {
-            width: 14px;
-            height: 14px;
-        }
-
-        .icon-wrapper {
+        /* ── Illustration wrapper ───────────────────────── */
+        .illus-wrap {
             position: relative;
-            width: 88px;
-            height: 88px;
+            width: 96px;
+            height: 96px;
             margin: 0 auto 1.5rem;
+        }
+        .illus-glow {
+            position: absolute;
+            inset: -10px;
+            border-radius: 50%;
+            background: var(--accent);
+            opacity: 0.18;
+            filter: blur(18px);
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.18; transform: scale(1); }
+            50%       { opacity: 0.28; transform: scale(1.08); }
+        }
+        .illus-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 1.5px solid var(--accent-ring);
+            animation: spin-slow 12s linear infinite;
+        }
+        @keyframes spin-slow {
+            to { transform: rotate(360deg); }
+        }
+        .illus-icon {
+            position: relative;
+            z-index: 1;
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            background: var(--accent-bg);
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 1.25rem;
-            background: var(--primary-light);
-            color: var(--primary);
+            color: var(--accent);
         }
+        .illus-icon svg { width: 42px; height: 42px; }
 
-        .icon-glow {
-            position: absolute;
-            inset: -8px;
-            border-radius: 1.5rem;
-            background: var(--primary);
-            opacity: 0.2;
-            filter: blur(14px);
-            z-index: -1;
-        }
-
-        .status-badge {
+        /* ── Code badge ─────────────────────────────────── */
+        .code-badge {
             display: inline-block;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.875rem;
+            font-size: 0.75rem;
             font-weight: 700;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
-            padding: 0.25rem 0.75rem;
-            border-radius: 0.5rem;
-            background: rgba(100, 116, 139, 0.12);
-            color: var(--text-muted);
-            margin-bottom: 0.75rem;
+            color: var(--accent);
+            background: var(--accent-bg);
+            border: 1px solid var(--accent-ring);
+            padding: 3px 10px;
+            border-radius: 6px;
+            margin-bottom: 1rem;
         }
 
-        .error-title {
-            font-size: 1.875rem;
+        /* ── Headings & body ────────────────────────────── */
+        .err-title {
+            font-size: 1.8rem;
             font-weight: 800;
-            color: var(--text-heading);
-            letter-spacing: -0.025em;
-            line-height: 1.25;
-            margin-bottom: 0.75rem;
+            color: var(--c-text);
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            margin-bottom: 0.6rem;
         }
-
-        .error-description {
-            font-size: 0.975rem;
-            color: var(--text-body);
-            line-height: 1.6;
+        .err-msg {
+            font-size: 0.95rem;
+            color: var(--c-muted);
+            line-height: 1.65;
             margin-bottom: 2rem;
-            max-width: 480px;
+            max-width: 440px;
             margin-left: auto;
             margin-right: auto;
         }
 
-        .actions-group {
+        /* ── Buttons ────────────────────────────────────── */
+        .actions {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
             justify-content: center;
-            gap: 0.75rem;
+            gap: 0.6rem;
             margin-bottom: 2rem;
         }
-
         .btn {
             display: inline-flex;
             align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0.65rem 1.25rem;
-            border-radius: 0.75rem;
+            gap: 7px;
+            padding: 0.6rem 1.2rem;
+            border-radius: 10px;
             font-size: 0.875rem;
             font-weight: 600;
             text-decoration: none;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
             cursor: pointer;
-            border: 1px solid transparent;
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: inherit;
         }
-
-        .btn:active {
-            transform: scale(0.98);
-        }
+        .btn:active { transform: scale(0.97); }
+        .btn svg { width: 15px; height: 15px; flex-shrink: 0; }
 
         .btn-primary {
-            background-color: var(--primary);
-            color: #ffffff;
-            box-shadow: 0 4px 12px -2px rgba(79, 70, 229, 0.35);
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 4px 14px -2px var(--accent-glow);
         }
-
         .btn-primary:hover {
-            background-color: var(--primary-hover);
-            box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.45);
+            filter: brightness(1.1);
+            box-shadow: 0 6px 20px -2px var(--accent-glow);
         }
-
-        .btn-secondary {
+        .btn-ghost {
             background: transparent;
-            color: var(--text-heading);
-            border-color: var(--border-card);
+            color: var(--c-muted);
+            border: 1px solid var(--c-border);
+        }
+        .btn-ghost:hover {
+            color: var(--c-text);
+            background: rgba(100,116,139,0.07);
+            border-color: var(--c-muted);
         }
 
-        .btn-secondary:hover {
-            background: rgba(100, 116, 139, 0.08);
-            border-color: var(--text-muted);
+        /* ── Quick links ────────────────────────────────── */
+        .divider {
+            border: none;
+            border-top: 1px solid var(--c-border);
+            margin: 0 0 1.5rem;
         }
-
-        .quick-links {
-            border-top: 1px solid var(--border-card);
-            padding-top: 1.5rem;
-            margin-top: 1rem;
-        }
-
-        .quick-links-title {
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-muted);
+        .ql-label {
+            font-size: 0.7rem;
             font-weight: 700;
-            margin-bottom: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--c-faint);
+            margin-bottom: 0.75rem;
         }
-
-        .quick-links-grid {
+        .ql-row {
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            gap: 0.5rem;
+            gap: 6px;
         }
-
-        .quick-pill {
+        .ql-pill {
             display: inline-flex;
             align-items: center;
-            gap: 0.375rem;
-            padding: 0.35rem 0.75rem;
-            border-radius: 0.5rem;
-            font-size: 0.8125rem;
+            gap: 5px;
+            padding: 4px 12px;
+            font-size: 0.8rem;
             font-weight: 500;
-            color: var(--text-muted);
-            background: rgba(100, 116, 139, 0.06);
+            color: var(--c-muted);
+            background: rgba(100,116,139,0.06);
             border: 1px solid transparent;
+            border-radius: 8px;
             text-decoration: none;
-            transition: all 0.15s ease;
+            transition: all 0.14s ease;
+        }
+        .ql-pill svg { width: 12px; height: 12px; }
+        .ql-pill:hover {
+            color: var(--accent);
+            background: var(--accent-bg);
+            border-color: var(--accent-ring);
         }
 
-        .quick-pill:hover {
-            color: var(--primary);
-            background: var(--primary-light);
-            border-color: rgba(99, 102, 241, 0.2);
-        }
-
-        .footer-bar {
+        /* ── Footer bar ─────────────────────────────────── */
+        footer.foot {
             position: relative;
             z-index: 10;
-            padding: 1.25rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            max-width: 1000px;
+            max-width: 720px;
             margin: 0 auto;
             width: 100%;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            border-top: 1px solid rgba(100, 116, 139, 0.1);
+            padding: 1rem 1.25rem;
+            border-top: 1px solid rgba(100,116,139,0.12);
+            font-size: 0.73rem;
+            color: var(--c-faint);
         }
-
-        .theme-toggle-btn {
-            background: transparent;
-            border: 1px solid var(--border-card);
-            padding: 0.35rem 0.65rem;
-            border-radius: 0.5rem;
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
+        .foot-meta code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+        }
+        .theme-btn {
             display: inline-flex;
             align-items: center;
-            gap: 0.35rem;
-            transition: all 0.15s ease;
+            gap: 5px;
+            padding: 4px 10px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            font-family: inherit;
+            color: var(--c-faint);
+            background: transparent;
+            border: 1px solid var(--c-border);
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.15s;
         }
+        .theme-btn:hover { color: var(--c-text); border-color: var(--accent); }
+        .theme-btn svg { width: 12px; height: 12px; }
 
-        .theme-toggle-btn:hover {
-            color: var(--text-heading);
-            border-color: var(--primary);
-        }
-
-        @media (max-width: 640px) {
-            .error-card {
-                padding: 2rem 1.25rem;
-                border-radius: 1.25rem;
-            }
-            .error-title {
-                font-size: 1.5rem;
-            }
-            .actions-group {
-                flex-direction: column;
-                width: 100%;
-            }
-            .btn {
-                width: 100%;
-            }
-            .footer-bar {
-                flex-direction: column;
-                gap: 0.75rem;
-                text-align: center;
-            }
+        /* ── Responsive ─────────────────────────────────── */
+        @media (max-width: 600px) {
+            .card { padding: 2rem 1.25rem; border-radius: 16px; }
+            .err-title { font-size: 1.5rem; }
+            .actions { flex-direction: column; width: 100%; }
+            .btn { width: 100%; justify-content: center; }
+            footer.foot { flex-direction: column; gap: 0.5rem; text-align: center; }
         }
     </style>
 </head>
 <body>
-    <div class="bg-mesh"></div>
-    <div class="bg-grid"></div>
+    {{-- Ambient background --}}
+    <div class="scene" aria-hidden="true">
+        <div class="scene-grid"></div>
+        <div class="scene-blob blob-1"></div>
+        <div class="scene-blob blob-2"></div>
+    </div>
 
-    <main class="main-container">
-        <div class="error-card">
-            {{-- Brand Badge --}}
-            <div class="brand-pill">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                </svg>
-                <span>{{ config('app.name', 'KingWine') }} &bull; Inventory &amp; POS</span>
-            </div>
+    <main class="page-center">
+        <div class="card" role="main">
 
-            {{-- Status Badge --}}
+            {{-- Brand pill --}}
             <div>
-                <span class="status-badge">HTTP @yield('code', 'ERROR')</span>
+                <span class="brand">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/>
+                    </svg>
+                    {{ config('app.name', 'KingWine') }}
+                </span>
             </div>
 
-            {{-- Icon Graphic --}}
-            <div class="icon-wrapper">
-                <div class="icon-glow"></div>
-                @yield('icon')
+            {{-- Illustration --}}
+            <div class="illus-wrap" aria-hidden="true">
+                <div class="illus-glow"></div>
+                <div class="illus-ring"></div>
+                <div class="illus-icon">
+                    @yield('icon')
+                </div>
             </div>
 
-            {{-- Main Headings --}}
-            <h1 class="error-title">@yield('headline', View::getSection('title', 'An Unexpected Error Occurred'))</h1>
-            <p class="error-description">
-                @yield('message', 'We ran into an unexpected obstacle while handling your request.')
-            </p>
+            {{-- Code badge --}}
+            <div>
+                <span class="code-badge">HTTP @yield('code', 'ERR')</span>
+            </div>
 
-            {{-- Action Buttons --}}
-            <div class="actions-group">
+            {{-- Title & message --}}
+            <h1 class="err-title">@yield('title', 'Something went wrong')</h1>
+            <p class="err-msg">@yield('message', 'We hit an unexpected snag. Try going back or heading to the dashboard.')</p>
+
+            @stack('after-message')
+
+            {{-- Actions --}}
+            <div class="actions">
                 @section('actions')
                     <a href="{{ url('/') }}" class="btn btn-primary" id="btn-go-dashboard">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                             <polyline points="9 22 9 12 15 12 15 22"/>
                         </svg>
-                        Return to Dashboard
+                        Back to Dashboard
                     </a>
-
-                    <button onclick="window.history.length > 1 ? window.history.back() : window.location.href='{{ url('/') }}'" class="btn btn-secondary" id="btn-go-back">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="19" y1="12" x2="5" y2="12"/>
-                            <polyline points="12 19 5 12 12 5"/>
+                    <button onclick="window.history.length > 1 ? window.history.back() : (window.location.href = '{{ url('/') }}')" class="btn btn-ghost" id="btn-go-back">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m15 18-6-6 6-6"/>
                         </svg>
-                        Previous Page
-                    </button>
-
-                    <button onclick="window.location.reload()" class="btn btn-secondary" id="btn-reload">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                            <path d="M3 3v5h5"/>
-                            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-                            <path d="M16 21h5v-5"/>
-                        </svg>
-                        Refresh
+                        Go Back
                     </button>
                 @show
             </div>
 
-            {{-- Quick Links (Only if authenticated or safe) --}}
-            <div class="quick-links">
-                <div class="quick-links-title">Quick Workspace Destinations</div>
-                <div class="quick-links-grid">
-                    <a href="{{ route('dashboard') }}" class="quick-pill">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-                        Dashboard
-                    </a>
-                    <a href="{{ route('sales.index') }}" class="quick-pill">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
-                        Sales
-                    </a>
-                    <a href="{{ route('products.index') }}" class="quick-pill">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-                        Products
-                    </a>
-                    <a href="{{ route('customers.index') }}" class="quick-pill">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        Customers
-                    </a>
-                </div>
+            {{-- Quick links --}}
+            <hr class="divider">
+            <p class="ql-label">Jump to</p>
+            <div class="ql-row">
+                <a href="{{ route('dashboard') }}" class="ql-pill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                    Dashboard
+                </a>
+                <a href="{{ route('sales.index') }}" class="ql-pill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                    Sales
+                </a>
+                <a href="{{ route('products.index') }}" class="ql-pill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    Products
+                </a>
+                <a href="{{ route('customers.index') }}" class="ql-pill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Customers
+                </a>
+                <a href="{{ route('pos.index') }}" class="ql-pill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                    POS
+                </a>
             </div>
+
         </div>
     </main>
 
-    <footer class="footer-bar">
-        <div>
-            <span>&copy; {{ date('Y') }} {{ config('app.name', 'KingWine') }}. All rights reserved.</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <span>Ref: <code>{{ request()->ip() }} &bull; {{ date('H:i:s T') }}</code></span>
-            <button class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-                <span id="theme-text">Theme</span>
-            </button>
-        </div>
+    <footer class="foot">
+        <span class="foot-meta">
+            &copy; {{ date('Y') }} {{ config('app.name', 'KingWine') }}
+            &nbsp;&bull;&nbsp;
+            <code>{{ request()->ip() }} &bull; {{ date('H:i T') }}</code>
+        </span>
+        <button class="theme-btn" onclick="toggleTheme()" title="Toggle theme" id="btn-toggle-theme">
+            <svg id="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+            </svg>
+            <svg id="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none">
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+            </svg>
+            <span id="theme-label">Light</span>
+        </button>
     </footer>
 
     <script>
+        function syncThemeBtn() {
+            const dark = document.documentElement.classList.contains('dark');
+            document.getElementById('ico-sun').style.display  = dark ? 'none' : 'block';
+            document.getElementById('ico-moon').style.display = dark ? 'block' : 'none';
+            document.getElementById('theme-label').textContent = dark ? 'Dark' : 'Light';
+        }
         function toggleTheme() {
             const html = document.documentElement;
-            if (html.classList.contains('dark')) {
-                html.classList.remove('dark');
-                localStorage.theme = 'light';
-            } else {
-                html.classList.add('dark');
-                localStorage.theme = 'dark';
-            }
+            const isDark = html.classList.toggle('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            syncThemeBtn();
         }
+        syncThemeBtn();
     </script>
+    @stack('scripts')
 </body>
 </html>

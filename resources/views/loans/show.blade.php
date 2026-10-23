@@ -299,13 +299,28 @@
                                 <td class="px-4 py-2 text-right text-green-700 dark:text-green-400 font-semibold">
                                     {{ number_format($payment->amount, 2) }}
                                 </td>
-                                <td class="px-4 py-2 capitalize text-gray-700 dark:text-gray-300">{{ $payment->method }}</td>
+                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300">
+                                    @if(in_array($payment->method, ['goods_exchange', 'supplier_offset']))
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                            <i data-lucide="handshake" class="w-3 h-3"></i> Goods Exchange
+                                        </span>
+                                    @else
+                                        <span class="capitalize">{{ $payment->method }}</span>
+                                    @endif
+                                </td>
                                 <td class="px-4 py-2 text-gray-700 dark:text-gray-300">{{ $payment->user->name ?? 'System' }}</td>
                                 <td class="px-4 py-2 text-right text-gray-700 dark:text-gray-300">{{ number_format($running, 2) }}</td>
                                 <td class="px-4 py-2 text-right {{ $rowRemaining > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400' }} font-semibold">
                                     {{ number_format($rowRemaining, 2) }}
                                 </td>
-                                <td class="px-4 py-2 text-gray-600 dark:text-gray-400">{{ $payment->notes ?? '—' }}</td>
+                                <td class="px-4 py-2 text-gray-600 dark:text-gray-400">
+                                    <span>{{ $payment->notes ?? '—' }}</span>
+                                    @if($payment->sale_id)
+                                        <a href="{{ route('sales.show', $payment->sale_id) }}" class="inline-flex items-center gap-0.5 ml-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                            <span>Sale #{{ $payment->sale_id }}</span> &rarr;
+                                        </a>
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>

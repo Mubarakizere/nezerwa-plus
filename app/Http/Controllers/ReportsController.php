@@ -72,11 +72,11 @@ class ReportsController extends Controller
         $totalProfit   = (float) $siBase->sum('profit');
         $revenueByItem = (float) $siBase->sum('subtotal'); // more precise for P&L
 
-        // Pending balances within range (keep your original formula, excluding gifts)
+        // Pending balances within range (excluding gifts and supplier offsets)
         $pendingBalances = (float) Sale::whereBetween('sale_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->where('status', 'pending')
             ->where('is_gift', false)
-            ->where('payment_channel', '!=', 'boss_gift')
+            ->whereNotIn('payment_channel', ['boss_gift', 'supplier_offset'])
             ->sum(DB::raw('COALESCE(total_amount,0) - COALESCE(amount_paid,0) - COALESCE(returns_total,0)'));
 
         // =========================
@@ -589,14 +589,23 @@ class ReportsController extends Controller
             })
             ->sum('total_amount');
 
+        $ledgerSupplierOffsetSales = (float) Sale::whereDate('sale_date', '>=', $startDate->toDateString())
+            ->whereDate('sale_date', '<=', $endDate->toDateString())
+            ->where(function($q) {
+                $q->where('payment_channel', 'supplier_offset')
+                  ->orWhereHas('payments', fn($p) => $p->whereIn('method', ['supplier_offset', 'goods_exchange']));
+            })
+            ->sum('amount_paid');
+
         $ledgerCreditSales = (float) Sale::whereDate('sale_date', '>=', $startDate->toDateString())
             ->whereDate('sale_date', '<=', $endDate->toDateString())
             ->where('is_gift', false)
-            ->where('payment_channel', '!=', 'boss_gift')
+            ->whereNotIn('payment_channel', ['boss_gift', 'supplier_offset'])
             ->whereRaw('(total_amount - amount_paid) > 0')
             ->sum(DB::raw('total_amount - amount_paid'));
 
-        $totalLedgerSales = $ledgerCashSales + $ledgerMomoSales + $ledgerCreditSales + $ledgerGiftSales;
+        $totalLedgerSales = $ledgerCashSales + $ledgerMomoSales + $ledgerCreditSales + $ledgerGiftSales + $ledgerSupplierOffsetSales;
+
 
         // 4. Cash Breakdown
         $cashSalesSystem = $ledgerCashSales;
@@ -772,7 +781,7 @@ class ReportsController extends Controller
 
         return compact(
             'mode', 'startDateInput', 'endDateInput', 'startDate', 'endDate',
-            'channels', 'ledgerCashSales', 'ledgerMomoSales', 'ledgerCreditSales', 'ledgerGiftSales', 'totalLedgerSales',
+            'channels', 'ledgerCashSales', 'ledgerMomoSales', 'ledgerCreditSales', 'ledgerGiftSales', 'ledgerSupplierOffsetSales', 'totalLedgerSales',
             'cashOpeningBalance', 'cashSalesSystem', 'totalCashDebtReceived', 'otherCashReceived', 'totalCashAvailable',
             'cashExpenseItems', 'cashDeposit', 'totalCashOutflows', 'cashClosingBalance',
             'momoOpeningBalance', 'momoSalesSystem', 'totalMomoDebtReceived', 'otherMomoReceived', 'totalMomoAvailable',

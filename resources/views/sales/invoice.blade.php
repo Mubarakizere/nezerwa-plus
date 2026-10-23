@@ -31,6 +31,17 @@
                     <td style="color: #6b21a8; font-style: italic;">{{ $sale->gift_reason }}</td>
                 </tr>
             @endif
+        @elseif($sale->isSupplierOffset() || $sale->supplier_id)
+            <tr>
+                <td class="text-gray-500">Settlement:</td>
+                <td class="font-bold" style="color: #b45309;">SUPPLIER DEBT OFFSET</td>
+            </tr>
+            @if($sale->supplier)
+                <tr>
+                    <td class="text-gray-500">Supplier:</td>
+                    <td style="color: #b45309; font-weight: bold;">{{ $sale->supplier->name }}</td>
+                </tr>
+            @endif
         @endif
     </table>
 @endsection
@@ -39,7 +50,13 @@
     <div class="section grid-2">
         <div class="col">
             <h3>Bill To</h3>
-            @if($sale->customer)
+            @if($sale->supplier)
+                <div class="font-bold">{{ $sale->supplier->name }} <span style="font-size: 10px; color: #b45309; font-weight: normal;">(Supplier)</span></div>
+                <div class="text-sm text-gray-500">
+                    {{ $sale->supplier->phone ?? 'No Phone' }}<br>
+                    {{ $sale->supplier->email ?? '' }}
+                </div>
+            @elseif($sale->customer)
                 <div class="font-bold">{{ $sale->customer->name }}</div>
                 <div class="text-sm text-gray-500">
                     {{ $sale->customer->phone ?? 'No Phone' }}<br>
@@ -57,6 +74,10 @@
             @if($sale->isGift())
                 <div class="text-sm" style="color: #7c3aed; margin-top: 5px;">
                     <strong>Notice:</strong> Authorized as a complimentary gift by boss. Zero payment required.
+                </div>
+            @elseif($sale->isSupplierOffset() || $sale->supplier_id)
+                <div class="text-sm" style="color: #b45309; margin-top: 5px; background: #fef3c7; padding: 6px 8px; border-radius: 4px;">
+                    <strong>Notice:</strong> Goods taken in exchange for reducing store debt owed to supplier (FIFO loan repayment).
                 </div>
             @endif
         </div>
@@ -113,6 +134,32 @@
                 </tbody>
             </table>
         </div>
+    @if($sale->loanPayments && $sale->loanPayments->count())
+        <div style="margin-top: 15px; margin-bottom: 15px;">
+            <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #92400e; margin-bottom: 5px; border-bottom: 1px solid #fde68a; padding-bottom: 3px;">
+                Store Loans Reduced via this Goods Exchange (FIFO)
+            </div>
+            <table class="table" style="font-size: 10px; margin-bottom: 0;">
+                <thead>
+                    <tr>
+                        <th style="padding: 4px 6px;">Loan #</th>
+                        <th style="padding: 4px 6px;">Date</th>
+                        <th style="padding: 4px 6px;">Method</th>
+                        <th style="padding: 4px 6px;" class="num">Amount Reduced</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($sale->loanPayments as $lp)
+                        <tr>
+                            <td style="padding: 4px 6px;">Loan #{{ $lp->loan_id }} ({{ $lp->loan->loan_number ?? 'Loan' }})</td>
+                            <td style="padding: 4px 6px;">{{ $lp->payment_date ? \Carbon\Carbon::parse($lp->payment_date)->format('Y-m-d') : '—' }}</td>
+                            <td style="padding: 4px 6px; text-transform: uppercase;">{{ $lp->method }}</td>
+                            <td style="padding: 4px 6px; font-weight: bold; color: #059669;" class="num">- {{ number_format($lp->amount, 2) }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     @endif
 
     <div class="totals">
@@ -136,7 +183,7 @@
             </div>
         @else
             <div class="totals-row" style="margin-top: 10px; font-size: 11px;">
-                <div class="totals-label">Amount Paid</div>
+                <div class="totals-label">Amount Paid / Offset</div>
                 <div class="totals-value text-success">{{ number_format($sale->amount_paid, 2) }}</div>
             </div>
             @php $due = $sale->total_amount - $sale->amount_paid; @endphp
@@ -153,6 +200,12 @@
         <div style="text-align: center; margin-top: 40px;">
             <div style="display: inline-block; border: 2px solid #7c3aed; color: #7c3aed; padding: 10px 24px; font-weight: bold; font-size: 18px; transform: rotate(-8deg); opacity: 0.85; border-radius: 4px; letter-spacing: 1px;">
                 COMPLIMENTARY BOSS GIFT
+            </div>
+        </div>
+    @elseif($sale->isSupplierOffset() || $sale->supplier_id)
+        <div style="text-align: center; margin-top: 40px;">
+            <div style="display: inline-block; border: 2px solid #d97706; color: #d97706; padding: 10px 24px; font-weight: bold; font-size: 16px; transform: rotate(-8deg); opacity: 0.9; border-radius: 4px; letter-spacing: 1px;">
+                SUPPLIER DEBT OFFSET
             </div>
         </div>
     @elseif($sale->status === 'paid' || ($sale->total_amount - $sale->amount_paid <= 0))

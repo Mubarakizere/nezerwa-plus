@@ -47,17 +47,19 @@ class SaleObserver
                     return;
                 }
 
-                // Calculate monetary payments vs gift coverage
-                $monetaryPaid = 0.0;
-                $giftPaid     = 0.0;
+                // Calculate monetary payments vs non-monetary coverage (gift or supplier loan offset)
+                $nonMonetaryMethods = ['boss_gift', 'supplier_offset', 'goods_exchange'];
+                $monetaryPaid       = 0.0;
+                $nonMonetaryPaid    = 0.0;
+
                 if ($sale->payments()->count() > 0) {
-                    $monetaryPaid = (float) $sale->payments()->where('method', '!=', 'boss_gift')->sum('amount');
-                    $giftPaid     = (float) $sale->payments()->where('method', 'boss_gift')->sum('amount');
+                    $monetaryPaid    = (float) $sale->payments()->whereNotIn('method', $nonMonetaryMethods)->sum('amount');
+                    $nonMonetaryPaid = (float) $sale->payments()->whereIn('method', $nonMonetaryMethods)->sum('amount');
                 } else {
-                    if ($this->channel($sale) === 'boss_gift') {
-                        $giftPaid = (float) ($sale->amount_paid ?? 0);
+                    if (in_array($this->channel($sale), $nonMonetaryMethods, true)) {
+                        $nonMonetaryPaid = (float) ($sale->amount_paid ?? 0);
                     } else {
-                        $monetaryPaid = (float) ($sale->amount_paid ?? 0);
+                        $monetaryPaid    = (float) ($sale->amount_paid ?? 0);
                     }
                 }
 
@@ -90,8 +92,8 @@ class SaleObserver
                     ]);
                 }
 
-                // 2) Loan only if there’s an unpaid balance (gift-covered amount is not debt)
-                $totalCovered = $monetaryPaid + $giftPaid;
+                // 2) Loan only if there’s an unpaid balance (gift and offset amounts are not debt)
+                $totalCovered = $monetaryPaid + $nonMonetaryPaid;
                 $unpaid = max(0.0, ($sale->total_amount ?? 0) - $totalCovered);
                 if ($unpaid > 0.009) {
                     Loan::firstOrCreate(
@@ -142,21 +144,23 @@ class SaleObserver
                     return;
                 }
 
-                // Calculate monetary payments vs gift coverage
-                $monetaryPaid = 0.0;
-                $giftPaid     = 0.0;
+                // Calculate monetary payments vs non-monetary coverage
+                $nonMonetaryMethods = ['boss_gift', 'supplier_offset', 'goods_exchange'];
+                $monetaryPaid       = 0.0;
+                $nonMonetaryPaid    = 0.0;
+
                 if ($sale->payments()->count() > 0) {
-                    $monetaryPaid = (float) $sale->payments()->where('method', '!=', 'boss_gift')->sum('amount');
-                    $giftPaid     = (float) $sale->payments()->where('method', 'boss_gift')->sum('amount');
+                    $monetaryPaid    = (float) $sale->payments()->whereNotIn('method', $nonMonetaryMethods)->sum('amount');
+                    $nonMonetaryPaid = (float) $sale->payments()->whereIn('method', $nonMonetaryMethods)->sum('amount');
                 } else {
-                    if ($this->channel($sale) === 'boss_gift') {
-                        $giftPaid = (float) ($sale->amount_paid ?? 0);
+                    if (in_array($this->channel($sale), $nonMonetaryMethods, true)) {
+                        $nonMonetaryPaid = (float) ($sale->amount_paid ?? 0);
                     } else {
-                        $monetaryPaid = (float) ($sale->amount_paid ?? 0);
+                        $monetaryPaid    = (float) ($sale->amount_paid ?? 0);
                     }
                 }
 
-                $totalCovered = $monetaryPaid + $giftPaid;
+                $totalCovered = $monetaryPaid + $nonMonetaryPaid;
                 $unpaid = max(0.0, ($sale->total_amount ?? 0) - $totalCovered);
                 $loan   = Loan::where('sale_id', $sale->id)->first();
 

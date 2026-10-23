@@ -3,8 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\{
-    Sale, SaleItem, Product, Customer, Transaction, StockMovement, SalePayment, PaymentChannel
+    Sale, SaleItem, Product, Customer, Supplier, Transaction, StockMovement, SalePayment, PaymentChannel
 };
+use App\Services\SupplierLoanSettlementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Auth, Log};
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -50,9 +51,20 @@ class SaleController extends Controller
         $customers = Customer::orderBy('name')->get();
         $products  = Product::orderBy('name')->get(['id', 'name', 'price', 'cost_price']);
         $paymentChannels = PaymentChannel::where('is_active', true)->get();
+
+        $suppliers = Supplier::orderBy('name')->get()->map(function ($s) {
+            return [
+                'id'          => $s->id,
+                'name'        => $s->name,
+                'phone'       => $s->phone,
+                'total_owed'  => $s->total_owed,
+                'loans_count' => $s->pending_taken_loans_count,
+            ];
+        });
         
-        return view('sales.create', compact('customers', 'products', 'paymentChannels'));
+        return view('sales.create', compact('customers', 'products', 'paymentChannels', 'suppliers'));
     }
+
 
     /** ===================== STORE ===================== */
     public function store(Request $request)
@@ -65,10 +77,10 @@ class SaleController extends Controller
         $request->merge(['products' => $cleanProducts]);
 
         // -------- Validate (mode-aware) --------
-        $mode = $request->input('cust_mode', 'walkin'); // walkin|existing|new
+        $mode = $request->input('cust_mode', 'walkin'); // walkin|existing|new|supplier
 
         $rules = [
-            'cust_mode'             => 'required|in:walkin,existing,new',
+            'cust_mode'             => 'required|in:walkin,existing,new,supplier',
             'sale_date'             => 'required|date',
             'products'              => 'required|array|min:1',
             'products.*.product_id' => 'required|exists:products,id',
@@ -97,11 +109,13 @@ class SaleController extends Controller
             $rules['customer_id'] = 'required|exists:customers,id';
         } elseif ($mode === 'new') {
             // Accept both modern customer_* and legacy new_customer_* field names
-            $rules['customer_name']    = 'required_without:new_customer_name|string|min:2|max:120';
+            $rules['customer_name']     = 'required_without:new_customer_name|string|min:2|max:120';
             $rules['new_customer_name'] = 'required_without:customer_name|string|min:2|max:120';
-            $rules['customer_phone']   = 'nullable|string|max:30';
-            $rules['customer_email']   = 'nullable|email|max:120';
-            $rules['customer_address'] = 'nullable|string|max:200';
+            $rules['customer_phone']    = 'nullable|string|max:30';
+            $rules['customer_email']    = 'nullable|email|max:120';
+            $rules['customer_address']  = 'nullable|string|max:200';
+        } elseif ($mode === 'supplier') {
+            $rules['supplier_id'] = 'required|exists:suppliers,id';
         }
 
         $request->validate($rules);
@@ -132,8 +146,9 @@ class SaleController extends Controller
         try {
             DB::beginTransaction();
 
-            // -------- Resolve customer id by mode --------
+            // -------- Resolve customer or supplier id by mode --------
             $customerId = null;
+            $supplierId = null;
             if ($mode === 'existing') {
                 $customerId = (string) $request->customer_id;
             } elseif ($mode === 'new') {
@@ -141,13 +156,16 @@ class SaleController extends Controller
                 if (!$customerId) {
                     throw new \RuntimeException('Failed to create customer (missing name).');
                 }
-            } // walkin => null
+            } elseif ($mode === 'supplier') {
+                $supplierId = (int) $request->supplier_id;
+            }
 
             $isGift = $request->boolean('is_gift') || $request->input('payment_channel') === 'boss_gift';
 
             // -------- Create base Sale (amounts/status set later) --------
             $sale = Sale::create([
                 'customer_id'     => $customerId,
+                'supplier_id'     => $supplierId,
                 'user_id'         => Auth::id(),
                 'sale_date'       => $request->sale_date,
                 'payment_channel' => $isGift ? 'boss_gift' : $this->normalizeChannel($request->payment_channel, $request->method),
@@ -159,6 +177,7 @@ class SaleController extends Controller
                 'gift_reason'     => $request->gift_reason,
                 'notes'           => $request->notes,
             ]);
+
 
             // -------- Items + stock movements --------
             $totalAmount = 0.0;
@@ -247,6 +266,35 @@ class SaleController extends Controller
                 $dominant = $this->normalizeChannel($request->payment_channel, $request->method);
             }
 
+            // If single payment and payment channel is supplier_offset
+            if ($dominant === 'supplier_offset' && $sale->payments()->count() === 0) {
+                SalePayment::create([
+                    'sale_id'   => $sale->id,
+                    'method'    => 'supplier_offset',
+                    'amount'    => $isGift ? $totalAmount : $sumPaid,
+                    'reference' => 'Supplier Debt Offset',
+                    'paid_at'   => $request->sale_date ?? now(),
+                    'user_id'   => Auth::id(),
+                ]);
+            }
+
+            // -------- Settle Supplier Loans FIFO if Supplier Offset was used --------
+            if ($supplierId) {
+                $offsetAmount = 0.0;
+                if ($sale->payments()->count() > 0) {
+                    $offsetAmount = (float) $sale->payments()->whereIn('method', ['supplier_offset', 'goods_exchange'])->sum('amount');
+                } elseif (in_array($dominant, ['supplier_offset', 'goods_exchange'], true)) {
+                    $offsetAmount = (float) $sumPaid;
+                }
+
+                if ($offsetAmount > 0.005) {
+                    $supplier = Supplier::find($supplierId);
+                    if ($supplier) {
+                        app(SupplierLoanSettlementService::class)->settleFifo($sale, $supplier, $offsetAmount, Auth::id());
+                    }
+                }
+            }
+
         // -------- Finalize sale --------
         $sale->update([
             'total_amount'    => $totalAmount,
@@ -256,6 +304,7 @@ class SaleController extends Controller
             'is_gift'         => $isGift,
             'gift_reason'     => $request->gift_reason,
         ]);
+
 
         // -------- Check for Low Stock & Alert Admins --------
         try {
@@ -321,22 +370,33 @@ class SaleController extends Controller
         $customers = Customer::orderBy('name')->get(['id', 'name']);
         $products  = Product::orderBy('name')->get(['id', 'name', 'price', 'cost_price']);
         $paymentChannels = PaymentChannel::where('is_active', true)->get();
+        $suppliers = Supplier::orderBy('name')->get()->map(function ($s) {
+            return [
+                'id'          => $s->id,
+                'name'        => $s->name,
+                'phone'       => $s->phone,
+                'total_owed'  => $s->total_owed,
+                'loans_count' => $s->pending_taken_loans_count,
+            ];
+        });
         $sale->load(['items.product', 'payments']);
 
-        return view('sales.edit', compact('sale', 'customers', 'products', 'paymentChannels'));
+        return view('sales.edit', compact('sale', 'customers', 'products', 'paymentChannels', 'suppliers'));
     }
+
 
     /** ===================== UPDATE ===================== */
     public function update(Request $request, Sale $sale)
     {
         // Quick customer create if inline fields provided (and no id)
-        if (!$request->filled('customer_id')) {
+        if (!$request->filled('customer_id') && !$request->filled('supplier_id')) {
             $cid = $this->quickCreateCustomerFromRequest($request);
             if ($cid) { $request->merge(['customer_id' => $cid]); }
         }
 
         $request->validate([
             'customer_id'           => 'nullable|exists:customers,id',
+            'supplier_id'           => 'nullable|exists:suppliers,id',
             'sale_date'             => 'required|date',
             'products'              => 'required|array|min:1',
             'products.*.product_id' => 'required|exists:products,id',
@@ -393,7 +453,13 @@ class SaleController extends Controller
         try {
             DB::beginTransaction();
 
+            // Reverse existing supplier loan settlement before updating
+            app(SupplierLoanSettlementService::class)->reverseForSale($sale);
+
             $isGift = $request->boolean('is_gift') || $request->input('payment_channel') === 'boss_gift';
+            $supplierId = $request->filled('supplier_id') ? (int)$request->supplier_id : ($request->filled('customer_id') ? null : $sale->supplier_id);
+            $customerId = $request->filled('supplier_id') ? null : $request->customer_id;
+
 
             // Reset items + stock movements
             StockMovement::where('source_type', Sale::class)
@@ -479,10 +545,39 @@ class SaleController extends Controller
             } else {
                 $sumPaid  = round((float)($request->amount_paid ?? 0), 2);
                 $dominant = $this->normalizeChannel($request->payment_channel, $request->method, $sale->payment_channel);
+
+                if ($dominant === 'supplier_offset') {
+                    SalePayment::create([
+                        'sale_id'   => $sale->id,
+                        'method'    => 'supplier_offset',
+                        'amount'    => $sumPaid,
+                        'reference' => 'Supplier Debt Offset',
+                        'paid_at'   => $request->sale_date ?? now(),
+                        'user_id'   => Auth::id(),
+                    ]);
+                }
+            }
+
+            // Re-settle supplier loans FIFO if offset was used
+            if ($supplierId) {
+                $offsetAmount = 0.0;
+                if ($sale->payments()->count() > 0) {
+                    $offsetAmount = (float) $sale->payments()->whereIn('method', ['supplier_offset', 'goods_exchange'])->sum('amount');
+                } elseif (in_array($dominant, ['supplier_offset', 'goods_exchange'], true)) {
+                    $offsetAmount = (float) $sumPaid;
+                }
+
+                if ($offsetAmount > 0.005) {
+                    $supplier = Supplier::find($supplierId);
+                    if ($supplier) {
+                        app(SupplierLoanSettlementService::class)->settleFifo($sale, $supplier, $offsetAmount, Auth::id());
+                    }
+                }
             }
 
             $sale->update([
-                'customer_id'     => $request->customer_id,
+                'customer_id'     => $customerId,
+                'supplier_id'     => $supplierId,
                 'sale_date'       => $request->sale_date,
                 'payment_channel' => $isGift ? 'boss_gift' : ($dominant ?: 'cash'),
                 'method'          => $request->method ?? $sale->method,
@@ -508,6 +603,7 @@ class SaleController extends Controller
     public function destroy(Sale $sale)
     {
         DB::transaction(function () use ($sale) {
+            app(SupplierLoanSettlementService::class)->reverseForSale($sale);
             $sale->payments()->delete();
             StockMovement::where('source_type', Sale::class)->where('source_id', $sale->id)->delete();
             Transaction::where('sale_id', $sale->id)->delete(); // keep if you have this FK
@@ -517,6 +613,7 @@ class SaleController extends Controller
 
         return redirect()->route('sales.index')->with('success', 'Sale deleted successfully.');
     }
+
 
     /** ===================== INVOICE ===================== */
     public function invoice(Sale $sale)
@@ -651,6 +748,9 @@ class SaleController extends Controller
     {
         // Check if channel exists in DB
         if ($paymentChannel) {
+            if (in_array($paymentChannel, ['boss_gift', 'supplier_offset', 'supplier-debt-offset'])) {
+                return $paymentChannel;
+            }
             $exists = PaymentChannel::where('slug', $paymentChannel)->orWhere('name', $paymentChannel)->exists();
             if ($exists) return $paymentChannel;
         }
@@ -658,6 +758,9 @@ class SaleController extends Controller
         // Check method
         if ($method) {
             $m = strtolower($method);
+            if (in_array($m, ['boss_gift', 'supplier_offset', 'supplier-debt-offset', 'goods_exchange'])) {
+                return $m;
+            }
             $exists = PaymentChannel::where('slug', $m)->orWhere('name', $method)->exists();
             if ($exists) return $m;
         }
@@ -668,9 +771,9 @@ class SaleController extends Controller
     private function normalizePaymentMethod(string $m): string
     {
         $m = strtolower(trim($m));
-        // Verify against DB, if not found return as is or fallback?
-        // Let's return as is to support historical data or just trust the input if it matches a slug
-        // Ideally we check:
+        if (in_array($m, ['boss_gift', 'supplier_offset', 'supplier-debt-offset', 'goods_exchange'])) {
+            return $m;
+        }
         $exists = PaymentChannel::where('slug', $m)->orWhere('name', $m)->exists();
         return $exists ? $m : 'cash';
     }

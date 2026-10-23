@@ -65,6 +65,17 @@
                 </x-sidebar-link>
             @endcan
 
+            {{-- 🖥️ POS Terminal --}}
+            @can('sales.create')
+                <x-sidebar-link href="{{ route('pos.index') }}" :active="request()->routeIs('pos.*')">
+                    <i data-lucide="monitor" class="w-4 h-4 text-emerald-400 {{ request()->routeIs('pos.*') ? 'text-white' : '' }}"></i>
+                    <span class="flex items-center justify-between flex-1">
+                        <span>POS Terminal</span>
+                        <span class="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">New</span>
+                    </span>
+                </x-sidebar-link>
+            @endcan
+
             {{-- 💰 Sales & Customers --}}
             @canany(['sales.view', 'customers.view'])
                 <div x-data="{ open: {{ $salesActive ? 'true' : 'false' }} }" class="mt-1">
@@ -80,6 +91,17 @@
                     </button>
 
                     <div x-show="open" x-collapse class="ml-4 pl-3 border-l border-slate-800 space-y-0.5 mt-1">
+                        @can('sales.create')
+                            <a href="{{ route('pos.index') }}"
+                               class="flex items-center justify-between px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors text-emerald-400 hover:text-emerald-300 hover:bg-slate-800/50">
+                                <span class="flex items-center">
+                                    <i data-lucide="monitor" class="w-3.5 h-3.5 mr-2 text-emerald-400"></i>
+                                    POS Terminal
+                                </span>
+                                <span class="text-[8px] uppercase font-bold px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300">Fast</span>
+                            </a>
+                        @endcan
+
                         @can('sales.view')
                             <a href="{{ route('sales.index') }}"
                                class="flex items-center px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors

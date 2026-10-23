@@ -12,6 +12,7 @@ class Sale extends Model
 
     protected $fillable = [
         'customer_id',
+        'supplier_id',
         'user_id',
         'sale_date',
         'total_amount',
@@ -38,6 +39,12 @@ class Sale extends Model
     {
         return $this->belongsTo(Customer::class);
     }
+
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
 
     public function user()
     {
@@ -68,12 +75,31 @@ class Sale extends Model
         return $this->hasOne(Loan::class);
     }
 
+    public function loanPayments()
+    {
+        return $this->hasMany(\App\Models\LoanPayment::class);
+    }
+
     /**
      * Check if this sale is a complimentary gift given by the boss
      */
     public function isGift(): bool
     {
         return (bool) ($this->is_gift || strtolower((string)($this->payment_channel ?? '')) === 'boss_gift');
+    }
+
+    /**
+     * Check if this sale is paid via Supplier Debt Offset (goods exchange)
+     */
+    public function isSupplierOffset(): bool
+    {
+        if (strtolower((string)($this->payment_channel ?? '')) === 'supplier_offset') {
+            return true;
+        }
+        if ($this->relationLoaded('payments')) {
+            return $this->payments->contains('method', 'supplier_offset');
+        }
+        return $this->payments()->where('method', 'supplier_offset')->exists();
     }
 
     /**
@@ -105,17 +131,25 @@ class Sale extends Model
             return 0.0;
         }
 
-        // Account for any partial boss_gift split payments
-        $giftPaid = 0.0;
+        // Total amount covered across non-monetary / offset split payments (boss_gift and supplier_offset)
+        $nonMonetaryPaid = 0.0;
         if ($this->relationLoaded('payments')) {
-            $giftPaid = (float) $this->payments->where('method', 'boss_gift')->sum('amount');
+            $nonMonetaryPaid = (float) $this->payments->whereIn('method', ['boss_gift', 'supplier_offset'])->sum('amount');
+        } else {
+            $nonMonetaryPaid = (float) $this->payments()->whereIn('method', ['boss_gift', 'supplier_offset'])->sum('amount');
         }
 
-        $effectiveTotal = max(0.0, (float)($this->total_amount ?? 0) - $giftPaid);
+        $effectiveTotal = max(0.0, (float)($this->total_amount ?? 0) - $nonMonetaryPaid);
         $paid = (float) ($this->amount_paid ?? 0);
 
-        return max(0.0, round($effectiveTotal - $paid, 2));
+        if ($paid >= (float)($this->total_amount ?? 0)) {
+            return 0.0;
+        }
+
+        $monetaryPaid = max(0.0, $paid - $nonMonetaryPaid);
+        return max(0.0, round($effectiveTotal - $monetaryPaid, 2));
     }
+
 
     public function totalProfit(): float
     {

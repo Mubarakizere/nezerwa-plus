@@ -13,6 +13,16 @@
             ],
         ];
     });
+
+    $supplierMeta = collect($suppliers ?? [])->mapWithKeys(function ($s) {
+        return [
+            $s->id => [
+                'name' => $s->name,
+                'debt' => (float) ($s->total_owed ?? 0),
+                'loans_count' => (int) ($s->loans_count ?? 0),
+            ],
+        ];
+    });
 @endphp
 
 @cannot('sales.create')
@@ -79,33 +89,38 @@
 
     {{-- Form --}}
     <form action="{{ route('sales.store') }}" method="POST"
-          x-data="saleCreateForm(@js($productMeta))"
+          x-data="saleCreateForm(@js($productMeta), @js($supplierMeta))"
           x-init="init()">
         @csrf
 
         <input type="hidden" name="cust_mode" x-model="custMode">
         {{-- Hidden mirror so customer_id is ALWAYS posted even if the select is disabled/hidden --}}
         <input type="hidden" name="customer_id" :value="custMode==='existing' ? existingId : ''">
+        <input type="hidden" name="supplier_id" :value="custMode==='supplier' ? supplierId : ''">
 
         {{-- === Sale / Customer Info === --}}
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 grid grid-cols-1 md:grid-cols-4 gap-5">
 
             {{-- Customer chooser --}}
             <div class="md:col-span-2">
-                <x-label value="Customer" />
+                <x-label value="Customer / Party" />
                 <div class="mt-1 grid grid-cols-1 gap-2">
-                    <div class="flex items-center gap-3 text-xs">
+                    <div class="flex items-center gap-3 text-xs flex-wrap">
                         <label class="inline-flex items-center gap-1">
-                            <input type="radio" value="walkin" x-model="custMode" class="text-indigo-600 border-gray-300" />
+                            <input type="radio" value="walkin" x-model="custMode" @change="onCustModeChange()" class="text-indigo-600 border-gray-300" />
                             Walk-in
                         </label>
                         <label class="inline-flex items-center gap-1">
-                            <input type="radio" value="existing" x-model="custMode" class="text-indigo-600 border-gray-300" />
-                            Existing
+                            <input type="radio" value="existing" x-model="custMode" @change="onCustModeChange()" class="text-indigo-600 border-gray-300" />
+                            Existing Customer
                         </label>
                         <label class="inline-flex items-center gap-1">
-                            <input type="radio" value="new" x-model="custMode" class="text-indigo-600 border-gray-300" />
-                            New
+                            <input type="radio" value="new" x-model="custMode" @change="onCustModeChange()" class="text-indigo-600 border-gray-300" />
+                            New Customer
+                        </label>
+                        <label class="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+                            <input type="radio" value="supplier" x-model="custMode" @change="onCustModeChange()" class="text-amber-600 border-gray-300" />
+                            Supplier (Debt Offset)
                         </label>
                     </div>
 
@@ -120,6 +135,28 @@
                             @endforeach
                         </select>
                         <p class="text-[11px] text-gray-500 dark:text-gray-400">Choose a saved customer.</p>
+                    </div>
+
+                    {{-- Supplier selector --}}
+                    <div x-show="custMode==='supplier'" x-cloak class="space-y-2">
+                        <select x-model="supplierId"
+                                @change="onSupplierChange()"
+                                :required="custMode==='supplier'"
+                                class="w-full rounded-lg border-amber-300 dark:border-amber-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-amber-500 focus:ring-amber-500 text-sm">
+                            <option value="">Select supplier to offset loan debt…</option>
+                            @foreach ($suppliers as $s)
+                                <option value="{{ $s->id }}">
+                                    {{ $s->name }} (Store owes: {{ number_format($s->total_owed ?? 0, 0) }} RWF • {{ $s->loans_count ?? 0 }} loans)
+                                </option>
+                            @endforeach
+                        </select>
+                        <div x-show="selectedSupplierDebt > 0" class="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs flex items-center justify-between">
+                            <div class="flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
+                                <i data-lucide="handshake" class="w-4 h-4 text-amber-600"></i>
+                                <span>Store Loan Balance (FIFO reduction):</span>
+                            </div>
+                            <span class="font-bold text-amber-700 dark:text-amber-300" x-text="money(selectedSupplierDebt) + ' RWF'"></span>
+                        </div>
                     </div>
 
                     {{-- New customer inline --}}
@@ -347,6 +384,7 @@
                                 <div class="col-span-5">
                                     <select :name="`payments[${i}][method]`" x-model="p.method"
                                             class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm">
+                                        <option value="supplier_offset">Supplier Debt Offset</option>
                                         @foreach($paymentChannels as $channel)
                                             <option value="{{ $channel->slug }}">{{ $channel->name }}</option>
                                         @endforeach
@@ -435,7 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function saleCreateForm(productMeta){
+function saleCreateForm(productMeta, supplierMeta){
     const rid = () => (crypto.randomUUID?.() || String(Date.now() + Math.random()));
 
     return {
@@ -445,11 +483,51 @@ function saleCreateForm(productMeta){
             const v = @json(old('customer_id', ''));
             return v ? Number(v) : '';
         })(),
+        supplierId: (() => {
+            const v = @json(old('supplier_id', ''));
+            return v ? Number(v) : '';
+        })(),
 
         saleDate: @json(old('sale_date', now()->format('Y-m-d'))),
 
         // product meta: {id: {price, cost}}
         meta: productMeta || {},
+        suppliers: supplierMeta || {},
+
+        get selectedSupplierDebt() {
+            return Number(this.suppliers[this.supplierId]?.debt || 0);
+        },
+
+        onCustModeChange() {
+            if (this.custMode === 'supplier') {
+                this.onSupplierChange();
+            } else {
+                this.supplierId = '';
+            }
+            this.recalc();
+        },
+
+        onSupplierChange() {
+            if (this.custMode === 'supplier' && this.supplierId) {
+                const debt = this.selectedSupplierDebt;
+                if (debt > 0) {
+                    if (!this.payments.length) {
+                        this.payments = [{
+                            key: rid(),
+                            method: 'supplier_offset',
+                            amount: Math.min(this.total, debt),
+                            reference: 'Store Debt Offset'
+                        }];
+                    } else {
+                        const existingOffset = this.payments.find(p => p.method === 'supplier_offset');
+                        if (existingOffset) {
+                            existingOffset.amount = Math.min(this.total, debt);
+                        }
+                    }
+                }
+            }
+            this.recalc();
+        },
 
         // product lines
         lines: (() => {
@@ -573,7 +651,7 @@ function saleCreateForm(productMeta){
 
         // payments helpers
         addPayment(){
-            this.payments.push({ key: rid(), method: 'cash', amount: 0, reference: '' });
+            this.payments.push({ key: rid(), method: this.custMode === 'supplier' ? 'supplier_offset' : 'cash', amount: 0, reference: '' });
             this.recalc();
         },
         removePayment(i){
@@ -584,6 +662,10 @@ function saleCreateForm(productMeta){
         dominantMethod(){
             if (this.isGift) {
                 return 'boss_gift';
+            }
+            if (this.custMode === 'supplier') {
+                const offsetPay = this.payments.find(p => p.method === 'supplier_offset');
+                if (offsetPay || !this.payments.length) return 'supplier_offset';
             }
             if (!this.payments.length) {
                 return this.singlePaid > 0 ? 'cash' : 'cash';

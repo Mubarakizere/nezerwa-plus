@@ -94,7 +94,18 @@
         }
 
         // 4. Other Init Values
-        $custModeInit = old('new_customer_name') ? 'new' : (old('customer_id', $sale->customer_id) ? 'existing' : 'walkin');
+        $suppliersJson = $suppliers->mapWithKeys(fn($s) => [
+            $s->id => [
+                'name' => $s->name,
+                'debt' => (float) ($s->total_owed ?? 0),
+                'loans_count' => (int) ($s->loans_count ?? 0),
+            ]
+        ]);
+
+        $custModeInit = old('cust_mode',
+            $sale->supplier_id ? 'supplier' : (old('new_customer_name') ? 'new' : (old('customer_id', $sale->customer_id) ? 'existing' : 'walkin'))
+        );
+        $supplierIdInit = old('supplier_id', $sale->supplier_id ?? '');
         $saleDateInit = old('sale_date', $sale->sale_date ? $sale->sale_date->format('Y-m-d') : date('Y-m-d'));
         $singlePaidInit = old('amount_paid', $sale->amount_paid ?? 0); // Fallback input
         $isGiftInit = (bool) old('is_gift', $sale->isGift() ? 1 : 0);
@@ -107,7 +118,9 @@
               lines: {{ json_encode($initialLines) }},
               payments: {{ json_encode($initialPayments) }},
               products: {{ json_encode($productsJson) }},
+              suppliers: {{ json_encode($suppliersJson) }},
               custMode: '{{ $custModeInit }}',
+              supplierId: '{{ $supplierIdInit }}',
               saleDate: '{{ $saleDateInit }}',
               singlePaid: {{ $singlePaidInit }},
               isGift: {{ json_encode($isGiftInit) }},
@@ -120,11 +133,11 @@
         {{-- === Customer & Basic Info === --}}
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 grid grid-cols-1 md:grid-cols-4 gap-5">
 
-            {{-- Customer (Walk-in / Existing / New) --}}
+            {{-- Customer (Walk-in / Existing / New / Supplier) --}}
             <div class="md:col-span-2">
-                <x-label value="Customer" />
+                <x-label value="Customer / Party" />
                 <div class="mt-1 grid grid-cols-1 gap-2">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <label class="inline-flex items-center gap-1 text-xs">
                             <input type="radio" name="cust_mode" value="walkin" x-model="custMode" class="text-indigo-600 border-gray-300"/> Walk-in
                         </label>
@@ -134,6 +147,31 @@
                         <label class="inline-flex items-center gap-1 text-xs">
                             <input type="radio" name="cust_mode" value="new" x-model="custMode" class="text-indigo-600 border-gray-300"/> New
                         </label>
+                        <label class="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                            <input type="radio" name="cust_mode" value="supplier" x-model="custMode" class="text-amber-600 border-gray-300"/> Supplier (Debt Offset)
+                        </label>
+                    </div>
+
+                    {{-- Supplier Selector --}}
+                    <div x-show="custMode==='supplier'" x-cloak class="space-y-2">
+                        <select name="supplier_id"
+                                x-model="supplierId"
+                                :disabled="custMode!=='supplier'"
+                                class="w-full rounded-lg border-amber-300 dark:border-amber-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-amber-500 focus:ring-amber-500 text-sm">
+                            <option value="">Select supplier to offset loan debt…</option>
+                            @foreach ($suppliers as $s)
+                                <option value="{{ $s->id }}" @selected(old('supplier_id', $sale->supplier_id) == $s->id)>
+                                    {{ $s->name }} (Store owes: {{ number_format($s->total_owed ?? 0, 0) }} RWF • {{ $s->loans_count ?? 0 }} loans)
+                                </option>
+                            @endforeach
+                        </select>
+                        <div x-show="selectedSupplierDebt > 0" class="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs flex items-center justify-between">
+                            <div class="flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
+                                <i data-lucide="handshake" class="w-4 h-4 text-amber-600"></i>
+                                <span>Store Loan Balance (FIFO reduction):</span>
+                            </div>
+                            <span class="font-bold text-amber-700 dark:text-amber-300" x-text="money(selectedSupplierDebt) + ' RWF'"></span>
+                        </div>
                     </div>
 
                     {{-- Existing --}}
@@ -353,6 +391,7 @@
                                 <div class="col-span-5">
                                     <select :name="`payments[${i}][method]`" x-model="p.method"
                                             class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100 text-sm">
+                                        <option value="supplier_offset">Supplier Debt Offset</option>
                                         @foreach($paymentChannels as $channel)
                                             <option value="{{ $channel->slug }}">{{ $channel->name }}</option>
                                         @endforeach
@@ -436,7 +475,9 @@ function saleEditForm(config){
         lines: config.lines || [],
         payments: config.payments || [],
         products: config.products || [],
+        suppliers: config.suppliers || {},
         custMode: config.custMode || 'walkin',
+        supplierId: config.supplierId || '',
         saleDate: config.saleDate || '',
         singlePaid: Number(config.singlePaid || 0),
         isGift: Boolean(config.isGift || false),
@@ -446,6 +487,10 @@ function saleEditForm(config){
         total: 0,
         totalPaid: 0,
         productMap: {},
+
+        get selectedSupplierDebt() {
+            return Number(this.suppliers[this.supplierId]?.debt || 0);
+        },
 
         onGiftToggle(){
             if (this.isGift) {
@@ -493,12 +538,16 @@ function saleEditForm(config){
         },
 
         // Payments
-        addPayment(){ this.payments.push({ key: rid(), method: 'cash', amount: 0, reference: '' }); this.recalc(); },
+        addPayment(){ this.payments.push({ key: rid(), method: this.custMode === 'supplier' ? 'supplier_offset' : 'cash', amount: 0, reference: '' }); this.recalc(); },
         removePayment(i){ this.payments.splice(i,1); this.recalc(); },
 
         dominantMethod(){
             if (this.isGift) {
                 return 'boss_gift';
+            }
+            if (this.custMode === 'supplier') {
+                const offsetPay = this.payments.find(p => p.method === 'supplier_offset');
+                if (offsetPay || !this.payments.length) return 'supplier_offset';
             }
             if (!this.payments.length) return (this.singlePaid > 0 ? 'cash' : '{{ $sale->payment_channel ?? 'cash' }}');
             const sums = {};
