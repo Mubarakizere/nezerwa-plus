@@ -53,7 +53,7 @@ class SaleController extends Controller
         $paymentChannels = PaymentChannel::where('is_active', true)->get();
 
         $suppliers = Supplier::orderBy('name')->get()->map(function ($s) {
-            return [
+            return (object) [
                 'id'          => $s->id,
                 'name'        => $s->name,
                 'phone'       => $s->phone,
@@ -371,7 +371,7 @@ class SaleController extends Controller
         $products  = Product::orderBy('name')->get(['id', 'name', 'price', 'cost_price']);
         $paymentChannels = PaymentChannel::where('is_active', true)->get();
         $suppliers = Supplier::orderBy('name')->get()->map(function ($s) {
-            return [
+            return (object) [
                 'id'          => $s->id,
                 'name'        => $s->name,
                 'phone'       => $s->phone,
@@ -706,7 +706,7 @@ class SaleController extends Controller
         $like = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
 
         $q = Sale::query()
-            ->with(['customer', 'user'])
+            ->with(['customer', 'user', 'supplier', 'items.product'])
             ->withSum('returns as returns_total', 'amount');
 
         if (($search = trim((string) $request->get('search'))) !== '') {
@@ -716,7 +716,9 @@ class SaleController extends Controller
                   ->orWhere('status',           $like, "%{$search}%")
                   ->orWhere('method',           $like, "%{$search}%")
                   ->orWhere('gift_reason',      $like, "%{$search}%")
-                  ->orWhereHas('customer', fn ($c) => $c->where('name', $like, "%{$search}%"));
+                  ->orWhereHas('customer', fn ($c) => $c->where('name', $like, "%{$search}%"))
+                  ->orWhereHas('supplier', fn ($s) => $s->where('name', $like, "%{$search}%"))
+                  ->orWhereHas('items.product', fn ($p) => $p->where('name', $like, "%{$search}%"));
             });
         }
 

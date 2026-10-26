@@ -219,7 +219,7 @@
                             <input
                                 type="text"
                                 name="search"
-                                placeholder="Customer name, status, or #ID"
+                                placeholder="Search customer, product, status, or #ID"
                                 value="{{ request('search') }}"
                                 class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
                         </div>
@@ -298,7 +298,7 @@
                             <option value="sale_date"    {{ $sort==='sale_date'    ? 'selected' : '' }}>Date</option>
                             <option value="total_amount" {{ $sort==='total_amount' ? 'selected' : '' }}>Total</option>
                             <option value="amount_paid"  {{ $sort==='amount_paid'  ? 'selected' : '' }}>Paid</option>
-                            <option value="id"           {{ $sort==='id'           ? 'selected' : '' }}>ID</option>
+                            <option value="id"           {{ $sort==='id'           ? 'selected' : '' }}>Sale #</option>
                         </select>
 
                         <select name="dir" class="py-1.5 px-2 text-xs bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300">
@@ -331,17 +331,17 @@
         <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-2xs overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-xs text-left min-w-[980px]">
-                    <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <thead class="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         <tr>
-                            <th class="px-4 py-3">#ID</th>
-                            <th class="px-4 py-3">Date</th>
-                            <th class="px-4 py-3">Customer</th>
-                            <th class="px-4 py-3">Channel</th>
-                            <th class="px-4 py-3 text-right">Total</th>
-                            <th class="px-4 py-3 text-right">Paid</th>
-                            <th class="px-4 py-3 text-right">Balance Due</th>
-                            <th class="px-4 py-3 text-center">Status</th>
-                            <th class="px-4 py-3 text-right">Actions</th>
+                            <th scope="col" class="px-4 py-3 whitespace-nowrap">Date & Time</th>
+                            <th scope="col" class="px-4 py-3">Customer</th>
+                            <th scope="col" class="px-4 py-3">Products Sold</th>
+                            <th scope="col" class="px-4 py-3 whitespace-nowrap">Channel</th>
+                            <th scope="col" class="px-4 py-3 text-right whitespace-nowrap">Total</th>
+                            <th scope="col" class="px-4 py-3 text-right whitespace-nowrap">Paid</th>
+                            <th scope="col" class="px-4 py-3 text-right whitespace-nowrap">Balance Due</th>
+                            <th scope="col" class="px-4 py-3 text-center whitespace-nowrap">Status</th>
+                            <th scope="col" class="px-4 py-3 text-right whitespace-nowrap">Actions</th>
                         </tr>
                     </thead>
 
@@ -353,19 +353,19 @@
 
                                 $palette = match($channel) {
                                     'bank' => [
-                                        'badge' => 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20',
+                                        'badge' => 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/40',
                                         'icon' => 'building-2',
                                     ],
                                     'momo', 'mobile_money', 'mobile' => [
-                                        'badge' => 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+                                        'badge' => 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40',
                                         'icon' => 'smartphone',
                                     ],
                                     'boss_gift' => [
-                                        'badge' => 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
+                                        'badge' => 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40',
                                         'icon' => 'gift',
                                     ],
                                     default => [
-                                        'badge' => 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+                                        'badge' => 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40',
                                         'icon' => 'banknote',
                                     ],
                                 };
@@ -385,54 +385,106 @@
                                 } catch (\Throwable $e) {}
                             @endphp
 
-                            <tr class="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
-                                {{-- #ID --}}
-                                <td class="px-4 py-3 font-mono font-semibold text-slate-500 dark:text-slate-400">
-                                    #{{ $sale->id }}
-                                </td>
-
-                                {{-- Date --}}
-                                <td class="px-4 py-3">
-                                    <div class="font-medium text-slate-800 dark:text-slate-200">{{ $date->format('M j, Y') }}</div>
-                                    <div class="text-[10px] text-slate-400">{{ $date->format('g:i A') }}</div>
-                                </td>
-
-                                {{-- Customer --}}
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold text-xs flex items-center justify-center flex-shrink-0 border border-slate-200/60 dark:border-slate-700">
-                                            {{ strtoupper(substr($sale->customer->name ?? 'W', 0, 1)) }}
-                                        </div>
-                                        <div class="min-w-0">
-                                            <div class="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[160px]">
-                                                {{ $sale->customer->name ?? 'Walk-in Customer' }}
-                                            </div>
-                                            @if ($sale->isGift())
-                                                <div class="flex items-center gap-1 mt-0.5">
-                                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20" title="{{ $sale->gift_reason ?? 'Boss Gift' }}">
-                                                        <i data-lucide="gift" class="w-3 h-3"></i>
-                                                        Boss Gift
-                                                    </span>
-                                                    @if ($sale->gift_reason)
-                                                        <span class="text-[10px] text-purple-400 italic truncate max-w-[120px]">
-                                                            "{{ $sale->gift_reason }}"
-                                                        </span>
-                                                    @endif
-                                                </div>
-                                            @endif
-                                        </div>
+                            <tr class="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                                {{-- Date & Time with subtle receipt number --}}
+                                <td class="px-4 py-3.5 whitespace-nowrap align-top">
+                                    <div class="font-medium text-slate-800 dark:text-slate-200 text-xs">
+                                        {{ $date->format('M j, Y') }}
+                                    </div>
+                                    <div class="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                                        <span>{{ $date->format('g:i A') }}</span>
+                                        <span class="text-slate-300 dark:text-slate-600">•</span>
+                                        <span class="font-mono text-slate-400 dark:text-slate-500">#{{ $sale->id }}</span>
                                     </div>
                                 </td>
 
+                                {{-- Customer --}}
+                                <td class="px-4 py-3.5 align-top">
+                                    <div class="min-w-0 max-w-[170px]">
+                                        @if ($sale->customer)
+                                            <div class="font-semibold text-slate-900 dark:text-slate-100 text-xs truncate" title="{{ $sale->customer->name }}">
+                                                {{ $sale->customer->name }}
+                                            </div>
+                                            @if ($sale->customer->phone)
+                                                <div class="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                                                    {{ $sale->customer->phone }}
+                                                </div>
+                                            @endif
+                                        @elseif ($sale->supplier)
+                                            <div class="font-semibold text-amber-700 dark:text-amber-400 text-xs truncate" title="{{ $sale->supplier->name }}">
+                                                {{ $sale->supplier->name }}
+                                            </div>
+                                            <div class="text-[10px] text-amber-600 dark:text-amber-500 font-medium mt-0.5">
+                                                Supplier Offset
+                                            </div>
+                                        @else
+                                            <div class="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                                                Walk-in Customer
+                                            </div>
+                                        @endif
+
+                                        @if ($sale->isGift())
+                                            <div class="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/50 dark:border-purple-800/40" title="{{ $sale->gift_reason ?? 'Boss Gift' }}">
+                                                <i data-lucide="gift" class="w-3 h-3 text-purple-500"></i>
+                                                <span>Boss Gift</span>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </td>
+
+                                {{-- Products Sold --}}
+                                <td class="px-4 py-3.5 align-top">
+                                    @php
+                                        $items = $sale->items ?? collect();
+                                        $itemsCount = $items->count();
+                                        $totalUnits = $items->sum('quantity');
+                                    @endphp
+
+                                    @if($itemsCount > 0)
+                                        <div class="space-y-1 min-w-[200px] max-w-[280px]">
+                                            @foreach($items->take(2) as $item)
+                                                @php
+                                                    $qty = (float)$item->quantity == (int)$item->quantity ? (int)$item->quantity : (float)$item->quantity;
+                                                    $pName = $item->product->name ?? 'Unknown item';
+                                                @endphp
+                                                <div class="flex items-center gap-1.5 text-xs">
+                                                    <span class="inline-flex items-center justify-center px-1.5 py-0.2 rounded text-[10px] font-semibold font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
+                                                        {{ $qty }}×
+                                                    </span>
+                                                    <span class="truncate font-medium text-slate-800 dark:text-slate-200" title="{{ $pName }} ({{ $qty }} pcs)">
+                                                        {{ $pName }}
+                                                    </span>
+                                                </div>
+                                            @endforeach
+
+                                            @if($itemsCount > 2)
+                                                @php
+                                                    $allTooltip = $items->map(function($it) {
+                                                        $q = (float)$it->quantity == (int)$it->quantity ? (int)$it->quantity : (float)$it->quantity;
+                                                        return $q . '× ' . ($it->product->name ?? 'Item');
+                                                    })->implode(', ');
+                                                @endphp
+                                                <div class="text-[11px] text-slate-400 dark:text-slate-500 font-medium cursor-help flex items-center gap-1" title="{{ $allTooltip }}">
+                                                    <span class="text-indigo-600 dark:text-indigo-400 hover:underline">+{{ $itemsCount - 2 }} more</span>
+                                                    <span class="text-slate-300 dark:text-slate-600">•</span>
+                                                    <span>{{ (float)$totalUnits == (int)$totalUnits ? (int)$totalUnits : (float)$totalUnits }} units</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    @else
+                                        <span class="text-xs text-slate-400 italic">No products recorded</span>
+                                    @endif
+                                </td>
+
                                 {{-- Channel --}}
-                                <td class="px-4 py-3">
+                                <td class="px-4 py-3.5 align-top whitespace-nowrap">
                                     <div class="flex items-center gap-1.5">
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold {{ $palette['badge'] }}">
-                                            <i data-lucide="{{ $palette['icon'] }}" class="w-3 h-3"></i>
-                                            {{ strtoupper($channel) }}
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium {{ $palette['badge'] }}">
+                                            <i data-lucide="{{ $palette['icon'] }}" class="w-3.5 h-3.5"></i>
+                                            <span>{{ strtoupper($channel) }}</span>
                                         </span>
                                         @if($splitHint)
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/40">
                                                 {{ $splitHint }}
                                             </span>
                                         @endif
@@ -440,90 +492,93 @@
                                 </td>
 
                                 {{-- Total Amount --}}
-                                <td class="px-4 py-3 text-right">
-                                    <div class="font-bold text-slate-900 dark:text-slate-100">
+                                <td class="px-4 py-3.5 text-right whitespace-nowrap align-top">
+                                    <div class="font-bold text-slate-900 dark:text-slate-100 text-xs">
                                         {{ number_format($grossTotal, 2) }}
                                         <span class="text-[10px] font-normal text-slate-400">RWF</span>
                                     </div>
                                     @if ($returnsTotal > 0)
-                                        <div class="text-[10px] text-rose-500">
-                                            -{{ number_format($returnsTotal, 2) }} Ret.
+                                        <div class="text-[10px] text-rose-500 font-medium mt-0.5">
+                                            -{{ number_format($returnsTotal, 2) }} ret.
                                         </div>
                                     @endif
                                 </td>
 
                                 {{-- Paid Amount --}}
-                                <td class="px-4 py-3 text-right">
-                                    <div class="font-semibold text-emerald-600 dark:text-emerald-400">
+                                <td class="px-4 py-3.5 text-right whitespace-nowrap align-top">
+                                    <div class="text-xs font-semibold text-slate-700 dark:text-slate-300">
                                         {{ number_format($paid, 2) }}
                                         <span class="text-[10px] font-normal text-slate-400">RWF</span>
                                     </div>
                                 </td>
 
                                 {{-- Balance Due --}}
-                                <td class="px-4 py-3 text-right">
+                                <td class="px-4 py-3.5 text-right whitespace-nowrap align-top">
                                     @if ($sale->isGift())
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20">
-                                            Gift (0 Debt)
+                                        <span class="text-[11px] font-medium text-purple-600 dark:text-purple-400">
+                                            Gift (0.00)
                                         </span>
                                     @elseif ($balance <= 0)
-                                        <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                                            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                                        <span class="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                            <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-500"></i>
                                             Cleared
                                         </span>
                                     @else
-                                        <span class="font-bold text-rose-600 dark:text-rose-400">
+                                        <div class="text-xs font-bold text-rose-600 dark:text-rose-400">
                                             {{ number_format($balance, 2) }}
-                                            <span class="text-[10px] font-normal text-slate-400">RWF</span>
-                                        </span>
+                                            <span class="text-[10px] font-normal text-rose-400">RWF</span>
+                                        </div>
                                     @endif
                                 </td>
 
                                 {{-- Status --}}
-                                <td class="px-4 py-3 text-center">
+                                <td class="px-4 py-3.5 text-center whitespace-nowrap align-top">
                                     @if ($sale->status === 'completed')
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Completed
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/40">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                            Completed
                                         </span>
                                     @elseif ($sale->status === 'pending')
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pending
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/40">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                            Pending
                                         </span>
                                     @else
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                                            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Cancelled
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/50 dark:border-rose-800/40">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                            Cancelled
                                         </span>
                                     @endif
                                 </td>
 
                                 {{-- Actions --}}
-                                <td class="px-4 py-3 text-right">
-                                    <div class="inline-flex items-center gap-1 justify-end">
+                                <td class="px-4 py-3.5 text-right whitespace-nowrap align-top">
+                                    <div class="inline-flex items-center gap-0.5 justify-end">
                                         @can('sales.view')
                                             <a href="{{ route('sales.show', $sale) }}"
                                                title="View Sale Details"
-                                               class="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                                               <i data-lucide="eye" class="w-4 h-4"></i>
+                                               class="p-1.5 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                                <i data-lucide="eye" class="w-4 h-4"></i>
                                             </a>
 
                                             <a href="{{ route('sales.invoice', $sale) }}" target="_blank"
                                                title="View & Print Invoice"
-                                               class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                                               <i data-lucide="file-text" class="w-4 h-4"></i>
+                                               class="p-1.5 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                                <i data-lucide="file-text" class="w-4 h-4"></i>
                                             </a>
 
                                             <a href="{{ route('sales.show', $sale) }}?open=returns"
                                                title="Process Returns"
-                                               class="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                                               <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                                               class="p-1.5 rounded-md text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                                             </a>
                                         @endcan
 
                                         @can('sales.edit')
                                             <a href="{{ route('sales.edit', $sale) }}"
                                                title="Edit Sale"
-                                               class="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                                               <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                               class="p-1.5 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                                <i data-lucide="edit-3" class="w-4 h-4"></i>
                                             </a>
                                         @endcan
 
@@ -532,7 +587,7 @@
                                                 @csrf @method('DELETE')
                                                 <button type="button"
                                                         title="Delete Sale"
-                                                        class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                                                        class="p-1.5 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
                                                         @click="$store.confirm.openWith($el.closest('form'))">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                 </button>

@@ -94,13 +94,16 @@
         }
 
         // 4. Other Init Values
-        $suppliersJson = $suppliers->mapWithKeys(fn($s) => [
-            $s->id => [
-                'name' => $s->name,
-                'debt' => (float) ($s->total_owed ?? 0),
-                'loans_count' => (int) ($s->loans_count ?? 0),
-            ]
-        ]);
+        $suppliersJson = collect($suppliers ?? [])->mapWithKeys(function ($s) {
+            $s = (object) $s;
+            return [
+                $s->id => [
+                    'name' => $s->name ?? '',
+                    'debt' => (float) ($s->total_owed ?? 0),
+                    'loans_count' => (int) ($s->loans_count ?? 0),
+                ]
+            ];
+        });
 
         $custModeInit = old('cust_mode',
             $sale->supplier_id ? 'supplier' : (old('new_customer_name') ? 'new' : (old('customer_id', $sale->customer_id) ? 'existing' : 'walkin'))
@@ -160,6 +163,7 @@
                                 class="w-full rounded-lg border-amber-300 dark:border-amber-600 dark:bg-gray-900/50 dark:text-gray-100 focus:border-amber-500 focus:ring-amber-500 text-sm">
                             <option value="">Select supplier to offset loan debt…</option>
                             @foreach ($suppliers as $s)
+                                @php $s = (object) $s; @endphp
                                 <option value="{{ $s->id }}" @selected(old('supplier_id', $sale->supplier_id) == $s->id)>
                                     {{ $s->name }} (Store owes: {{ number_format($s->total_owed ?? 0, 0) }} RWF • {{ $s->loans_count ?? 0 }} loans)
                                 </option>
