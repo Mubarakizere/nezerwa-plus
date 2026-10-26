@@ -31,6 +31,11 @@ class Supplier extends Model
         return $this->hasMany(Loan::class);
     }
 
+    public function purchases()
+    {
+        return $this->hasMany(Purchase::class);
+    }
+
     /**
      * Pending loans of type 'taken' (debts the store owes to this supplier).
      * Ordered FIFO (oldest loan date and ID first).

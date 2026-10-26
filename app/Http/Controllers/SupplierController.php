@@ -12,7 +12,7 @@ class SupplierController extends Controller
     {
         $query = trim($request->get('q', ''));
 
-        $suppliersQuery = Supplier::query();
+        $suppliersQuery = Supplier::query()->withCount('purchases');
 
         if ($query !== '') {
             $suppliersQuery->where(function ($qB) use ($query) {

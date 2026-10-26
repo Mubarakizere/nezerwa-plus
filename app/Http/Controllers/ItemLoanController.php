@@ -23,7 +23,7 @@ class ItemLoanController extends Controller
         $likeOp = DB::getDriverName() === 'pgsql' ? 'ilike' : 'like';
 
         $loans = ItemLoan::query()
-            ->with('partner')
+            ->with(['partner', 'product'])
             ->when($request->filled('search'), function ($q) use ($request, $likeOp) {
                 $term = '%' . trim($request->string('search')) . '%';
                 $q->where(function ($qq) use ($term, $likeOp) {
@@ -55,9 +55,21 @@ class ItemLoanController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        $stats = [
+            'total_loans'     => ItemLoan::count(),
+            'active_lent'     => ItemLoan::where('direction', 'given')->where('status', '!=', 'returned')->count(),
+            'active_borrowed' => ItemLoan::where('direction', 'taken')->where('status', '!=', 'returned')->count(),
+            'returned_count'  => ItemLoan::where('status', 'returned')->count(),
+            'overdue_count'   => ItemLoan::whereNotNull('due_date')
+                                    ->whereDate('due_date', '<', now()->toDateString())
+                                    ->whereColumn('quantity', '>', 'quantity_returned')
+                                    ->count(),
+        ];
+
         return view('item_loans.index', [
             'loans'     => $loans,
             'filters'   => $request->only(['search','direction','status','from','to','overdue']),
+            'stats'     => $stats,
         ]);
     }
 

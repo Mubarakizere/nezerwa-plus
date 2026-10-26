@@ -30,10 +30,17 @@ class UserController extends Controller
             $query->whereHas('roles', fn($q) => $q->where('name', $role));
         }
 
-        $users = $query->paginate(10)->withQueryString();
+        $users = $query->paginate(15)->withQueryString();
         $roles = Role::pluck('name')->toArray();
 
-        return view('users.index', compact('users', 'roles'));
+        $stats = [
+            'total_users' => User::count(),
+            'admins'      => User::whereHas('roles', fn($q) => $q->where('name', 'admin'))->count(),
+            'cashiers'    => User::whereHas('roles', fn($q) => $q->where('name', 'cashier'))->count(),
+            'roles_count' => count($roles),
+        ];
+
+        return view('users.index', compact('users', 'roles', 'stats'));
     }
 
     /**

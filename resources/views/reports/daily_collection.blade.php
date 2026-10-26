@@ -1,378 +1,539 @@
-<x-app-layout>
-    <x-slot name="header">
-        <div class="bg-indigo-700 text-white px-4 py-3 rounded-md shadow flex flex-col md:flex-row md:justify-between md:items-center gap-2">
-            <h2 class="font-semibold text-xl leading-tight flex items-center gap-2">
-                <i data-lucide="calendar-check" class="w-5 h-5 text-emerald-300"></i>
-                KING WINE - Daily Report Format
-            </h2>
-            <div class="flex items-center gap-2 text-sm">
-                <span class="bg-indigo-800 px-3 py-1 rounded-full text-indigo-100 font-medium">
-                    {{ $mode === 'range' ? $startDateInput . ' to ' . $endDateInput : $startDateInput }}
+@extends('layouts.app')
+@section('title', 'Daily Collection Report')
+
+@section('content')
+<style>[x-cloak]{display:none!important}</style>
+@php
+    $fmt0 = fn($n) => number_format((float)($n ?? 0), 0);
+    $fmt2 = fn($n) => number_format((float)($n ?? 0), 2);
+
+    $isRange = ($mode ?? 'single') === 'range';
+    $displayDate = $isRange ? ($startDateInput . ' → ' . $endDateInput) : $startDateInput;
+@endphp
+
+<div class="max-w-7xl mx-auto space-y-6" x-data="{ showFormulas: true, mode: '{{ $mode ?? 'single' }}' }">
+
+    {{-- Top Action Bar --}}
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
+        <div>
+            <div class="flex items-center gap-2.5">
+                <a href="{{ route('reports.index') }}" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" title="Back to Reports Overview">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                </a>
+                <h1 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
+                    <i data-lucide="calendar-check" class="w-6 h-6 text-emerald-600 dark:text-emerald-400"></i>
+                    <span>Daily Collection & Cash Reconciliation</span>
+                </h1>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 font-mono">
+                    {{ $displayDate }}
                 </span>
             </div>
-        </div>
-    </x-slot>
-
-    <div class="py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8" x-data="{ showFormulas: true, mode: '{{ $mode }}' }">
-
-        {{-- 🔸 Action & Filter Bar --}}
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-6 print:hidden">
-            <form method="GET" action="{{ route('reports.daily-collection') }}" class="space-y-4">
-                
-                {{-- Mode Switcher & Date Pickers --}}
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                    <div class="md:col-span-1">
-                        <label class="block text-xs font-semibold uppercase text-gray-500 mb-1">Filter Mode</label>
-                        <select name="mode" x-model="mode" class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                            <option value="single">Single Day</option>
-                            <option value="range">Date Range</option>
-                        </select>
-                    </div>
-
-                    <div class="md:col-span-1">
-                        <label class="block text-xs font-semibold uppercase text-gray-500 mb-1">
-                            <span x-text="mode === 'range' ? 'Start Date' : 'Report Date'">Report Date</span>
-                        </label>
-                        <input type="date" name="start_date" value="{{ $startDateInput }}" class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                    </div>
-
-                    <div class="md:col-span-1" x-show="mode === 'range'" x-cloak>
-                        <label class="block text-xs font-semibold uppercase text-gray-500 mb-1">End Date</label>
-                        <input type="date" name="end_date" value="{{ $endDateInput }}" class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                    </div>
-
-                    <div class="md:col-span-2 flex gap-2">
-                        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm">
-                            <i data-lucide="filter" class="w-4 h-4"></i> Apply Filter
-                        </button>
-
-                        <button type="button" @click="showFormulas = !showFormulas" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium flex items-center gap-1 shadow-sm">
-                            <i data-lucide="calculator" class="w-4 h-4"></i>
-                            <span x-text="showFormulas ? 'Hide Formulas' : 'Show Formulas'">Toggle Formulas</span>
-                        </button>
-                    </div>
-                </div>
-
-                {{-- Quick Presets & Export Actions --}}
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2 border-t border-gray-100 dark:border-gray-800">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="text-xs font-semibold text-gray-400 uppercase">Quick Date:</span>
-                        @php
-                            $todayDate = now()->toDateString();
-                            $yesterdayDate = now()->subDay()->toDateString();
-                            $weekStartDate = now()->startOfWeek()->toDateString();
-                            $monthStartDate = now()->startOfMonth()->toDateString();
-                        @endphp
-                        <a href="{{ route('reports.daily-collection', ['mode'=>'single', 'start_date'=>$todayDate]) }}" 
-                           class="px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300 font-medium">
-                            Today
-                        </a>
-                        <a href="{{ route('reports.daily-collection', ['mode'=>'single', 'start_date'=>$yesterdayDate]) }}" 
-                           class="px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300 font-medium">
-                            Yesterday
-                        </a>
-                        <a href="{{ route('reports.daily-collection', ['mode'=>'range', 'start_date'=>$weekStartDate, 'end_date'=>$todayDate]) }}" 
-                           class="px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300 font-medium">
-                            This Week
-                        </a>
-                        <a href="{{ route('reports.daily-collection', ['mode'=>'range', 'start_date'=>$monthStartDate, 'end_date'=>$todayDate]) }}" 
-                           class="px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300 font-medium">
-                            This Month
-                        </a>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                        <a href="{{ route('reports.daily-collection.export', request()->query()) }}" 
-                           style="background-color: #059669 !important; color: #ffffff !important; display: inline-flex !important; align-items: center !important; gap: 0.5rem !important; padding: 0.625rem 1.25rem !important; font-weight: 700 !important; font-size: 0.875rem !important; border-radius: 0.5rem !important; text-decoration: none !important; box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4" style="color: #ffffff !important;"></i>
-                            <span style="color: #ffffff !important; font-weight: 700 !important;">Export Excel</span>
-                        </a>
-                    </div>
-                </div>
-            </form>
+            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Official end-of-day register balancing, cash drawer audit, Mobile Money reconciliation, and bank deposit slips.
+            </p>
         </div>
 
-        {{-- 🔸 Formulas Legend Card --}}
-        <div x-show="showFormulas" x-transition class="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl p-5 text-amber-900 dark:text-amber-100 text-sm shadow-sm print:hidden">
-            <h3 class="font-bold text-base flex items-center gap-2 mb-3 text-amber-800 dark:text-amber-300">
-                <i data-lucide="help-circle" class="w-5 h-5"></i> Formulas &amp; Calculation Legend
-            </h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                <div><strong>1. Total Ledger Sales:</strong> Cash Sales + MoMo Sales + Credit Sales (Unpaid balances)</div>
-                <div><strong>2. Opening Balance:</strong> Automatically calculated as the previous day's closing balance ($\text{Prior Inflows} - \text{Prior Outflows}$)</div>
-                <div><strong>3. Total Cash Available:</strong> Opening Cash + System Cash Sales + Past Debt Receipts + Other Cash Received</div>
-                <div><strong>4. Cash Closing Balance:</strong> Total Cash Available - Total Cash Outflows (Expenses + Bank Deposits)</div>
-                <div><strong>5. Total MoMo Available:</strong> Opening MoMo + System MoMo Sales + Past Debt Receipts + Other MoMo Received</div>
-                <div><strong>6. MoMo Closing Balance:</strong> Total MoMo Available - Total MoMo Outflows (Expenses + Charges + Transfers)</div>
-            </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <button type="button"
+                    @click="window.print()"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                <i data-lucide="printer" class="w-3.5 h-3.5 text-slate-400"></i>
+                <span>Print Statement</span>
+            </button>
+
+            <a href="{{ route('reports.daily-collection.export', request()->query()) }}"
+               class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-colors">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                <span>Export Excel</span>
+            </a>
         </div>
-
-        {{-- 🔸 Report Print Header --}}
-        <div class="text-center space-y-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
-            <h1 class="text-2xl font-black tracking-wide text-gray-900 dark:text-gray-100 uppercase">KING WINE</h1>
-            <h2 class="text-lg font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">DAILY REPORT FORMAT</h2>
-            <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase">DAILY SALES REPORT SUMMARY</h3>
-            <p class="text-xs text-gray-400">Date Period: {{ $startDateInput }} @if($mode === 'range') to {{ $endDateInput }} @endif</p>
-        </div>
-
-        {{-- 🔸 SECTION 1: DAILY SALES REPORT SUMMARY --}}
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-between items-center">
-                <h4 class="font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider text-sm flex items-center gap-2">
-                    <i data-lucide="shopping-bag" class="w-4 h-4 text-indigo-500"></i> Sales recorded
-                </h4>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-gray-100 dark:bg-gray-800 text-xs uppercase font-bold text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-                        <tr>
-                            <th class="px-6 py-3">Category</th>
-                            <th class="px-6 py-3 text-right">Amount (RWF)</th>
-                            <th class="px-6 py-3 text-gray-400 font-normal">Formula / Explanation</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700 text-gray-800 dark:text-gray-200">
-                        <tr>
-                            <td class="px-6 py-3 font-medium">Ledger Cash Sales</td>
-                            <td class="px-6 py-3 text-right font-mono font-semibold">{{ number_format($ledgerCashSales, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Sales paid in Cash during period</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-3 font-medium text-red-600 dark:text-red-400">Ledger MoMo Sales</td>
-                            <td class="px-6 py-3 text-right font-mono font-semibold text-red-600 dark:text-red-400">{{ number_format($ledgerMomoSales, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Sales paid via Mobile Money during period</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-3 font-medium text-red-600 dark:text-red-400">Ledger Credit Sales</td>
-                            <td class="px-6 py-3 text-right font-mono font-semibold text-red-600 dark:text-red-400">{{ number_format($ledgerCreditSales, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Sales made on credit (unpaid balance)</td>
-                        </tr>
-                        @if(($ledgerGiftSales ?? 0) > 0)
-                        <tr>
-                            <td class="px-6 py-3 font-medium text-purple-600 dark:text-purple-400">
-                                <span class="inline-flex items-center gap-1.5">
-                                    <i data-lucide="gift" class="w-4 h-4 text-purple-500"></i>
-                                    Boss Gift Sales
-                                </span>
-                            </td>
-                            <td class="px-6 py-3 text-right font-mono font-semibold text-purple-600 dark:text-purple-400">{{ number_format($ledgerGiftSales, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Authorized boss gifts (complimentary, deducted from inventory)</td>
-                        </tr>
-                        @endif
-                        <tr class="bg-gray-50 dark:bg-gray-800 font-bold border-t-2 border-gray-300 dark:border-gray-600">
-                            <td class="px-6 py-3 uppercase">Total Ledger Sales</td>
-                            <td class="px-6 py-3 text-right font-mono text-base text-indigo-600 dark:text-indigo-400">{{ number_format($totalLedgerSales, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Cash + MoMo + Credit + Boss Gifts</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        {{-- 🔸 SECTION 2: DAILY COLLECTION BREAKDOWN --}}
-        <div class="text-center py-2">
-            <h2 class="text-xl font-black uppercase text-gray-900 dark:text-gray-100 tracking-wider">DAILY COLLECTION BREAKDOWN</h2>
-        </div>
-
-        {{-- A. Cash on Hand Report --}}
-        <div class="bg-white dark:bg-gray-900 border-2 border-gray-800 dark:border-gray-600 rounded-xl shadow-md overflow-hidden">
-            <div class="px-6 py-3 bg-gray-900 text-white font-bold text-base uppercase tracking-wider">
-                A. Cash on hand report
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-gray-100 dark:bg-gray-800 font-bold text-xs uppercase text-gray-700 dark:text-gray-300 border-b border-gray-300 dark:border-gray-700">
-                        <tr>
-                            <th class="px-6 py-3">Item</th>
-                            <th class="px-6 py-3 text-right">Amount (RWF)</th>
-                            <th class="px-6 py-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {{-- Inflows --}}
-                        <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-semibold">
-                            <td class="px-6 py-2.5">opening balance</td>
-                            <td class="px-6 py-2.5 text-right font-mono">{{ number_format($cashOpeningBalance, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Closing balance of previous day</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-2.5">cash sales by system</td>
-                            <td class="px-6 py-2.5 text-right font-mono font-semibold">{{ number_format($cashSalesSystem, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Current period cash sales</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-2.5">Cash Received from Previous Credit Customers</td>
-                            <td class="px-6 py-2.5 text-right font-mono">{{ number_format($totalCashDebtReceived, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Past debt repayments collected in cash</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-2.5">Other Cash Received</td>
-                            <td class="px-6 py-2.5 text-right font-mono">{{ number_format($otherCashReceived, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Miscellaneous cash income</td>
-                        </tr>
-                        <tr class="bg-gray-100 dark:bg-gray-800 font-bold border-t border-b border-gray-300 dark:border-gray-600">
-                            <td class="px-6 py-3 uppercase">Total Cash available</td>
-                            <td class="px-6 py-3 text-right font-mono text-base text-emerald-700 dark:text-emerald-400">{{ number_format($totalCashAvailable, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Opening + Sales + Repayments + Other</td>
-                        </tr>
-
-                        {{-- Outflows / Expenses --}}
-                        <tr class="bg-gray-900 text-white font-bold text-xs uppercase">
-                            <td colspan="3" class="px-6 py-2">PAYMENT PAYMENT by CASH</td>
-                        </tr>
-                        @foreach($cashExpenseItems as $label => $amt)
-                        <tr>
-                            <td class="px-6 py-2.5 pl-8">{{ $label }}</td>
-                            <td class="px-6 py-2.5 text-right font-mono">{{ number_format($amt, 0) }}</td>
-                            <td class="px-6 py-2.5"></td>
-                        </tr>
-                        @endforeach
-                        <tr>
-                            <td class="px-6 py-2.5 pl-8 font-semibold">CASH DEPOSIT</td>
-                            <td class="px-6 py-2.5 text-right font-mono font-semibold">{{ number_format($cashDeposit, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Bank cash deposits</td>
-                        </tr>
-                        <tr class="bg-gray-900 text-white font-black text-base border-t-2 border-gray-900">
-                            <td class="px-6 py-3 uppercase">CLOSING BALANCE</td>
-                            <td class="px-6 py-3 text-right font-mono text-lg text-emerald-400">{{ number_format($cashClosingBalance, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-300">Total Cash Available - Total Cash Outflows</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        {{-- B. Mobile Money Collections --}}
-        <div class="bg-white dark:bg-gray-900 border-2 border-gray-800 dark:border-gray-600 rounded-xl shadow-md overflow-hidden">
-            <div class="px-6 py-3 bg-gray-900 text-white font-bold text-base uppercase tracking-wider">
-                B. Mobile Money Collections
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-gray-100 dark:bg-gray-800 font-bold text-xs uppercase text-gray-700 dark:text-gray-300 border-b border-gray-300 dark:border-gray-700">
-                        <tr>
-                            <th class="px-6 py-3">Item</th>
-                            <th class="px-6 py-3 text-right">Amount (RWF)</th>
-                            <th class="px-6 py-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {{-- Inflows --}}
-                        <tr class="bg-blue-50/50 dark:bg-blue-950/20 font-bold">
-                            <td class="px-6 py-2.5 uppercase">OPEING BALANCE</td>
-                            <td class="px-6 py-2.5 text-right font-mono text-base font-bold">{{ number_format($momoOpeningBalance, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Closing MoMo balance of previous day</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-2.5">MoMo Sales BY system</td>
-                            <td class="px-6 py-2.5 text-right font-mono font-semibold">{{ number_format($momoSalesSystem, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Current period MoMo sales</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-2.5">MoMo Received from Previous Credit Customers</td>
-                            <td class="px-6 py-2.5 text-right font-mono">{{ number_format($totalMomoDebtReceived, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Past debt repayments collected via MoMo</td>
-                        </tr>
-                        <tr>
-                            <td class="px-6 py-2.5">Other MoMo Received</td>
-                            <td class="px-6 py-2.5 text-right font-mono">{{ number_format($otherMomoReceived, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">Miscellaneous MoMo income</td>
-                        </tr>
-                        <tr class="bg-gray-100 dark:bg-gray-800 font-bold border-t border-b border-gray-300 dark:border-gray-600">
-                            <td class="px-6 py-3 uppercase">Total MoMo AVALABLES</td>
-                            <td class="px-6 py-3 text-right font-mono text-base text-blue-700 dark:text-blue-400">{{ number_format($totalMomoAvailable, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">Opening + Sales + Repayments + Other</td>
-                        </tr>
-
-                        {{-- Outflows / Expenses --}}
-                        <tr class="bg-gray-900 text-white font-bold text-xs uppercase">
-                            <td colspan="3" class="px-6 py-2">PAYMENT by MOMO</td>
-                        </tr>
-                        @foreach($momoExpenseItems as $label => $amt)
-                        <tr>
-                            <td class="px-6 py-2.5 pl-8">{{ $label }}</td>
-                            <td class="px-6 py-2.5 text-right font-mono">{{ number_format($amt, 0) }}</td>
-                            <td class="px-6 py-2.5"></td>
-                        </tr>
-                        @endforeach
-                        <tr>
-                            <td class="px-6 py-2.5 pl-8 font-semibold">Total transfer</td>
-                            <td class="px-6 py-2.5 text-right font-mono font-semibold">{{ number_format($totalMomoTransfers, 0) }}</td>
-                            <td class="px-6 py-2.5 text-xs text-gray-500">MoMo transfers out</td>
-                        </tr>
-                        <tr class="bg-gray-900 text-white font-black text-base border-t-2 border-gray-900">
-                            <td class="px-6 py-3 uppercase">CLOSING BALANCE ON MOMO</td>
-                            <td class="px-6 py-3 text-right font-mono text-lg text-blue-300">{{ number_format($momoClosingBalance, 0) }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-300">Total MoMo Available - Total MoMo Outflows</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        {{-- C. BANK DEPOSITS --}}
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-6 py-4 bg-gray-800 text-white font-bold text-sm uppercase tracking-wider">
-                BANK DEPOSITS
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-gray-100 dark:bg-gray-800 text-xs font-bold uppercase text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-                        <tr>
-                            <th class="px-6 py-3">Deposit Description</th>
-                            <th class="px-6 py-3 text-right">Amount (RWF)</th>
-                            <th class="px-6 py-3">Mode (Cash/MoMo)</th>
-                            <th class="px-6 py-3">Bank</th>
-                            <th class="px-6 py-3">Deposit Slip No.</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        @forelse($bankDeposits as $deposit)
-                        <tr>
-                            <td class="px-6 py-3 font-medium">{{ $deposit->notes ?? 'Bank Deposit' }}</td>
-                            <td class="px-6 py-3 text-right font-mono font-semibold">{{ number_format($deposit->amount, 0) }}</td>
-                            <td class="px-6 py-3 uppercase font-semibold text-xs">{{ $deposit->method ?? 'CSH' }}</td>
-                            <td class="px-6 py-3 text-xs text-gray-500">BK / I&M / Equity</td>
-                            <td class="px-6 py-3 font-mono text-xs">{{ $deposit->id }}</td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td class="px-6 py-3 text-gray-400 font-medium">No recorded bank deposits</td>
-                            <td class="px-6 py-3 text-right font-mono">0</td>
-                            <td class="px-6 py-3 text-xs text-gray-400">CSH</td>
-                            <td class="px-6 py-3"></td>
-                            <td class="px-6 py-3"></td>
-                        </tr>
-                        @endforelse
-                        <tr class="bg-gray-100 dark:bg-gray-800 font-bold border-t-2 border-gray-300 dark:border-gray-600">
-                            <td class="px-6 py-3 uppercase">Total Deposits</td>
-                            <td class="px-6 py-3 text-right font-mono text-base text-indigo-600 dark:text-indigo-400">{{ number_format($totalBankDeposits, 0) }}</td>
-                            <td colspan="3"></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        {{-- D. UNTRADED SUMMARY --}}
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden p-6 space-y-3">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <span class="font-bold text-gray-700 dark:text-gray-300 uppercase text-xs">MOMO NOT TRADED</span>
-                    <span class="font-mono font-bold text-base">{{ number_format($momoNotTraded, 0) }}</span>
-                </div>
-                <div class="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                    <span class="font-bold text-gray-700 dark:text-gray-300 uppercase text-xs">CASH NOT TRADED</span>
-                    <span class="font-mono font-bold text-base">{{ number_format($cashNotTraded, 0) }}</span>
-                </div>
-            </div>
-        </div>
-
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            if (window.lucide) lucide.createIcons();
-        });
-    </script>
-</x-app-layout>
+    {{-- Filter Panel & Range Switcher --}}
+    <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-2xs space-y-4 print:hidden">
+        
+        {{-- Quick Range Pills --}}
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+            <div class="flex items-center gap-1.5">
+                <span class="text-xs font-medium text-slate-400 mr-1 flex items-center gap-1">
+                    <i data-lucide="calendar" class="w-3.5 h-3.5"></i> Presets:
+                </span>
+                @php
+                    $todayDate     = now()->toDateString();
+                    $yesterdayDate = now()->subDay()->toDateString();
+                    $weekStartDate = now()->startOfWeek()->toDateString();
+                    $monthStartDate = now()->startOfMonth()->toDateString();
+                @endphp
+                <a href="{{ route('reports.daily-collection', ['mode'=>'single', 'start_date'=>$todayDate]) }}"
+                   class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors {{ ($mode ?? 'single') === 'single' && $startDateInput === $todayDate ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700' }}">
+                    Today
+                </a>
+                <a href="{{ route('reports.daily-collection', ['mode'=>'single', 'start_date'=>$yesterdayDate]) }}"
+                   class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors {{ ($mode ?? 'single') === 'single' && $startDateInput === $yesterdayDate ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700' }}">
+                    Yesterday
+                </a>
+                <a href="{{ route('reports.daily-collection', ['mode'=>'range', 'start_date'=>$weekStartDate, 'end_date'=>$todayDate]) }}"
+                   class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors {{ ($mode ?? 'single') === 'range' && $startDateInput === $weekStartDate ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700' }}">
+                    This Week
+                </a>
+                <a href="{{ route('reports.daily-collection', ['mode'=>'range', 'start_date'=>$monthStartDate, 'end_date'=>$todayDate]) }}"
+                   class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors {{ ($mode ?? 'single') === 'range' && $startDateInput === $monthStartDate ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700' }}">
+                    This Month
+                </a>
+            </div>
+
+            <button type="button"
+                    @click="showFormulas = !showFormulas"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors">
+                <i data-lucide="calculator" class="w-3.5 h-3.5 text-amber-500"></i>
+                <span x-text="showFormulas ? 'Hide Accounting Formulas' : 'Show Accounting Formulas'"></span>
+            </button>
+        </div>
+
+        {{-- Filter Inputs Form --}}
+        <form method="GET" action="{{ route('reports.daily-collection') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    Mode
+                </label>
+                <select name="mode" x-model="mode"
+                        class="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+                    <option value="single">Single Day Audit</option>
+                    <option value="range">Date Range Audit</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    <span x-text="mode === 'range' ? 'Start Date' : 'Report Date'">Report Date</span>
+                </label>
+                <input type="date" name="start_date" value="{{ $startDateInput }}"
+                       class="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+            </div>
+
+            <div x-show="mode === 'range'" x-cloak>
+                <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    End Date
+                </label>
+                <input type="date" name="end_date" value="{{ $endDateInput }}"
+                       class="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button type="submit"
+                        class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-900 rounded-lg hover:bg-slate-800 dark:hover:bg-white transition-colors">
+                    <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+                    <span>Generate Report</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {{-- Formulas Legend Accordion --}}
+    <div x-show="showFormulas" x-transition x-cloak class="rounded-xl border border-amber-200/80 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/20 p-4 text-xs text-amber-900 dark:text-amber-200 print:hidden">
+        <div class="flex items-center gap-2 font-bold text-amber-800 dark:text-amber-300 mb-2">
+            <i data-lucide="help-circle" class="w-4 h-4 text-amber-500"></i>
+            <span>Accounting Formulas & Calculation Legend</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 text-[11px] text-amber-800/90 dark:text-amber-300/90">
+            <div>• <strong>Total Ledger Sales:</strong> Cash Sales + MoMo Sales + Credit Sales (Unpaid) + Boss Gifts + Supplier Offset</div>
+            <div>• <strong>Opening Cash/MoMo:</strong> Cumulative Prior Inflows minus Outflows as of report start date</div>
+            <div>• <strong>Available Balance:</strong> Opening Balance + Sales + Previous Debt Received + Miscellaneous Receipts</div>
+            <div>• <strong>Closing Cash/MoMo:</strong> Total Available minus Outflows (Operating Expenses, Charges, Deposits)</div>
+        </div>
+    </div>
+
+    {{-- Executive Balances High-Impact KPI Row --}}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {{-- Cash Available --}}
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-2xs">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Cash Available</span>
+                <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                    <i data-lucide="banknote" class="w-3.5 h-3.5"></i>
+                </div>
+            </div>
+            <div class="mt-2.5">
+                <div class="text-xl font-bold font-mono text-slate-900 dark:text-slate-100">
+                    {{ $fmt0($totalCashAvailable) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Opening + Sales + Collections</div>
+            </div>
+        </div>
+
+        {{-- Cash Closing Drawer --}}
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-2xs">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Cash Closing Balance</span>
+                <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                    <i data-lucide="wallet" class="w-3.5 h-3.5"></i>
+                </div>
+            </div>
+            <div class="mt-2.5">
+                <div class="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                    {{ $fmt0($cashClosingBalance) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Physical cash drawer balance</div>
+            </div>
+        </div>
+
+        {{-- MoMo Available --}}
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-2xs">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total MoMo Available</span>
+                <div class="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-600 flex items-center justify-center">
+                    <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+                </div>
+            </div>
+            <div class="mt-2.5">
+                <div class="text-xl font-bold font-mono text-slate-900 dark:text-slate-100">
+                    {{ $fmt0($totalMomoAvailable) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Opening + MoMo Sales + Collections</div>
+            </div>
+        </div>
+
+        {{-- MoMo Closing Balance --}}
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-2xs">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">MoMo Closing Balance</span>
+                <div class="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-600 flex items-center justify-center">
+                    <i data-lucide="credit-card" class="w-3.5 h-3.5"></i>
+                </div>
+            </div>
+            <div class="mt-2.5">
+                <div class="text-xl font-bold font-mono text-sky-600 dark:text-sky-400">
+                    {{ $fmt0($momoClosingBalance) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Net Mobile Money wallet balance</div>
+            </div>
+        </div>
+    </div>
+
+    {{-- SECTION 1: DAILY SALES REPORT SUMMARY --}}
+    <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-2xs overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
+            <div class="flex items-center gap-2">
+                <i data-lucide="shopping-bag" class="w-4 h-4 text-indigo-600 dark:text-indigo-400"></i>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    1. Daily Sales Summary (By Channel & Type)
+                </h2>
+            </div>
+            <span class="text-xs text-slate-400">Sales recorded in period</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+                        <th class="py-3 px-5">Sales Category</th>
+                        <th class="py-3 px-5 text-right">Amount (RWF)</th>
+                        <th class="py-3 px-5 text-slate-400 font-normal">Audit Reference & Explanation</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="py-3 px-5 font-semibold text-slate-800 dark:text-slate-200">Ledger Cash Sales</td>
+                        <td class="py-3 px-5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{{ $fmt0($ledgerCashSales) }}</td>
+                        <td class="py-3 px-5 text-slate-500 dark:text-slate-400">Sales settled in cash during this period</td>
+                    </tr>
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="py-3 px-5 font-semibold text-slate-800 dark:text-slate-200">Ledger MoMo Sales</td>
+                        <td class="py-3 px-5 text-right font-mono font-bold text-sky-600 dark:text-sky-400">{{ $fmt0($ledgerMomoSales) }}</td>
+                        <td class="py-3 px-5 text-slate-500 dark:text-slate-400">Sales settled via Mobile Money payments</td>
+                    </tr>
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="py-3 px-5 font-semibold text-slate-800 dark:text-slate-200">Ledger Credit Sales</td>
+                        <td class="py-3 px-5 text-right font-mono font-bold text-amber-600 dark:text-amber-400">{{ $fmt0($ledgerCreditSales) }}</td>
+                        <td class="py-3 px-5 text-slate-500 dark:text-slate-400">Unpaid balances on sales made in this period</td>
+                    </tr>
+                    @if(($ledgerGiftSales ?? 0) > 0)
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="py-3 px-5 font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                            <i data-lucide="gift" class="w-3.5 h-3.5 text-purple-500"></i>
+                            <span>Boss Gift Sales</span>
+                        </td>
+                        <td class="py-3 px-5 text-right font-mono font-bold text-purple-600 dark:text-purple-400">{{ $fmt0($ledgerGiftSales) }}</td>
+                        <td class="py-3 px-5 text-slate-500 dark:text-slate-400">Complimentary products granted with inventory offset</td>
+                    </tr>
+                    @endif
+                    @if(($ledgerSupplierOffsetSales ?? 0) > 0)
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="py-3 px-5 font-semibold text-indigo-600 dark:text-indigo-400">Supplier Offset Sales</td>
+                        <td class="py-3 px-5 text-right font-mono font-bold text-indigo-600 dark:text-indigo-400">{{ $fmt0($ledgerSupplierOffsetSales) }}</td>
+                        <td class="py-3 px-5 text-slate-500 dark:text-slate-400">Sales balanced against vendor procurement credit</td>
+                    </tr>
+                    @endif
+                </tbody>
+                <tfoot class="bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200/80 dark:border-slate-800 font-semibold text-xs">
+                    <tr>
+                        <td class="py-3.5 px-5 uppercase text-slate-700 dark:text-slate-200 font-bold">Total Ledger Sales</td>
+                        <td class="py-3.5 px-5 text-right font-mono font-bold text-base text-indigo-600 dark:text-indigo-400">
+                            {{ $fmt0($totalLedgerSales) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                        </td>
+                        <td class="py-3.5 px-5 text-slate-500 dark:text-slate-400 text-[11px]">Sum of all operational sales channels</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    {{-- SECTION 2: CASH ON HAND REPORT & RECONCILIATION --}}
+    <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-2xs overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-emerald-50/40 dark:bg-emerald-950/20">
+            <div class="flex items-center gap-2">
+                <i data-lucide="banknote" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
+                    2. Cash Drawer Reconciliation (Cash on Hand)
+                </h2>
+            </div>
+            <span class="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300">
+                Closing: {{ $fmt0($cashClosingBalance) }} RWF
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+                        <th class="py-3 px-5">Cash Line Item</th>
+                        <th class="py-3 px-5 text-right">Amount (RWF)</th>
+                        <th class="py-3 px-5 text-slate-400 font-normal">Audit Detail</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {{-- Cash Inflows --}}
+                    <tr class="bg-emerald-50/30 dark:bg-emerald-950/10">
+                        <td class="py-2.5 px-5 font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <i data-lucide="corner-down-right" class="w-3.5 h-3.5 text-emerald-500"></i>
+                            <span>Opening Cash Balance</span>
+                        </td>
+                        <td class="py-2.5 px-5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{{ $fmt0($cashOpeningBalance) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Previous day verified closing drawer balance</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 text-slate-700 dark:text-slate-300">Cash Sales by System</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">{{ $fmt0($cashSalesSystem) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Direct cash sales in period</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 text-slate-700 dark:text-slate-300">Cash Received from Previous Credit / Loans</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">{{ $fmt0($totalCashDebtReceived) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Past customer debts collected in cash</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 text-slate-700 dark:text-slate-300">Other Cash Receipts</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">{{ $fmt0($otherCashReceived) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Miscellaneous cash inflows</td>
+                    </tr>
+                    <tr class="bg-slate-50/80 dark:bg-slate-800/40 font-bold border-y border-slate-200/80 dark:border-slate-800">
+                        <td class="py-3 px-5 uppercase text-slate-800 dark:text-slate-200">Total Cash Available</td>
+                        <td class="py-3 px-5 text-right font-mono text-emerald-600 dark:text-emerald-400 text-sm">{{ $fmt0($totalCashAvailable) }}</td>
+                        <td class="py-3 px-5 text-slate-500 text-[11px]">Opening + Sales + Past Debt + Other</td>
+                    </tr>
+
+                    {{-- Cash Outflows --}}
+                    <tr class="bg-slate-100/60 dark:bg-slate-800/60 font-semibold text-slate-600 dark:text-slate-300">
+                        <td colspan="3" class="py-2 px-5 text-[11px] uppercase tracking-wider">
+                            Cash Disbursements &amp; Expenses
+                        </td>
+                    </tr>
+                    @foreach($cashExpenseItems as $label => $amt)
+                    <tr>
+                        <td class="py-2 px-5 pl-8 text-slate-700 dark:text-slate-300">{{ $label }}</td>
+                        <td class="py-2 px-5 text-right font-mono text-rose-600 dark:text-rose-400">{{ $fmt0($amt) }}</td>
+                        <td class="py-2 px-5 text-slate-400 text-[11px]">Disbursed from cash drawer</td>
+                    </tr>
+                    @endforeach
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 font-semibold text-slate-800 dark:text-slate-200">Bank Cash Deposits</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">{{ $fmt0($cashDeposit) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Cash deposited into bank accounts</td>
+                    </tr>
+                </tbody>
+                <tfoot class="bg-emerald-500/10 border-t-2 border-emerald-500/30 font-bold text-xs">
+                    <tr>
+                        <td class="py-3.5 px-5 uppercase text-emerald-900 dark:text-emerald-200 text-sm">
+                            Closing Cash Balance (On Hand)
+                        </td>
+                        <td class="py-3.5 px-5 text-right font-mono font-extrabold text-base text-emerald-600 dark:text-emerald-400">
+                            {{ $fmt0($cashClosingBalance) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                        </td>
+                        <td class="py-3.5 px-5 text-slate-500 dark:text-slate-400 text-[11px]">
+                            Total Cash Available minus Total Disbursements
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    {{-- SECTION 3: MOBILE MONEY RECONCILIATION --}}
+    <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-2xs overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-sky-50/40 dark:bg-sky-950/20">
+            <div class="flex items-center gap-2">
+                <i data-lucide="smartphone" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-sky-900 dark:text-sky-200">
+                    3. Mobile Money Collections &amp; Wallet Reconciliation
+                </h2>
+            </div>
+            <span class="text-xs font-mono font-bold text-sky-700 dark:text-sky-300">
+                Closing: {{ $fmt0($momoClosingBalance) }} RWF
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+                        <th class="py-3 px-5">MoMo Line Item</th>
+                        <th class="py-3 px-5 text-right">Amount (RWF)</th>
+                        <th class="py-3 px-5 text-slate-400 font-normal">Audit Detail</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {{-- MoMo Inflows --}}
+                    <tr class="bg-sky-50/30 dark:bg-sky-950/10">
+                        <td class="py-2.5 px-5 font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <i data-lucide="corner-down-right" class="w-3.5 h-3.5 text-sky-500"></i>
+                            <span>Opening MoMo Balance</span>
+                        </td>
+                        <td class="py-2.5 px-5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{{ $fmt0($momoOpeningBalance) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Previous day closing wallet balance</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 text-slate-700 dark:text-slate-300">MoMo Sales by System</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">{{ $fmt0($momoSalesSystem) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Direct Mobile Money sales collected</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 text-slate-700 dark:text-slate-300">MoMo Received from Previous Credit / Loans</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">{{ $fmt0($totalMomoDebtReceived) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Past customer debts collected via MoMo</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 text-slate-700 dark:text-slate-300">Other MoMo Receipts</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">{{ $fmt0($otherMomoReceived) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Miscellaneous wallet inflows</td>
+                    </tr>
+                    <tr class="bg-slate-50/80 dark:bg-slate-800/40 font-bold border-y border-slate-200/80 dark:border-slate-800">
+                        <td class="py-3 px-5 uppercase text-slate-800 dark:text-slate-200">Total MoMo Available</td>
+                        <td class="py-3 px-5 text-right font-mono text-sky-600 dark:text-sky-400 text-sm">{{ $fmt0($totalMomoAvailable) }}</td>
+                        <td class="py-3 px-5 text-slate-500 text-[11px]">Opening + Sales + Past Debt + Other</td>
+                    </tr>
+
+                    {{-- MoMo Outflows --}}
+                    <tr class="bg-slate-100/60 dark:bg-slate-800/60 font-semibold text-slate-600 dark:text-slate-300">
+                        <td colspan="3" class="py-2 px-5 text-[11px] uppercase tracking-wider">
+                            MoMo Disbursements &amp; Expenses
+                        </td>
+                    </tr>
+                    @foreach($momoExpenseItems as $label => $amt)
+                    <tr>
+                        <td class="py-2 px-5 pl-8 text-slate-700 dark:text-slate-300">{{ $label }}</td>
+                        <td class="py-2 px-5 text-right font-mono text-rose-600 dark:text-rose-400">{{ $fmt0($amt) }}</td>
+                        <td class="py-2 px-5 text-slate-400 text-[11px]">Disbursed via Mobile Money</td>
+                    </tr>
+                    @endforeach
+                    <tr>
+                        <td class="py-2.5 px-5 pl-8 font-semibold text-slate-800 dark:text-slate-200">Total MoMo Transfers Out</td>
+                        <td class="py-2.5 px-5 text-right font-mono font-bold text-rose-600 dark:text-rose-400">{{ $fmt0($totalMomoTransfers) }}</td>
+                        <td class="py-2.5 px-5 text-slate-500 dark:text-slate-400">Wallet cashouts and transfers</td>
+                    </tr>
+                </tbody>
+                <tfoot class="bg-sky-500/10 border-t-2 border-sky-500/30 font-bold text-xs">
+                    <tr>
+                        <td class="py-3.5 px-5 uppercase text-sky-900 dark:text-sky-200 text-sm">
+                            Closing MoMo Balance (Wallet)
+                        </td>
+                        <td class="py-3.5 px-5 text-right font-mono font-extrabold text-base text-sky-600 dark:text-sky-400">
+                            {{ $fmt0($momoClosingBalance) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                        </td>
+                        <td class="py-3.5 px-5 text-slate-500 dark:text-slate-400 text-[11px]">
+                            Total MoMo Available minus Total Disbursements
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    {{-- SECTION 4: BANK DEPOSITS LIST & SUMMARY --}}
+    <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-2xs overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
+            <div class="flex items-center gap-2">
+                <i data-lucide="building-2" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    4. Verified Bank Deposits
+                </h2>
+            </div>
+            <span class="text-xs font-mono font-bold text-purple-600 dark:text-purple-400">
+                Total Deposited: {{ $fmt0($totalBankDeposits) }} RWF
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-[11px] font-semibold uppercase tracking-wider">
+                        <th class="py-3 px-5">Deposit Description / Note</th>
+                        <th class="py-3 px-5 text-right">Amount (RWF)</th>
+                        <th class="py-3 px-5">Source Mode</th>
+                        <th class="py-3 px-5">Target Bank</th>
+                        <th class="py-3 px-5 text-right">Slip / Transaction Ref</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    @forelse($bankDeposits as $deposit)
+                    <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                        <td class="py-3 px-5 font-semibold text-slate-800 dark:text-slate-200">
+                            {{ $deposit->notes ?? 'Bank Deposit Entry' }}
+                        </td>
+                        <td class="py-3 px-5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                            {{ $fmt0($deposit->amount) }}
+                        </td>
+                        <td class="py-3 px-5">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                {{ $deposit->method ?? 'CSH' }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-5 text-slate-600 dark:text-slate-400">
+                            BK / I&amp;M / Equity Bank
+                        </td>
+                        <td class="py-3 px-5 text-right font-mono text-slate-500">
+                            #{{ $deposit->id }}
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="5" class="py-6 text-center text-slate-400">
+                            No bank deposits recorded during this reporting period.
+                        </td>
+                    </tr>
+                    @endforelse
+                </tbody>
+                @if($bankDeposits->count() > 0)
+                <tfoot class="bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200/80 dark:border-slate-800 font-semibold text-xs">
+                    <tr>
+                        <td class="py-3 px-5 uppercase text-slate-700 dark:text-slate-200 font-bold">Total Bank Deposits</td>
+                        <td class="py-3 px-5 text-right font-mono font-bold text-sm text-purple-600 dark:text-purple-400">
+                            {{ $fmt0($totalBankDeposits) }} <span class="text-xs font-sans text-slate-400">RWF</span>
+                        </td>
+                        <td colspan="3"></td>
+                    </tr>
+                </tfoot>
+                @endif
+            </table>
+        </div>
+    </div>
+
+</div>
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) lucide.createIcons();
+});
+</script>
+@endpush
+@endsection

@@ -20,21 +20,34 @@ class AuditReportController extends Controller
     {
         $query = AuditLog::with('user');
 
-        if ($request->has('user_id') && $request->user_id) {
-            $query->where('user_id', $request->user_id);
+        if ($request->filled('user_id')) {
+            $query->where('user_id', $request->integer('user_id'));
         }
 
-        if ($request->has('date')) {
+        if ($request->filled('date')) {
             $query->whereDate('created_at', $request->date);
         }
 
-        if ($request->has('action')) {
-            $query->where('action', $request->action);
+        if ($request->filled('action')) {
+            $query->where('action', $request->string('action'));
         }
 
-        $logs = $query->latest()->paginate(20);
+        if ($request->filled('subject_type')) {
+            $query->where('subject_type', 'like', '%' . $request->string('subject_type') . '%');
+        }
 
-        return view('reports.audit', compact('logs'));
+        $logs = $query->latest()->paginate(25)->withQueryString();
+
+        $users = \App\Models\User::orderBy('name')->get(['id', 'name']);
+
+        $stats = [
+            'total_logs' => AuditLog::count(),
+            'creates'    => AuditLog::where('action', 'create')->count(),
+            'updates'    => AuditLog::where('action', 'update')->count(),
+            'deletes'    => AuditLog::where('action', 'delete')->count(),
+        ];
+
+        return view('reports.audit', compact('logs', 'users', 'stats'));
     }
 
     /**
@@ -153,7 +166,7 @@ class AuditReportController extends Controller
                 'item_id' => $loan->id,
                 'message' => "Loan #{$loan->id} ({$loan->type}) is marked 'Paid' but has balance {$rem}.",
                 'severity' => 'high',
-                'link' => '#', 
+                'link' => route('loans.show', $loan->id), 
             ];
         }
 
@@ -169,7 +182,7 @@ class AuditReportController extends Controller
                 'item_id' => $loan->id,
                 'message' => "Loan #{$loan->id} is fully paid but status is 'Pending'.",
                 'severity' => 'medium',
-                'link' => '#',
+                'link' => route('loans.show', $loan->id),
             ];
         }
 
