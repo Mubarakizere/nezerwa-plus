@@ -25,9 +25,19 @@ class StockAdjustmentController extends Controller
     public function store(Request $request, Product $product)
     {
         $request->validate([
-            'actual_stock' => 'required|numeric|min:0',
-            'notes'        => 'nullable|string|max:500',
+            'actual_stock'   => 'required|numeric|min:0',
+            'admin_password' => 'required|string',
+            'notes'          => 'nullable|string|max:500',
+        ], [
+            'admin_password.required' => 'Admin authorization password is required to adjust physical inventory.',
         ]);
+
+        $authorizingAdmin = \App\Services\AdminAuthService::verifyAdminPassword($request->input('admin_password'));
+        if (!$authorizingAdmin) {
+            return back()->withErrors([
+                'admin_password' => 'Invalid admin password. Stock adjustment authorization failed.'
+            ])->withInput();
+        }
 
         try {
             DB::beginTransaction();
@@ -43,13 +53,15 @@ class StockAdjustmentController extends Controller
                 return back()->with('info', 'No adjustment needed. Stock is already ' . $actualStock);
             }
 
+            $auditNote = trim(($request->input('notes') ?? 'Manual Stock Adjustment') . " [Authorized by Admin: {$authorizingAdmin->name}]");
+
             // 1. Create the StockAdjustment Record FIRST
             // This gives us a real ID to link to the movement
             $adjustment = \App\Models\StockAdjustment::create([
                 'user_id'    => Auth::id(),
                 'product_id' => $product->id,
                 'quantity'   => $difference,
-                'notes'      => $request->input('notes') ?? 'Manual Stock Adjustment',
+                'notes'      => $auditNote,
             ]);
 
             // 2. Determine type and qty for movement

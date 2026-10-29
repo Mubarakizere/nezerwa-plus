@@ -175,32 +175,59 @@ class ProductController extends Controller
     public function edit(Product $product)
     {
         $categories = Category::active()->forProducts()->orderBy('name')->get();
-        return view('products.edit', compact('product', 'categories'));
+        $product->loadMissing(['category' => fn($q) => $q->withTrashed()]);
+
+        $currentStock = $product->currentStock();
+        $totalIn      = (float) $product->stockMovements()->where('type', 'in')->sum('quantity');
+        $totalOut     = (float) $product->stockMovements()->where('type', 'out')->sum('quantity');
+
+        return view('products.edit', compact('product', 'categories', 'currentStock', 'totalIn', 'totalOut'));
     }
 
     /** Update */
     public function update(Request $request, Product $product)
     {
         $request->validate([
-            'name'        => ['required','string','max:255'],
+            'name'          => ['required','string','max:255'],
             'category_id'   => [
                 'required','integer',
                 Rule::exists('categories','id')->where(fn($q) =>
                     $q->whereNull('deleted_at')->where('is_active', true)->whereIn('kind',['product','both'])
                 ),
             ],
-            'price'         => ['required','numeric','min:0'],
-            'cost_price'    => ['nullable','numeric','min:0'],
-            'profit_margin' => ['nullable','numeric','min:0','max:1000'],
-            'stock'         => ['required','numeric','min:0'],
+            'price'          => ['required','numeric','min:0'],
+            'cost_price'     => ['nullable','numeric','min:0'],
+            'profit_margin'  => ['nullable','numeric','min:0','max:1000'],
+            'stock'          => ['required','numeric','min:0'],
+            'admin_password' => ['nullable','string'],
         ], [
             'category_id.exists' => 'The selected category is invalid or inactive.',
         ]);
 
+        $oldStock   = (float) $product->currentStock();
+        $newStock   = (float) $request->input('stock');
+        $difference = $newStock - $oldStock;
+
+        // Security check: changing stock requires valid Admin authorization
+        $authorizingAdmin = null;
+        if (abs($difference) > 0.001) {
+            $adminPassword = $request->input('admin_password');
+            if (empty($adminPassword)) {
+                return back()->withErrors([
+                    'admin_password' => 'Stock alteration is locked. An admin password is required to change stock level.'
+                ])->withInput();
+            }
+
+            $authorizingAdmin = \App\Services\AdminAuthService::verifyAdminPassword($adminPassword);
+            if (!$authorizingAdmin) {
+                return back()->withErrors([
+                    'admin_password' => 'Invalid admin password. Stock changes could not be authorized.'
+                ])->withInput();
+            }
+        }
+
         try {
             DB::beginTransaction();
-
-            $oldStock = $product->currentStock();
 
             $product->update([
                 'name'          => $request->name,
@@ -208,13 +235,10 @@ class ProductController extends Controller
                 'price'         => $request->input('price'),
                 'cost_price'    => $request->input('cost_price'),
                 'profit_margin' => $request->input('profit_margin'),
-                'stock'         => $request->input('stock'),
+                'stock'         => $newStock,
             ]);
 
-            $newStock   = (float) $request->input('stock');
-            $difference = $newStock - (float) $oldStock;
-
-            if ($difference != 0) {
+            if (abs($difference) > 0.001) {
                 $uc = $product->cost_price ?? $product->price ?? 0;
                 StockMovement::create([
                     'product_id'  => $product->id,
@@ -225,6 +249,16 @@ class ProductController extends Controller
                     'source_type' => Product::class,
                     'source_id'   => $product->id,
                     'user_id'     => Auth::id(),
+                ]);
+
+                Log::info('Product stock updated with admin approval', [
+                    'product_id'     => $product->id,
+                    'old_stock'      => $oldStock,
+                    'new_stock'      => $newStock,
+                    'difference'     => $difference,
+                    'authorized_by'  => $authorizingAdmin?->id,
+                    'admin_name'     => $authorizingAdmin?->name,
+                    'performed_by'   => Auth::id(),
                 ]);
             }
 
